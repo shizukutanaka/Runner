@@ -1,48 +1,87 @@
-import React from 'react';
-import { Box, AppBar, Toolbar, Typography, Tabs, Tab, Paper, Stack, useMediaQuery } from '@mui/material';
+import React, { useState } from 'react';
+import {
+  Box,
+  Tabs,
+  Tab,
+  Paper,
+} from '@mui/material';
+import {
+  Timeline as TimelineIcon,
+  People as PeopleIcon,
+  Analytics as AnalyticsIcon,
+  Settings as SettingsIcon,
+  AdminPanelSettings as ModeratorIcon,
+} from '@mui/icons-material';
+import { useTranslation } from 'react-i18next';
 import CommentTimeline from './CommentTimeline';
 import UserPanel from './UserPanel';
 import AnalyticsPanel from './AnalyticsPanel';
 import SettingsPanel from './SettingsPanel';
-import { useTheme } from '@mui/material/styles';
+import ModeratorDashboard from './ModeratorDashboard';
 
-export default function Dashboard() {
-  const [tab, setTab] = React.useState(0);
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+function TabPanel(props) {
+  const { children, value, index, ...other } = props;
 
   return (
-    <Box sx={{ height: '100vh', bgcolor: '#f5f5f5' }}>
-      <AppBar position="static">
-        <Toolbar>
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            YouTube & Twitch コメント管理ダッシュボード
-          </Typography>
-        </Toolbar>
-      </AppBar>
-      <Box sx={{ display: 'flex', height: 'calc(100vh - 64px)' }}>
-        <Box sx={{ width: '100%', mt: 2 }}>
-          <Tabs
-            value={tab}
-            onChange={(_, v) => setTab(v)}
-            centered={!isMobile}
-            variant={isMobile ? 'scrollable' : 'standard'}
-            scrollButtons={isMobile ? 'auto' : false}
-            allowScrollButtonsMobile
-          >
-            <Tab label="コメント" />
-            <Tab label="ユーザー" />
-            <Tab label="分析" />
-            <Tab label="設定" />
-          </Tabs>
-        </Paper>
-        <Box sx={{ flex: 1, p: 3, overflow: 'auto' }}>
-          {tab === 0 && <CommentTimeline />}
-          {tab === 1 && <UserPanel />}
-          {tab === 2 && <AnalyticsPanel />}
-          {tab === 3 && <SettingsPanel />}
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`dashboard-tabpanel-${index}`}
+      aria-labelledby={`dashboard-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ pt: 3 }}>
+          {children}
         </Box>
+      )}
+    </div>
+  );
+}
+
+export default function Dashboard() {
+  const [tab, setTab] = useState(0);
+  const { t } = useTranslation();
+
+  const handleTabChange = (event, newValue) => {
+    setTab(newValue);
+  };
+
+  const tabs = [
+    { component: <CommentTimeline />, label: t('dashboard_tab_timeline', 'Timeline'), icon: <TimelineIcon /> },
+    { component: <ModeratorDashboard />, label: t('dashboard_tab_moderator', 'Moderator'), icon: <ModeratorIcon /> },
+    { component: <UserPanel />, label: t('dashboard_tab_users', 'Users'), icon: <PeopleIcon /> },
+    { component: <AnalyticsPanel />, label: t('dashboard_tab_analytics', 'Analytics'), icon: <AnalyticsIcon /> },
+    { component: <SettingsPanel />, label: t('dashboard_tab_settings', 'Settings'), icon: <SettingsIcon /> },
+  ];
+
+  return (
+    <Paper sx={{ width: '100%', overflow: 'hidden', p: 0, m: 0, backgroundColor: 'transparent', boxShadow: 'none' }}>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Tabs 
+          value={tab} 
+          onChange={handleTabChange} 
+          aria-label="dashboard tabs"
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          {tabs.map((tabItem, index) => (
+            <Tab 
+              key={index} 
+              label={tabItem.label} 
+              icon={tabItem.icon} 
+              iconPosition="start"
+              id={`dashboard-tab-${index}`}
+              aria-controls={`dashboard-tabpanel-${index}`}
+            />
+          ))}
+        </Tabs>
       </Box>
-    </Box>
+      {tabs.map((tabItem, index) => (
+        <TabPanel key={index} value={tab} index={index}>
+          {tabItem.component}
+        </TabPanel>
+      ))}
+    </Paper>
   );
 }

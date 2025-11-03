@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm:*)",
+      "Bash(npm install:*)",
+      "Bash(find:*)",
+      "Bash(awk:*)",
+      "Bash(npm run lint)",
+      "Bash(test:*)",
+      "Bash(npm test)",
+      "Bash(chmod:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: エンタープライズ機能・セキュリティ・監視システムの統合実装\n\n主要な追加機能:\n- エンタープライズセキュリティ: 2FA、デバイスフィンガープリント、IPホワイトリスト\n- 個人使用向け最適化: プリセット設定、自動セットアップスクリプト\n- 監視・アラートシステム: Prometheus統合、リアルタイム監視ダッシュボード\n- データ保護: GDPR準拠機能、暗号化サービス、監査ログ\n- 多言語対応: 50言語サポート、自動翻訳機能\n- パフォーマンス最適化: 接続プール、クエリ最適化、レスポンスキャッシング\n- 包括的なテストスイート: 統合テスト、セキュリティテスト\n- 詳細ドキュメント: API、デプロイ、ユーザーガイド\n\n技術的改善:\n- ミドルウェアの統合とセキュリティ強化\n- WebSocket接続の安定性向上\n- データベースマイグレーション管理\n- Docker/Kubernetes対応\n- CI/CDパイプライン設定\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit:*)",
+      "Bash(xargs rm:*)",
+      "Bash(ls:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

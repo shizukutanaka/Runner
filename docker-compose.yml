@@ -1,0 +1,196 @@
+version: '3.8'
+
+services:
+  # Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: comment-manager-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-4000}:4000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 4000
+      DATABASE_PATH: /app/data/comments.db
+      REDIS_URL: redis://redis:6379
+      SESSION_STORE: redis
+      SESSION_REDIS_URL: redis://redis:6379
+      RATE_LIMIT_STORE: redis
+      RATE_LIMIT_REDIS_URL: redis://redis:6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY}
+      TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID}
+      TWITCH_CLIENT_SECRET: ${TWITCH_CLIENT_SECRET}
+      JWT_SECRET: ${JWT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      FRONTEND_ALLOWED_ORIGINS: ${FRONTEND_URL:-http://localhost:5173}
+      TRUST_PROXY: "true"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - backend_data:/app/data
+      - backend_logs:/app/logs
+      - backend_backups:/app/backups
+      - backend_uploads:/app/uploads
+    networks:
+      - app_network
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: comment-manager-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    environment:
+      VITE_API_URL: ${BACKEND_URL:-http://localhost:4000}
+      VITE_WS_URL: ${WEBSOCKET_URL:-ws://localhost:4000}
+    networks:
+      - app_network
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache & Session Store
+  redis:
+    image: redis:7-alpine
+    container_name: comment-manager-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Nginx Reverse Proxy (Production)
+  nginx:
+    image: nginx:alpine
+    container_name: comment-manager-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_cache:/var/cache/nginx
+      - nginx_logs:/var/log/nginx
+    networks:
+      - app_network
+    depends_on:
+      - backend
+      - frontend
+    profiles:
+      - production
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: comment-manager-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - app_network
+    profiles:
+      - monitoring
+
+  # Grafana Dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: comment-manager-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: "grafana-clock-panel,grafana-simple-json-datasource"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - app_network
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+
+  # Database Backup Service
+  backup:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: comment-manager-backup
+    restart: unless-stopped
+    command: node src/scripts/backup-cron.js
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /app/data/comments.db
+      BACKUP_DIR: /app/backups
+      AUTO_BACKUP: "true"
+      BACKUP_SCHEDULE: "0 2 * * *"
+      MAX_BACKUPS: "30"
+      ENCRYPT_BACKUPS: "true"
+    volumes:
+      - backend_data:/app/data:ro
+      - backend_backups:/app/backups
+    networks:
+      - app_network
+    profiles:
+      - backup
+
+volumes:
+  backend_data:
+    driver: local
+  backend_logs:
+    driver: local
+  backend_backups:
+    driver: local
+  backend_uploads:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  nginx_cache:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  app_network:
+    driver: bridge

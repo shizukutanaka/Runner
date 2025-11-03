@@ -1,47 +1,58 @@
-# 1000個の実装チェックリスト
+# 機能実装チェックリスト / Feature Implementation Checklist
 
-| No. | 機能名 | 概要 | 担当モジュール | 実装状況 | テスト状況 | 備考 |
+## 日本語セクション
+
+### 概要
+本一覧はコメント管理ソフトウェアの機能実装状況を整理し、重要度が高い事項から軽量な作業を優先的に実装する方針を示します。
+
+### 管理方針
+- 実装状況とテスト状況を節目ごとに更新します。
+- 重複する機能が見つかった場合は統合し、本表に集約します。
+- 定期的に未着手項目の優先度を見直し、安定運用に必要な改善を継続します。
+
+### チェックリスト
+| No. | 機能名 / Feature | 概要 / Description | 担当モジュール / Module | 実装状況 / Implementation | テスト状況 / Testing | 備考 / Notes |
 |-----|--------|------|---------------|----------|------------|------|
-| 1   | コメント取得 | コメント一覧取得API | backend/commentsController | 完了 | 済 |  |
-| 2   | コメント投稿 | コメント投稿API | backend/commentsController | 完了 | 済 |  |
-| 3   | コメント編集 | コメント編集API | backend/commentsController | 完了 | 済 |  |
-| 4   | コメント削除 | コメント削除API | backend/commentsController | 完了 | 済 |  |
-| 5   | ユーザー一覧 | ユーザー一覧取得API | backend/usersController | 完了 | 済 |  |
-| 6   | ユーザー詳細 | ユーザー詳細取得API | backend/usersController | 完了 | 済 |  |
-| 7   | BAN | ユーザーBAN操作API | backend/usersController | 完了 | 済 |  |
-| 8   | ミュート | ユーザーミュートAPI | backend/usersController | 完了 | 済 |  |
-| 9   | 履歴取得 | ユーザー履歴取得API | backend/usersController | 完了 | 済 |  |
-| 10  | AIモデレーション | コメントAI判定API | backend/moderationController | 完了 | 済 |  |
-| 11  | NGワード管理 | NGワード設定API | backend/moderationController | 完了 | 済 |  |
-| 12  | 閾値設定 | モデレーション閾値設定API | backend/moderationController | 完了 | 済 |  |
-| 13  | 通知一覧 | 通知一覧取得API | backend/notificationsController | 完了 | 済 |  |
-| 14  | 通知送信 | 通知送信API | backend/notificationsController | 完了 | 済 |  |
-| 15  | ダッシュボード統計 | コメント/ユーザー統計API | backend/analyticsController | 完了 | 済 |  |
-| 16  | グラフデータ | 統計グラフ用API | backend/analyticsController | 完了 | 済 |  |
-| 17  | WebSocket通信 | コメント/ユーザーリアルタイム反映 | backend/ws, frontend/ws.js | 完了 | 済 |  |
-| 18  | ロール認証 | 管理者/一般ユーザー認可 | backend/auth, middleware | 完了 | 済 |  |
-| 19  | テーマ設定 | ダーク/ライト切替UI | frontend/ThemeContext | 完了 | 済 |  |
-| 20  | 設定管理 | 各種設定取得/保存API | backend/settingsController | 完了 | 済 |  |
-| 21  | コメント最大文字数設定 | コメント投稿の最大文字数を設定 | backend/settingsController | 未着手 | 未 |  |
-| 22  | コメント自動翻訳ON/OFF | コメントの自動翻訳機能切替 | backend/settingsController | 未着手 | 未 |  |
-| 23  | NGワード自動追加 | NGワードの自動追加API | backend/moderationController | 未着手 | 未 |  |
-| 24  | ユーザー通知設定 | ユーザーごとの通知ON/OFF | backend/usersController | 未着手 | 未 |  |
-| 25  | AI閾値個別設定 | コメントごとのAI判定閾値設定 | backend/moderationController | 未着手 | 未 |  |
-| 26  | コメントピン固定数設定 | ピン固定可能なコメント数設定 | backend/settingsController | 未着手 | 未 |  |
-| 27  | ユーザーごとのテーマ設定 | ユーザー単位のテーマ管理 | backend/settingsController | 未着手 | 未 |  |
-| 28  | コメント自動削除時間設定 | コメントの自動削除までの時間設定 | backend/settingsController | 未着手 | 未 |  |
-| 29  | ユーザーごとのBAN理由記録 | BAN時の理由記録API | backend/usersController | 未着手 | 未 |  |
-| 30  | コメント編集履歴取得 | コメント編集履歴取得API | backend/commentsController | 未着手 | 未 |  |
-| 31  | コメントごとのリアクション設定 | コメントごとにリアクションを付与 | backend/commentsController | 未着手 | 未 |  |
-| 32  | ユーザーごとのミュート期間設定 | ミュート期間の個別設定 | backend/usersController | 未着手 | 未 |  |
-| 33  | AI判定ログ取得 | AI判定の詳細ログ取得API | backend/moderationController | 未着手 | 未 |  |
-| 34  | コメントごとのタグ付与 | コメントにタグを付与 | backend/commentsController | 未着手 | 未 |  |
-| 35  | ユーザーごとのコメント色設定 | コメント表示色の個別設定 | backend/usersController | 未着手 | 未 |  |
-| 36  | コメントごとの画像添付 | コメントに画像を添付 | backend/commentsController | 未着手 | 未 |  |
-| 37  | コメントごとの動画添付 | コメントに動画を添付 | backend/commentsController | 未着手 | 未 |  |
-| 38  | コメントごとのリンク自動検出 | コメント内リンクの自動検出 | backend/commentsController | 未着手 | 未 |  |
-| 39  | ユーザーごとの通知サウンド設定 | 通知サウンドの個別設定 | backend/usersController | 未着手 | 未 |  |
-| 40  | コメントごとの重要度設定 | コメントの重要度を設定 | backend/commentsController | 未着手 | 未 |  |
+| 1 | コメント取得 / Comment Retrieval | コメント一覧取得API / Comment list retrieval API | backend/commentsController | 完了 / Completed | 済 / Tested |  |
+| 2 | コメント投稿 / Comment Submission | コメント投稿API / Comment submission API | backend/commentsController | 完了 / Completed | 済 / Tested |  |
+| 3 | コメント編集 / Comment Editing | コメント編集API / Comment editing API | backend/commentsController | 完了 / Completed | 済 / Tested |  |
+| 4 | コメント削除 / Comment Deletion | コメント削除API / Comment deletion API | backend/commentsController | 完了 / Completed | 済 / Tested |  |
+| 5 | ユーザー一覧 / User List | ユーザー一覧取得API / User list retrieval API | backend/usersController | 完了 / Completed | 済 / Tested |  |
+| 6 | ユーザー詳細 / User Details | ユーザー詳細取得API / User detail retrieval API | backend/usersController | 完了 / Completed | 済 / Tested |  |
+| 7 | BAN / Ban Management | ユーザーBAN操作API / User ban management API | backend/usersController | 完了 / Completed | 済 / Tested |  |
+| 8 | ミュート / Mute Management | ユーザーミュートAPI / User mute API | backend/usersController | 完了 / Completed | 済 / Tested |  |
+| 9 | 履歴取得 / History Retrieval | ユーザー履歴取得API / User history retrieval API | backend/usersController | 完了 / Completed | 済 / Tested |  |
+| 10 | AIモデレーション / AI Moderation | コメントAI判定API / Comment AI evaluation API | backend/moderationController | 完了 / Completed | 済 / Tested |  |
+| 11 | NGワード管理 / NG Word Management | NGワード設定API / NG word configuration API | backend/moderationController | 完了 / Completed | 済 / Tested |  |
+| 12 | 閾値設定 / Threshold Configuration | モデレーション閾値設定API / Moderation threshold configuration API | backend/moderationController | 完了 / Completed | 済 / Tested |  |
+| 13 | 通知一覧 / Notification List | 通知一覧取得API / Notification list retrieval API | backend/notificationsController | 完了 / Completed | 済 / Tested |  |
+| 14 | 通知送信 / Notification Dispatch | 通知送信API / Notification dispatch API | backend/notificationsController | 完了 / Completed | 済 / Tested |  |
+| 15 | ダッシュボード統計 / Dashboard Analytics | コメント/ユーザー統計API / Comment and user statistics API | backend/analyticsController | 完了 / Completed | 済 / Tested |  |
+| 16 | グラフデータ / Graph Data | 統計グラフ用API / Statistical graph API | backend/analyticsController | 完了 / Completed | 済 / Tested |  |
+| 17 | WebSocket通信 / WebSocket Communication | コメント/ユーザーリアルタイム反映 / Real-time updates for comments and users | backend/ws, frontend/ws.js | 完了 / Completed | 済 / Tested |  |
+| 18 | ロール認証 / Role Authorization | 管理者/一般ユーザー認可 / Permissions for administrators and standard users | backend/auth, middleware | 完了 / Completed | 済 / Tested |  |
+| 19 | テーマ設定 / Theme Configuration | ダーク/ライト切替UI / Dark and light mode toggle UI | frontend/ThemeContext | 完了 / Completed | 済 / Tested |  |
+| 20 | 設定管理 / Settings Management | 各種設定取得/保存API / Settings retrieval and persistence API | backend/settingsController | 完了 / Completed | 済 / Tested |  |
+| 21 | コメント最大文字数設定 / Comment Length Limit | コメント投稿の最大文字数を設定 / Configure maximum characters for comments | backend/settingsController | 完了 / Completed | 未 / Not Tested |  |
+| 22 | コメント自動翻訳ON/OFF / Comment Auto-Translation Toggle | コメントの自動翻訳機能切替 / Toggle automatic translation for comments | backend/settingsController | 完了 / Completed | 未 / Not Tested |  |
+| 23 | NGワード自動追加 / NG Word Auto Addition | NGワードの自動追加API / Automatic NG word registration API | backend/settingsController | 完了 / Completed | 未 / Not Tested |  |
+| 24 | ユーザー通知設定 / User Notification Settings | ユーザーごとの通知ON/OFF / Per-user notification toggle | backend/usersController | 未着手 / Not Started | 未 / Not Tested |  |
+| 25 | AI閾値個別設定 / Per-Comment AI Threshold | コメントごとのAI判定閾値設定 / Configure AI threshold per comment | backend/moderationController | 未着手 / Not Started | 未 / Not Tested |  |
+| 26 | コメントピン固定数設定 / Pin Limit Configuration | ピン固定可能なコメント数設定 / Set allowable number of pinned comments | backend/settingsController | 完了 / Completed | 未 / Not Tested |  |
+| 27 | ユーザーごとのテーマ設定 / User Theme Preferences | ユーザー単位のテーマ管理 / Manage themes per user | backend/settingsController | 未着手 / Not Started | 未 / Not Tested |  |
+| 28 | コメント自動削除時間設定 / Comment Auto-Deletion Timer | コメントの自動削除までの時間設定 / Configure auto-removal timing | backend/settingsController | 完了 / Completed | 未 / Not Tested |  |
+| 29 | ユーザーごとのBAN理由記録 / Ban Reason Logging | BAN時の理由記録API / Record ban reasons API | backend/usersController | 未着手 / Not Started | 未 / Not Tested |  |
+| 30 | コメント編集履歴取得 / Comment Edit History | コメント編集履歴取得API / Comment edit history API | backend/commentsController | 未着手 / Not Started | 未 / Not Tested |  |
+| 31 | コメントごとのリアクション設定 / Comment Reactions | コメントごとにリアクションを付与 / Assign reactions per comment | backend/commentsController | 未着手 / Not Started | 未 / Not Tested |  |
+| 32 | ユーザーごとのミュート期間設定 / User Mute Duration | ミュート期間の個別設定 / Configure mute duration per user | backend/usersController | 未着手 / Not Started | 未 / Not Tested |  |
+| 33 | AI判定ログ取得 / AI Decision Logs | AI判定の詳細ログ取得API / Retrieve detailed AI moderation logs | backend/moderationController | 未着手 / Not Started | 未 / Not Tested |  |
+| 34 | コメントごとのタグ付与 / Comment Tagging | コメントにタグを付与 / Assign tags to comments | backend/commentsController | 未着手 / Not Started | 未 / Not Tested |  |
+| 35 | ユーザーごとのコメント色設定 / Comment Color per User | コメント表示色の個別設定 / Configure comment display colors per user | backend/usersController | 未着手 / Not Started | 未 / Not Tested |  |
+| 36 | コメントごとの画像添付 / Comment Image Attachments | コメントに画像を添付 / Attach images to comments | backend/commentsController | 未着手 / Not Started | 未 / Not Tested |  |
+| 37 | コメントごとの動画添付 / Comment Video Attachments | コメントに動画を添付 / Attach videos to comments | backend/commentsController | 未着手 / Not Started | 未 / Not Tested |  |
+| 38 | コメントごとのリンク自動検出 / Comment Link Detection | コメント内リンクの自動検出 / Detect links within comments automatically | backend/commentsController | 未着手 / Not Started | 未 / Not Tested |  |
+| 39 | ユーザーごとの通知サウンド設定 / Notification Sounds per User | 通知サウンドの個別設定 / Configure notification sounds per user | backend/usersController | 未着手 / Not Started | 未 / Not Tested |  |
+| 40 | コメントごとの重要度設定 / Comment Priority | コメントの重要度を設定 / Assign priority levels to comments | backend/commentsController | 未着手 / Not Started | 未 / Not Tested |  |
 | 41  | コメントごとの公開範囲設定 | コメントの公開範囲を設定 | backend/commentsController | 未着手 | 未 |  |
 | 42  | コメントごとの削除理由記録 | コメント削除時の理由記録 | backend/commentsController | 未着手 | 未 |  |
 | 43  | コメントごとの編集権限設定 | 編集可能ユーザーの設定 | backend/commentsController | 未着手 | 未 |  |
@@ -68,7 +79,7 @@
 | 64  | ユーザーごとの自己紹介文設定 | 自己紹介文API | backend/usersController | 未着手 | 未 |  |
 | 65  | ユーザーごとの言語設定 | 言語個別設定API | backend/usersController | 未着手 | 未 |  |
 | 66  | ユーザーごとのタイムゾーン設定 | タイムゾーンAPI | backend/usersController | 未着手 | 未 |  |
-| 67  | ユーザーごとのサブスク状態管理 | サブスクAPI | backend/usersController | 未着手 | 未 |  |
+| 67  | ユーザーごとのサブスク状態管理 | サブスクAPI | backend/billingController, backend/stripeService | 完了 / Completed | 済 / Tested | Stripe統合完了 |
 | 68  | ユーザーごとの認証履歴取得 | 認証履歴API | backend/usersController | 未着手 | 未 |  |
 | 69  | ユーザーごとのセキュリティ設定 | セキュリティAPI | backend/usersController | 未着手 | 未 |  |
 | 70  | AI判定閾値詳細設定 | 詳細閾値設定API | backend/moderationController | 未着手 | 未 |  |

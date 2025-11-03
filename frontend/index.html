@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Runner - YouTube & Twitch Comment Management</title>
+  <meta name="description" content="Enterprise-grade live streaming comment management platform for YouTube and Twitch" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      background-color: #fafafa;
+    }
+
+    #root {
+      width: 100%;
+      height: 100vh;
+    }
+
+    /* RTL言語のサポート */
+    [dir="rtl"] {
+      font-family: 'Inter', 'Segoe UI', 'Tahoma', sans-serif;
+    }
+
+    /* 言語固有のフォント設定 */
+    [lang^="ja"] { font-family: 'Noto Sans JP', 'Inter', sans-serif; }
+    [lang^="zh-CN"] { font-family: 'Noto Sans SC', 'Inter', sans-serif; }
+    [lang^="zh-TW"] { font-family: 'Noto Sans TC', 'Inter', sans-serif; }
+    [lang^="ko"] { font-family: 'Noto Sans KR', 'Inter', sans-serif; }
+    [lang^="ar"] { font-family: 'Inter', 'Tahoma', 'Segoe UI', sans-serif; }
+    [lang^="he"] { font-family: 'Inter', 'Tahoma', 'Segoe UI', sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>

@@ -1,0 +1,336 @@
+# .github/workflows/ci-cd.yml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  NODE_VERSION: '18'
+  DOCKER_REGISTRY: 'registry.example.com'
+  KUBERNETES_CLUSTER: 'runner-cluster'
+
+jobs:
+  # テスト実行
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: test_user
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.jsセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 依存関係インストール (バックエンド)
+        working-directory: ./backend
+        run: npm ci
+
+      - name: 依存関係インストール (フロントエンド)
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: 環境変数設定
+        run: |
+          echo "NODE_ENV=test" >> $GITHUB_ENV
+          echo "DB_HOST=localhost" >> $GITHUB_ENV
+          echo "DB_PORT=5432" >> $GITHUB_ENV
+          echo "DB_NAME=test_db" >> $GITHUB_ENV
+          echo "DB_USER=test_user" >> $GITHUB_ENV
+          echo "DB_PASSWORD=test_password" >> $GITHUB_ENV
+          echo "REDIS_HOST=localhost" >> $GITHUB_ENV
+          echo "REDIS_PORT=6379" >> $GITHUB_ENV
+
+      - name: データベースマイグレーション実行
+        working-directory: ./backend
+        run: npm run migrate
+
+      - name: データベースシード実行
+        working-directory: ./backend
+        run: npm run seed
+
+      - name: バックエンドテスト実行
+        working-directory: ./backend
+        run: npm run test:ci
+        env:
+          CI: true
+
+      - name: フロントエンドテスト実行
+        working-directory: ./frontend
+        run: npm run test:ci
+
+      - name: カバレッジレポートアップロード
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+
+      - name: テスト結果保存
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: test-results
+          path: |
+            backend/coverage/
+            frontend/coverage/
+            backend/test-results/
+            frontend/test-results/
+
+  # セキュリティスキャン
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.jsセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 依存関係インストール
+        run: |
+          cd backend && npm ci
+          cd ../frontend && npm ci
+
+      - name: セキュリティ監査 (バックエンド)
+        working-directory: ./backend
+        run: npm audit --audit-level high
+        continue-on-error: true
+
+      - name: セキュリティ監査 (フロントエンド)
+        working-directory: ./frontend
+        run: npm audit --audit-level high
+        continue-on-error: true
+
+      - name: CodeQL分析セットアップ
+        uses: github/codeql-action/init@v2
+        with:
+          languages: javascript
+
+      - name: CodeQL自動ビルド
+        uses: github/codeql-action/autobuild@v2
+
+      - name: CodeQL分析実行
+        uses: github/codeql-action/analyze@v2
+
+      - name: Snykセキュリティスキャン
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --all-projects --severity-threshold=high
+        continue-on-error: true
+
+  # ビルドとパッケージング
+  build:
+    name: Build and Package
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.jsセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: バックエンド依存関係インストール
+        working-directory: ./backend
+        run: npm ci --only=production
+
+      - name: フロントエンド依存関係インストール
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: フロントエンドビルド
+        working-directory: ./frontend
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: バックエンドビルド
+        working-directory: ./backend
+        run: npm run build
+
+      - name: Dockerイメージビルド (バックエンド)
+        run: |
+          docker build \
+            -f Dockerfile.backend \
+            -t ${{ env.DOCKER_REGISTRY }}/runner-backend:${{ github.sha }} \
+            -t ${{ env.DOCKER_REGISTRY }}/runner-backend:latest \
+            ./backend
+
+      - name: Dockerイメージビルド (フロントエンド)
+        run: |
+          docker build \
+            -f Dockerfile.frontend \
+            -t ${{ env.DOCKER_REGISTRY }}/runner-frontend:${{ github.sha }} \
+            -t ${{ env.DOCKER_REGISTRY }}/runner-frontend:latest \
+            ./frontend
+
+      - name: Dockerイメージプッシュ
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login ${{ env.DOCKER_REGISTRY }} -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+          docker push ${{ env.DOCKER_REGISTRY }}/runner-backend:${{ github.sha }}
+          docker push ${{ env.DOCKER_REGISTRY }}/runner-backend:latest
+          docker push ${{ env.DOCKER_REGISTRY }}/runner-frontend:${{ github.sha }}
+          docker push ${{ env.DOCKER_REGISTRY }}/runner-frontend:latest
+
+      - name: ビルドアーティファクト保存
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            backend/dist/
+            frontend/dist/
+            backend/package.json
+            frontend/package.json
+
+  # デプロイ（本番環境）
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    environment: production
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Kubernetes設定
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Helmデプロイ
+        run: |
+          helm upgrade --install runner-app ./helm/runner-app \
+            --namespace production \
+            --create-namespace \
+            --set image.backend.tag=${{ github.sha }} \
+            --set image.frontend.tag=${{ github.sha }} \
+            --set environment=production \
+            --set database.url=${{ secrets.DATABASE_URL }} \
+            --set redis.url=${{ secrets.REDIS_URL }} \
+            --wait --timeout 10m
+
+      - name: ヘルスチェック
+        run: |
+          kubectl rollout status deployment/runner-app-backend -n production --timeout=5m
+          kubectl rollout status deployment/runner-app-frontend -n production --timeout=5m
+
+      - name: スモークテスト
+        run: |
+          curl -f https://example.com/api/health/detailed || exit 1
+          curl -f https://example.com/health || exit 1
+
+      - name: デプロイ通知
+        uses: 8398a7/action-slack@v3
+        if: always()
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  # デプロイ（ステージング環境）
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+
+    environment: staging
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Kubernetes設定
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBE_CONFIG_STAGING }}
+
+      - name: Helmデプロイ
+        run: |
+          helm upgrade --install runner-app-staging ./helm/runner-app \
+            --namespace staging \
+            --create-namespace \
+            --set image.backend.tag=${{ github.sha }} \
+            --set image.frontend.tag=${{ github.sha }} \
+            --set environment=staging \
+            --set database.url=${{ secrets.DATABASE_URL_STAGING }} \
+            --set redis.url=${{ secrets.REDIS_URL_STAGING }} \
+            --wait --timeout 5m
+
+      - name: ヘルスチェック
+        run: |
+          kubectl rollout status deployment/runner-app-backend -n staging --timeout=3m
+          kubectl rollout status deployment/runner-app-frontend -n staging --timeout=3m
+
+  # クリーンアップ
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [test, security, build, deploy-production, deploy-staging]
+
+    steps:
+      - name: 古いDockerイメージのクリーンアップ
+        run: |
+          # Docker Hubやレジストリの古いイメージをクリーンアップ
+          # 実装はレジストリの種類によって異なります
+
+      - name: 一時ファイルのクリーンアップ
+        run: |
+          # GitHub Actionsのワークスペースをクリーンアップ
+          rm -rf ~/.npm/_cacache
+          docker system prune -f

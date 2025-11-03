@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Typography, Paper, CircularProgress, Alert, Button, Stack, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { useTranslation } from 'react-i18next';
 import { useUser } from '../hooks/useUser';
 import { updateUser } from '../api/users';
 
@@ -13,6 +14,7 @@ export default function UserPanel() {
   const [actionType, setActionType] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState(null);
+  const { t } = useTranslation();
 
   const handleAction = async (type) => {
     setActionLoading(true);
@@ -24,16 +26,16 @@ export default function UserPanel() {
 
   return (
     <Box sx={{ maxWidth: 500, mx: 'auto', p: { xs: 1, sm: 2 } }}>
-      <Typography variant="h6" gutterBottom>ユーザー情報</Typography>
+      <Typography variant="h6" gutterBottom>{t('user_panel_title')}</Typography>
       <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography>ユーザー名: {user?.name}</Typography>
-        <Typography>状態: {user?.status}</Typography>
+        <Typography>{t('user_panel_username', { name: user?.name ?? t('user_panel_unknown') })}</Typography>
+        <Typography>{t('user_panel_status', { status: user?.status ?? t('user_panel_unknown') })}</Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} mt={1}>
-          <Button variant="outlined" color="error" onClick={() => setBanDialog(true)}>BAN</Button>
-          <Button variant="outlined" color="warning" onClick={() => setMuteDialog(true)}>ミュート</Button>
+          <Button variant="outlined" color="error" onClick={() => setBanDialog(true)}>{t('user_panel_action_ban')}</Button>
+          <Button variant="outlined" color="warning" onClick={() => setMuteDialog(true)}>{t('user_panel_action_mute')}</Button>
         </Stack>
       </Paper>
-      <Typography variant="subtitle1">履歴</Typography>
+      <Typography variant="subtitle1">{t('user_panel_history')}</Typography>
       <Box sx={{ maxHeight: 200, overflow: 'auto', mb: 2 }}>
         {history?.map(h => (
           <Paper key={h.id} sx={{ p: 1, mb: 1 }}>
@@ -42,19 +44,19 @@ export default function UserPanel() {
         ))}
       </Box>
       <Dialog open={banDialog} onClose={() => setBanDialog(false)}>
-        <DialogTitle>本当にBANしますか？</DialogTitle>
-        <DialogContent>この操作は取り消せません。</DialogContent>
+        <DialogTitle>{t('user_panel_ban_confirm_title')}</DialogTitle>
+        <DialogContent>{t('user_panel_ban_confirm_description')}</DialogContent>
         <DialogActions>
-          <Button onClick={() => setBanDialog(false)}>キャンセル</Button>
-          <Button color="error" onClick={() => { banUser(); setBanDialog(false); }}>BAN</Button>
+          <Button onClick={() => setBanDialog(false)}>{t('common_cancel')}</Button>
+          <Button color="error" onClick={() => { banUser(); setBanDialog(false); }}>{t('user_panel_action_ban')}</Button>
         </DialogActions>
       </Dialog>
       <Dialog open={muteDialog} onClose={() => setMuteDialog(false)}>
-        <DialogTitle>本当にミュートしますか？</DialogTitle>
-        <DialogContent>ユーザーは一定期間コメントできなくなります。</DialogContent>
+        <DialogTitle>{t('user_panel_mute_confirm_title')}</DialogTitle>
+        <DialogContent>{t('user_panel_mute_confirm_description')}</DialogContent>
         <DialogActions>
-          <Button onClick={() => setMuteDialog(false)}>キャンセル</Button>
-          <Button color="warning" onClick={() => { muteUser(); setMuteDialog(false); }}>ミュート</Button>
+          <Button onClick={() => setMuteDialog(false)}>{t('common_cancel')}</Button>
+          <Button color="warning" onClick={() => { muteUser(); setMuteDialog(false); }}>{t('user_panel_action_mute')}</Button>
         </DialogActions>
       </Dialog>
     </Box>
