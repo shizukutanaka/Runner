@@ -1,8 +1,25 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
+import viteCompression from 'vite-plugin-compression';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Brotli compression (higher compression ratio, better for modern browsers)
+    viteCompression({
+      algorithm: 'brotliCompress',
+      ext: '.br',
+      threshold: 1024, // Only compress files > 1KB
+      deleteOriginFile: false // Keep original files
+    }),
+    // Gzip compression (fallback for older browsers)
+    viteCompression({
+      algorithm: 'gzip',
+      ext: '.gz',
+      threshold: 1024,
+      deleteOriginFile: false
+    })
+  ],
   server: {
     port: 3000,
     host: true,
