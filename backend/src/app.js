@@ -28,6 +28,8 @@ const {
 } = require('./middleware/monitoring');
 const {
   securityMiddleware,
+  permissionsPolicy,
+  additionalSecurityHeaders,
   validateOrigin,
   sanitizeInput,
   requestLogger,
@@ -153,6 +155,8 @@ if (config.server.trustProxy) {
 
 // Security middleware (applied first)
 app.use(securityMiddleware);
+app.use(permissionsPolicy);
+app.use(additionalSecurityHeaders);
 app.use(compression({ threshold: 1024 }));
 app.use(requestLogger);
 app.use(generalRateLimit);

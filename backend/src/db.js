@@ -2,6 +2,7 @@ const sqlite3 = require('sqlite3').verbose();
 const config = require('./config');
 const logger = require('./logger');
 const { executeWithMonitoring, getQueryOptimizer } = require('./utils/queryOptimizer');
+const cron = require('node-cron');
 
 const dbPath = config.database.path;
 
@@ -368,11 +369,47 @@ const closeDatabase = () => {
   });
 };
 
+// データベース最適化: ANALYZE実行
+const runAnalyze = () => {
+  if (!db) {
+    logger.warn('[Database] Cannot run ANALYZE - database not initialized');
+    return;
+  }
+
+  db.run('ANALYZE', (err) => {
+    if (err) {
+      logger.error('[Database] Failed to run ANALYZE', { error: err.message });
+    } else {
+      logger.info('[Database] ANALYZE completed successfully - query planner statistics updated');
+    }
+  });
+};
+
+// 定期的なデータベース最適化スケジュール
+const scheduleDatabaseOptimization = () => {
+  // 毎日深夜2時にANALYZEを実行（日本時間基準）
+  cron.schedule('0 2 * * *', () => {
+    logger.info('[Database] Starting scheduled ANALYZE optimization');
+    runAnalyze();
+  }, {
+    timezone: 'Asia/Tokyo'
+  });
+
+  logger.info('[Database] Scheduled daily ANALYZE at 2:00 AM JST');
+};
+
 // データベース初期化（非同期）
 (async () => {
   try {
     await initializeDatabaseWithRetry();
     await initializeDB();
+
+    // 初回起動時にもANALYZEを実行
+    logger.info('[Database] Running initial ANALYZE optimization');
+    runAnalyze();
+
+    // 定期実行スケジュール開始
+    scheduleDatabaseOptimization();
   } catch (err) {
     logger.error('[Database] Fatal initialization error', { error: err.message });
     process.exit(1);

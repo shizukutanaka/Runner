@@ -194,21 +194,68 @@ jobs:
         working-directory: ./backend
         run: npm run build
 
+      # Docker BuildKit Setup with Layer Caching
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+
+      - name: Cache Docker layers (バックエンド)
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache-backend
+          key: ${{ runner.os }}-buildx-backend-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-backend-
+
+      - name: Cache Docker layers (フロントエンド)
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache-frontend
+          key: ${{ runner.os }}-buildx-frontend-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-frontend-
+
       - name: Dockerイメージビルド (バックエンド)
-        run: |
-          docker build \
-            -f Dockerfile.backend \
-            -t ${{ env.DOCKER_REGISTRY }}/runner-backend:${{ github.sha }} \
-            -t ${{ env.DOCKER_REGISTRY }}/runner-backend:latest \
-            ./backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/runner-backend:${{ github.sha }}
+            ${{ env.DOCKER_REGISTRY }}/runner-backend:latest
+          cache-from: type=local,src=/tmp/.buildx-cache-backend
+          cache-to: type=local,dest=/tmp/.buildx-cache-backend-new,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
 
       - name: Dockerイメージビルド (フロントエンド)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: false
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/runner-frontend:${{ github.sha }}
+            ${{ env.DOCKER_REGISTRY }}/runner-frontend:latest
+          cache-from: type=local,src=/tmp/.buildx-cache-frontend
+          cache-to: type=local,dest=/tmp/.buildx-cache-frontend-new,mode=max
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
+
+      # Move cache to preserve for next run
+      - name: Rotate cache (バックエンド)
         run: |
-          docker build \
-            -f Dockerfile.frontend \
-            -t ${{ env.DOCKER_REGISTRY }}/runner-frontend:${{ github.sha }} \
-            -t ${{ env.DOCKER_REGISTRY }}/runner-frontend:latest \
-            ./frontend
+          rm -rf /tmp/.buildx-cache-backend
+          mv /tmp/.buildx-cache-backend-new /tmp/.buildx-cache-backend || true
+
+      - name: Rotate cache (フロントエンド)
+        run: |
+          rm -rf /tmp/.buildx-cache-frontend
+          mv /tmp/.buildx-cache-frontend-new /tmp/.buildx-cache-frontend || true
 
       - name: Dockerイメージプッシュ
         if: github.ref == 'refs/heads/main'
