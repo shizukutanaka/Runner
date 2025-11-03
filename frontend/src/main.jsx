@@ -4,6 +4,15 @@ import App from './App.jsx';
 import { initializeI18n } from './i18n.js';
 import './index.css';
 
+// Enable MSW in development mode
+if (import.meta.env.DEV && import.meta.env.VITE_ENABLE_MSW === 'true') {
+  const { worker } = await import('./mocks/browser.js');
+  await worker.start({
+    onUnhandledRequest: 'bypass',
+  });
+  console.log('🔧 MSW enabled for API mocking');
+}
+
 // i18nの初期化
 async function initializeApp() {
   try {

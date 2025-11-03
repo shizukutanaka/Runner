@@ -20,6 +20,29 @@ export default defineConfig({
       deleteOriginFile: false
     })
   ],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.js',
+    css: true,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html', 'lcov'],
+      exclude: [
+        'node_modules/',
+        'src/test/',
+        '**/*.config.js',
+        '**/*.config.ts',
+        '**/main.jsx',
+        '**/index.css'
+      ],
+      all: true,
+      lines: 80,
+      functions: 80,
+      branches: 80,
+      statements: 80
+    }
+  },
   server: {
     port: 3000,
     host: true,
