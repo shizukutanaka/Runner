@@ -4,8 +4,9 @@ const db = require('./db');
 const os = require('os');
 const si = require('systeminformation');
 const { circuitBreakerManager } = require('./utils/circuitBreaker');
+const { initializeRedisAdapter, getScalingStats } = require('./services/websocketScaling');
 
-function setupWebSocket(server, app) {
+async function setupWebSocket(server, app) {
   const config = require('./config');
   const allowedOrigins = config.security.allowedOrigins || [];
 
@@ -47,6 +48,14 @@ function setupWebSocket(server, app) {
   });
 
   app.set('io', io);
+
+  // Initialize Redis adapter for horizontal scaling
+  const scalingEnabled = await initializeRedisAdapter(io);
+  if (scalingEnabled) {
+    logger.info('[WebSocket] Horizontal scaling enabled with Redis Pub/Sub');
+  } else {
+    logger.warn('[WebSocket] Running in single-instance mode (scaling disabled)');
+  }
 
   const activeConnections = new Map();
   const userRooms = new Map(); // ユーザー別のルーム管理
@@ -569,13 +578,20 @@ function setupWebSocket(server, app) {
   }, 60000); // 1分ごとにチェック
 
   // サーバー統計情報の提供
-  app.get('/api/websocket/stats', (req, res) => {
+  app.get('/api/websocket/stats', async (req, res) => {
+    const scalingStats = await getScalingStats();
+    const globalConnections = scalingEnabled
+      ? await io.getGlobalConnectionCount()
+      : activeConnections.size;
+
     const stats = {
-      activeConnections: activeConnections.size,
+      localConnections: activeConnections.size,
+      globalConnections: globalConnections,
       userRooms: userRooms.size,
       platformRooms: platformRooms.size,
       dashboardRooms: dashboardRooms.size,
       uptime: process.uptime(),
+      scaling: scalingStats,
       timestamp: new Date().toISOString()
     };
 
