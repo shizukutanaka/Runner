@@ -618,21 +618,10 @@ async function processAutoTranslation(content, targetLanguages = ['en'], quality
   }
 }
 
+// Import OpenAI service
+const openaiService = require('./openaiService');
+
 exports.analyzeComment = async (content, platform, user, timestamp) => {
-  const openaiConfig = config.services.openai;
-  const canUseOpenAI = Boolean(openaiConfig.apiKey);
-
-  if (!canUseOpenAI && !openaiWarningIssued) {
-    logger.warn('[ModerationService] OPENAI_API_KEY is not set. Falling back to rule-based analysis.');
-    openaiWarningIssued = true;
-  }
-
-  if (canUseOpenAI) {
-    // TODO: OpenAIベースのモデレーションロジックを実装
-    // 例: await openaiClient.chat.completions.create({ ... })
-  }
-
-  // デモ用ダミー実装
   const result = {
     isSpam: false,
     isOffensive: false,
@@ -641,8 +630,41 @@ exports.analyzeComment = async (content, platform, user, timestamp) => {
     flaggedWords: [],
     links: [],
     flaggedLinks: [],
-    linkCount: 0
+    linkCount: 0,
+    aiAnalysis: null
   };
+
+  // Use OpenAI for advanced analysis if available
+  if (openaiService.isAvailable()) {
+    try {
+      // Parallel AI analysis for better performance
+      const [sentimentResult, toxicityResult] = await Promise.all([
+        openaiService.analyzeSentiment(content),
+        openaiService.detectToxicContent(content)
+      ]);
+
+      result.aiAnalysis = {
+        sentiment: sentimentResult,
+        toxicity: toxicityResult
+      };
+
+      // Update score based on AI analysis
+      if (toxicityResult.isToxic) {
+        result.isOffensive = true;
+        result.score += toxicityResult.score * 100;
+      }
+
+      // Add toxicity details
+      result.toxicityScore = toxicityResult.score;
+      result.toxicityCategories = toxicityResult.categories;
+
+    } catch (error) {
+      logger.warn('[ModerationService] AI analysis failed, falling back to rule-based:', error.message);
+    }
+  } else if (!openaiWarningIssued) {
+    logger.warn('[ModerationService] OPENAI_API_KEY is not set. Using rule-based analysis only.');
+    openaiWarningIssued = true;
+  }
 
   // リンク分析
   const linkAnalysis = analyzeLinks(content);
