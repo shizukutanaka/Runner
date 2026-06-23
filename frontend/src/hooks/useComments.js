@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { fetchComments } from '../api/comments';
 
 const extractComments = (payload) => {

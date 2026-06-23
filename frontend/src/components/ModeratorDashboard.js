@@ -125,8 +125,6 @@ export default function ModeratorDashboard({ platform = 'all' }) {
 
   // ユーザーアクション
   const handleUserAction = (action, userId, reason = '') => {
-    // 実際の実装ではAPIコール
-    console.log(`${action} user:`, userId, reason);
 
     // モック: 最近のアクションに追加
     const newAction = {
@@ -144,9 +142,6 @@ export default function ModeratorDashboard({ platform = 'all' }) {
 
   // コメントアクション
   const handleCommentAction = (action, commentId) => {
-    // 実際の実装ではAPIコール
-    console.log(`${action} comment:`, commentId);
-
     setRecentComments(prev =>
       prev.map(comment =>
         comment.id === commentId

@@ -704,9 +704,8 @@ export default function CommentTimeline({ platform = 'youtube' }) {
         open={relatedVideosDialog.open}
         onClose={handleCloseRelatedVideosDialog}
         comment={relatedVideosDialog.comment}
-        onVideoSelect={(video) => {
-          // 選択された動画の処理（オプション）
-          console.log('Selected video:', video);
+        onVideoSelect={(_video) => {
+          // 選択後の追加処理はここで実装
         }}
       />
 
@@ -715,9 +714,8 @@ export default function CommentTimeline({ platform = 'youtube' }) {
         open={relatedPapersDialog.open}
         onClose={handleCloseRelatedPapersDialog}
         comment={relatedPapersDialog.comment}
-        onPaperSelect={(paper) => {
-          // 選択された論文の処理（オプション）
-          console.log('Selected paper:', paper);
+        onPaperSelect={(_paper) => {
+          // 選択後の追加処理はここで実装
         }}
       />
     </Box>

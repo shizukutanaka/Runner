@@ -144,6 +144,13 @@ class CreatorCultureService {
   // 返り値: 調整後スコア（0–100）
   // ─────────────────────────────────────────
   adjustScore(platform, channelId, rawScore, context = {}) {
+    if (typeof rawScore !== 'number' || !Number.isFinite(rawScore)) {
+      throw new Error(`adjustScore: expected finite number, got ${typeof rawScore} (${rawScore})`);
+    }
+    if (rawScore < 0 || rawScore > 100) {
+      throw new Error(`adjustScore: rawScore ${rawScore} out of bounds (expected 0–100)`);
+    }
+
     const profile = this.getProfile(platform, channelId);
 
     // 毒性スコア調整

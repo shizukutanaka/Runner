@@ -5,6 +5,8 @@ const os = require('os');
 const si = require('systeminformation');
 const { circuitBreakerManager } = require('./utils/circuitBreaker');
 const { initializeRedisAdapter, getScalingStats } = require('./services/websocketScaling');
+const emotionalDetector = require('./services/emotionalContagionDetector');
+const departureDetector  = require('./services/silentDepartureDetector');
 
 async function setupWebSocket(server, app) {
   const config = require('./config');
@@ -376,6 +378,22 @@ async function setupWebSocket(server, app) {
         data: comment,
         timestamp: new Date().toISOString()
       });
+
+      // 感情伝播検知器 + サイレント離脱検知器にフィード
+      try {
+        const channelId = comment.channelId ?? 'default';
+        emotionalDetector.ingest({
+          ...comment,
+          channelId,
+          sentimentScore: comment.sentimentScore ?? 0.5,
+          toxicityScore:  comment.toxicityScore  ?? 0,
+        });
+        if (comment.user) {
+          departureDetector.record(comment.platform, channelId, comment.user, comment.timestamp);
+        }
+      } catch (feedErr) {
+        logger.warn('[WebSocket] Failed to feed insight services', { error: feedErr.message });
+      }
     });
 
     // モデレーションイベント
@@ -419,6 +437,18 @@ async function setupWebSocket(server, app) {
 
     // ユーザーアクティビティ
     socket.on('userActivity', (data) => {
+      const validation = validateInput(data, {
+        userId: { required: true,  type: 'string', maxLength: 255 },
+        action: { required: true,  type: 'string', enum: ['view', 'comment', 'moderate', 'export', 'login', 'logout'] },
+        metadata: { required: false, type: 'object' },
+      });
+
+      if (!validation.valid) {
+        logger.warn('[WebSocket] userActivity validation failed:', validation.error);
+        socket.emit('error', { type: 'validation', message: validation.error });
+        return;
+      }
+
       clientInfo.lastActivity = new Date();
 
       const { userId, action, metadata } = data;

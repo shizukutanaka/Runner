@@ -48,6 +48,33 @@ describe('CreatorCultureService', () => {
     });
   });
 
+  describe('adjustScore — input validation', () => {
+    it('throws for non-number rawScore', () => {
+      expect(() => svc.adjustScore('youtube', 'ch1', 'fifty')).toThrow('expected finite number');
+    });
+
+    it('throws for NaN rawScore', () => {
+      expect(() => svc.adjustScore('youtube', 'ch1', NaN)).toThrow('expected finite number');
+    });
+
+    it('throws for Infinity rawScore', () => {
+      expect(() => svc.adjustScore('youtube', 'ch1', Infinity)).toThrow('expected finite number');
+    });
+
+    it('throws for rawScore below 0', () => {
+      expect(() => svc.adjustScore('youtube', 'ch1', -1)).toThrow('out of bounds');
+    });
+
+    it('throws for rawScore above 100', () => {
+      expect(() => svc.adjustScore('youtube', 'ch1', 101)).toThrow('out of bounds');
+    });
+
+    it('accepts boundary values 0 and 100', () => {
+      expect(() => svc.adjustScore('youtube', 'ch1', 0)).not.toThrow();
+      expect(() => svc.adjustScore('youtube', 'ch1', 100)).not.toThrow();
+    });
+  });
+
   describe('adjustScore', () => {
     it('amplifies score for family culture', () => {
       svc.setProfile('youtube', 'ch-family', 'family');

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   Box,
   Tabs,
@@ -48,11 +48,11 @@ export default function Dashboard() {
   const [tab, setTab] = useState(0);
   const { t } = useTranslation();
 
-  const handleTabChange = (event, newValue) => {
+  const handleTabChange = useCallback((event, newValue) => {
     setTab(newValue);
-  };
+  }, []);
 
-  const timelineTab = (
+  const timelineTab = useMemo(() => (
     <Grid container spacing={2} alignItems="flex-start">
       <Grid item xs={12} lg={9}>
         <CommentTimeline />
@@ -64,9 +64,9 @@ export default function Dashboard() {
         </Stack>
       </Grid>
     </Grid>
-  );
+  ), []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const moderatorTab = (
+  const moderatorTab = useMemo(() => (
     <Grid container spacing={2} alignItems="flex-start">
       <Grid item xs={12} lg={8}>
         <ModeratorDashboard />
@@ -75,15 +75,15 @@ export default function Dashboard() {
         <TriageQueue platform="youtube" channelId="default" pendingComments={[]} />
       </Grid>
     </Grid>
-  );
+  ), []);
 
-  const tabs = [
-    { component: timelineTab,   label: t('dashboard_tab_timeline',  'Timeline'),  icon: <TimelineIcon /> },
-    { component: moderatorTab,  label: t('dashboard_tab_moderator', 'Moderator'), icon: <ModeratorIcon /> },
-    { component: <UserPanel />, label: t('dashboard_tab_users', 'Users'), icon: <PeopleIcon /> },
+  const tabs = useMemo(() => [
+    { component: timelineTab,        label: t('dashboard_tab_timeline',  'Timeline'),  icon: <TimelineIcon /> },
+    { component: moderatorTab,       label: t('dashboard_tab_moderator', 'Moderator'), icon: <ModeratorIcon /> },
+    { component: <UserPanel />,      label: t('dashboard_tab_users',     'Users'),     icon: <PeopleIcon /> },
     { component: <AnalyticsPanel />, label: t('dashboard_tab_analytics', 'Analytics'), icon: <AnalyticsIcon /> },
-    { component: <SettingsPanel />, label: t('dashboard_tab_settings', 'Settings'), icon: <SettingsIcon /> },
-  ];
+    { component: <SettingsPanel />,  label: t('dashboard_tab_settings',  'Settings'),  icon: <SettingsIcon /> },
+  ], [t, timelineTab, moderatorTab]);
 
   return (
     <Paper sx={{ width: '100%', overflow: 'hidden', p: 0, m: 0, backgroundColor: 'transparent', boxShadow: 'none' }}>

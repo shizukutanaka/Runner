@@ -71,41 +71,62 @@ class SilentDepartureDetector {
     const windowMs   = REGULAR_WINDOW_DAYS  * MS_PER_DAY;
     const silenceMs  = SILENCE_THRESHOLD_DAYS * MS_PER_DAY;
 
-    // ─ 1. 常連ユーザーを特定（過去7日間でN回以上コメント） ─
-    const windowStart = new Date(now - windowMs);
-    const recentRecords = list.filter(r => r.timestamp >= windowStart);
+    // ─ シングルパスで全データを収集（O(n) → 旧実装のO(n²)を改善） ─
+    const windowStartMs = now.getTime() - windowMs;
+    const silenceStartMs = now.getTime() - silenceMs;
+    const midPointMs    = now.getTime() - 3 * MS_PER_DAY;
 
-    const commentCounts = {};
-    for (const r of recentRecords) {
-      commentCounts[r.userId] = (commentCounts[r.userId] ?? 0) + 1;
+    const commentCounts  = {};   // userId → count in window
+    const lastSeenMap    = {};   // userId → latest timestamp
+    const recentlyActive = new Set(); // active within silence threshold
+    const olderActiveSet = new Set(); // active in window before midpoint
+    const recentActiveSet = new Set(); // active in window after midpoint
+
+    for (const r of list) {
+      const ts = r.timestamp.getTime();
+
+      // 常連カウント（過去7日間）
+      if (ts >= windowStartMs) {
+        commentCounts[r.userId] = (commentCounts[r.userId] ?? 0) + 1;
+
+        // 沈黙判定用
+        if (ts >= silenceStartMs) {
+          recentlyActive.add(r.userId);
+        }
+
+        // トレンド判定用
+        if (ts < midPointMs) {
+          olderActiveSet.add(r.userId);
+        } else {
+          recentActiveSet.add(r.userId);
+        }
+      }
+
+      // 最後のコメント時刻（全期間）
+      if (!lastSeenMap[r.userId] || ts > lastSeenMap[r.userId]) {
+        lastSeenMap[r.userId] = ts;
+      }
     }
+
+    // ─ 1. 常連ユーザーを特定 ─
     const regularUsers = new Set(
       Object.entries(commentCounts)
         .filter(([, count]) => count >= REGULAR_MIN_COMMENTS)
         .map(([userId]) => userId)
     );
 
-    // ─ 2. 常連のうち最近静かになったユーザーを検出 ─
-    const silenceStart = new Date(now - silenceMs);
-    const recentlyActive = new Set(
-      list.filter(r => r.timestamp >= silenceStart).map(r => r.userId)
-    );
-
+    // ─ 2. 常連のうち沈黙ユーザーを抽出 ─
     const silentUsers = [];
     for (const userId of regularUsers) {
       if (!recentlyActive.has(userId)) {
-        // 最後にコメントした時刻を探す
-        const userRecords = list
-          .filter(r => r.userId === userId)
-          .sort((a, b) => b.timestamp - a.timestamp);
-        const lastSeen = userRecords[0]?.timestamp ?? null;
-        const daysSilent = lastSeen
-          ? Math.round((now - lastSeen) / MS_PER_DAY)
+        const lastSeenTs = lastSeenMap[userId] ?? null;
+        const daysSilent = lastSeenTs
+          ? Math.round((now.getTime() - lastSeenTs) / MS_PER_DAY)
           : SILENCE_THRESHOLD_DAYS;
 
         silentUsers.push({
           userId,
-          lastSeen:   lastSeen?.toISOString() ?? null,
+          lastSeen:    lastSeenTs ? new Date(lastSeenTs).toISOString() : null,
           daysSilent,
           commentFreq: commentCounts[userId] ?? 0,
         });
@@ -113,33 +134,22 @@ class SilentDepartureDetector {
     }
 
     // ─ 3. 離脱リスクスコア（0–1） ─
-    // 常連の何割が静かになったか + 沈黙が長いほど重み増加
     const departureRatio = regularUsers.size === 0
       ? 0
       : silentUsers.length / regularUsers.size;
 
-    // 平均沈黙日数で重み付け（長いほど深刻）
     const avgSilenceDays = silentUsers.length > 0
       ? silentUsers.reduce((sum, u) => sum + u.daysSilent, 0) / silentUsers.length
       : 0;
-    const silenceWeight = Math.min(1, avgSilenceDays / 14); // 14日で最大
+    const silenceWeight = Math.min(1, avgSilenceDays / 14);
 
     const departureRisk = Math.min(1,
       departureRatio * 0.70 + silenceWeight * 0.30
     );
 
-    // ─ 4. トレンド判定（過去7日 vs 3日でのレギュラー活動率） ─
-    const midPoint = new Date(now - 3 * MS_PER_DAY);
-    const olderRegularActive = new Set(
-      list
-        .filter(r => r.timestamp >= windowStart && r.timestamp < midPoint && regularUsers.has(r.userId))
-        .map(r => r.userId)
-    ).size;
-    const recentRegularActive = new Set(
-      list
-        .filter(r => r.timestamp >= midPoint && regularUsers.has(r.userId))
-        .map(r => r.userId)
-    ).size;
+    // ─ 4. トレンド判定 ─
+    const olderRegularActive = olderActiveSet.size;
+    const recentRegularActive = recentActiveSet.size;
 
     const trend = this._trend(olderRegularActive, recentRegularActive, regularUsers.size);
 

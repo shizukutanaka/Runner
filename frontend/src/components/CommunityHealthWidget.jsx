@@ -66,12 +66,18 @@ function CommunityHealthWidget({ platform = 'youtube', channelId = 'default', co
           : Promise.resolve(null),
       ]);
 
-      if (riskRes.status === 'fulfilled') {
+      const errors = [];
+      if (riskRes.status === 'rejected') {
+        errors.push('炎上リスク取得失敗');
+      } else {
         setRisk(riskRes.value?.data?.data ?? null);
       }
-      if (healthRes.status === 'fulfilled' && healthRes.value) {
+      if (healthRes.status === 'rejected') {
+        errors.push('健全性スコア取得失敗');
+      } else if (healthRes.value) {
         setHealthReport(healthRes.value?.data?.data ?? null);
       }
+      if (errors.length > 0) setError(errors.join(' / '));
     } catch (e) {
       setError('データの取得に失敗しました');
     } finally {
