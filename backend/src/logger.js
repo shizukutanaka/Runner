@@ -3,12 +3,13 @@ const DailyRotateFile = require('winston-daily-rotate-file');
 const config = require('./config');
 const path = require('path');
 
-const level = config.logging.level;
+const level = config.logging?.level ?? process.env.LOG_LEVEL ?? 'info';
 
 const buildBaseFormat = () => {
   const common = [format.timestamp(), format.errors({ stack: true }), format.splat()];
 
-  if (config.environment === 'development') {
+  const env = config.environment ?? config.app?.env ?? process.env.NODE_ENV ?? 'development';
+  if (env === 'development') {
     return format.combine(
       ...common,
       format.colorize(),
@@ -64,7 +65,8 @@ const logTransports = [
 ];
 
 // 本番環境ではファイルローテーションを追加
-if (config.environment === 'production') {
+const configEnv = config.environment ?? config.app?.env ?? process.env.NODE_ENV ?? 'development';
+if (configEnv === 'production') {
   logTransports.push(rotateTransport);
   logTransports.push(errorRotateTransport);
 }
@@ -73,7 +75,7 @@ const logger = createLogger({
   level,
   defaultMeta: {
     service: 'runner-backend',
-    environment: config.environment,
+    environment: configEnv,
     hostname: require('os').hostname()
   },
   transports: logTransports,
