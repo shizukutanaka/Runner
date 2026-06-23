@@ -6,6 +6,7 @@
  */
 
 import React, { useEffect, useState, useCallback, memo } from 'react';
+import PropTypes from 'prop-types';
 import {
   Box, Paper, Typography, Stack, Chip, LinearProgress,
   Divider, Alert, CircularProgress, Button, Tooltip,
@@ -110,7 +111,7 @@ const TriageLevelSection = memo(({ level, items, defaultOpen = false }) => {
 });
 
 // ─── メインコンポーネント ──────────────────────────────────
-export default function TriageQueue({ platform = 'youtube', channelId = 'default', pendingComments = [] }) {
+function TriageQueue({ platform = 'youtube', channelId = 'default', pendingComments = [] }) {
   const theme = useTheme();
   const [result,  setResult]  = useState(null);
   const [loading, setLoading] = useState(false);
@@ -245,3 +246,25 @@ export default function TriageQueue({ platform = 'youtube', channelId = 'default
     </Paper>
   );
 }
+
+TriageQueue.propTypes = {
+  platform: PropTypes.string,
+  channelId: PropTypes.string,
+  pendingComments: PropTypes.arrayOf(PropTypes.shape({
+    id: PropTypes.string,
+    content: PropTypes.string,
+    user: PropTypes.string,
+    platform: PropTypes.string,
+    timestamp: PropTypes.string,
+    toxicityScore: PropTypes.number,
+    moderationScore: PropTypes.number,
+  })),
+};
+
+TriageQueue.defaultProps = {
+  platform: 'youtube',
+  channelId: 'default',
+  pendingComments: [],
+};
+
+export default TriageQueue;

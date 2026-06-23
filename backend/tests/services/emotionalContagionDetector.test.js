@@ -150,7 +150,7 @@ describe('EmotionalContagionDetector', () => {
         detector.ingest(makeComment({ id: `c-${i}` }));
       }
       const key = 'youtube:ch1';
-      expect(detector.history.get(key).length).toBeLessThanOrEqual(500);
+      expect(detector.history.get(key).length()).toBeLessThanOrEqual(500);
     });
   });
 });

@@ -7,6 +7,7 @@
  */
 
 import React, { useEffect, useState, useCallback, memo } from 'react';
+import PropTypes from 'prop-types';
 import {
   Box, Paper, Typography, LinearProgress, Chip, Tooltip,
   Divider, Stack, useTheme, CircularProgress, Alert,
@@ -274,6 +275,24 @@ const SIGNAL_LABELS = {
   moderationLoad:    'モデレーション負荷低さ',
   returnUserRate:    'リピーター率',
   constructiveness:  '建設的会話率',
+};
+
+CommunityHealthWidget.propTypes = {
+  platform: PropTypes.string,
+  channelId: PropTypes.string,
+  comments: PropTypes.arrayOf(PropTypes.shape({
+    content: PropTypes.string,
+    sentimentScore: PropTypes.number,
+    sentiment: PropTypes.string,
+    status: PropTypes.string,
+    user: PropTypes.string,
+  })),
+};
+
+CommunityHealthWidget.defaultProps = {
+  platform: 'youtube',
+  channelId: 'default',
+  comments: [],
 };
 
 export default CommunityHealthWidget;

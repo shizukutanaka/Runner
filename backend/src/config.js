@@ -73,4 +73,50 @@ const config = {
   }
 };
 
+// ─── 設定検証 ────────────────────────────────────────────
+const validateConfig = () => {
+  const errors = [];
+
+  // 本番環境では必須のセキュリティ設定
+  if (config.app.env === 'production') {
+    if (!config.security.jwtSecret) {
+      errors.push('JWT_SECRET is required in production');
+    }
+    if (!config.security.sessionSecret) {
+      errors.push('SESSION_SECRET is required in production');
+    }
+    if (!config.security.encryptionKey) {
+      errors.push('ENCRYPTION_KEY is required in production');
+    }
+  }
+
+  // 警告レベル: API連携が無効化される可能性
+  const warnings = [];
+  if (!config.services.openai.apiKey) {
+    warnings.push('OPENAI_API_KEY not set - AI moderation will be disabled');
+  }
+  if (!config.services.youtube.apiKey) {
+    warnings.push('YOUTUBE_API_KEY not set - YouTube integration will be disabled');
+  }
+  if (!config.services.twitch.clientId || !config.services.twitch.clientSecret) {
+    warnings.push('TWITCH_CLIENT_ID/SECRET not set - Twitch integration will be disabled');
+  }
+
+  // エラーがあれば起動を中止
+  if (errors.length > 0) {
+    throw new Error(`[Config] Validation failed:\n  ${errors.join('\n  ')}`);
+  }
+
+  // 警告は表示のみ
+  if (warnings.length > 0 && config.app.env !== 'test') {
+    console.warn('[Config] Warnings:\n  ' + warnings.join('\n  '));
+  }
+};
+
+// 本番環境では起動時に検証
+if (config.app.env === 'production') {
+  validateConfig();
+}
+
 module.exports = config;
+module.exports.validateConfig = validateConfig;

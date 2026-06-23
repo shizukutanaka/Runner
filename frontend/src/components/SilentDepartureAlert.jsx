@@ -7,6 +7,7 @@
  */
 
 import React, { useEffect, useState, useCallback, memo } from 'react';
+import PropTypes from 'prop-types';
 import {
   Box, Paper, Typography, Stack, Chip, Tooltip,
   LinearProgress, Alert, CircularProgress, useTheme,
@@ -62,7 +63,7 @@ const SilentUserRow = memo(({ user }) => (
 ));
 
 // ─── メインコンポーネント ──────────────────────────────────
-export default function SilentDepartureAlert({ platform = 'youtube', channelId = 'default' }) {
+function SilentDepartureAlert({ platform = 'youtube', channelId = 'default' }) {
   const theme = useTheme();
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(false);
@@ -206,3 +207,15 @@ export default function SilentDepartureAlert({ platform = 'youtube', channelId =
     </Paper>
   );
 }
+
+SilentDepartureAlert.propTypes = {
+  platform: PropTypes.string,
+  channelId: PropTypes.string,
+};
+
+SilentDepartureAlert.defaultProps = {
+  platform: 'youtube',
+  channelId: 'default',
+};
+
+export default SilentDepartureAlert;

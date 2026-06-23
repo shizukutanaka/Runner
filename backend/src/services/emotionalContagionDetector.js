@@ -22,10 +22,40 @@ const RISK_THRESHOLD   = 0.65; // 炎上リスクスコアの閾値
 const VELOCITY_WINDOW  = 60;   // 1分間の感情速度を計算
 const MAX_HISTORY      = 500;  // 保持する最大コメント数
 
+// ─── 循環バッファ（メモリ効率化） ──────────────────────────
+class CircularBuffer {
+  constructor(size) {
+    this.size = size;
+    this.buffer = [];
+    this.head = 0;
+  }
+
+  add(item) {
+    if (this.buffer.length < this.size) {
+      this.buffer.push(item);
+    } else {
+      this.buffer[this.head] = item;
+      this.head = (this.head + 1) % this.size;
+    }
+  }
+
+  toArray() {
+    if (this.buffer.length < this.size) {
+      return [...this.buffer];
+    }
+    // head以降 + head以前の順で返す（時系列順）
+    return [...this.buffer.slice(this.head), ...this.buffer.slice(0, this.head)];
+  }
+
+  length() {
+    return this.buffer.length;
+  }
+}
+
 class EmotionalContagionDetector {
   constructor() {
-    // プラットフォーム × チャンネルごとの履歴
-    this.history   = new Map(); // key: `${platform}:${channelId}`
+    // プラットフォーム × チャンネルごとの履歴（CircularBuffer使用）
+    this.history   = new Map(); // key: `${platform}:${channelId}` → CircularBuffer
     this.listeners = new Map(); // イベントリスナー
   }
 
@@ -35,11 +65,11 @@ class EmotionalContagionDetector {
   ingest(comment) {
     const key = this._key(comment.platform, comment.channelId);
     if (!this.history.has(key)) {
-      this.history.set(key, []);
+      this.history.set(key, new CircularBuffer(MAX_HISTORY));
     }
 
-    const window = this.history.get(key);
-    window.push({
+    const buffer = this.history.get(key);
+    buffer.add({
       id:        comment.id,
       content:   comment.content,
       sentiment: comment.sentimentScore ?? 0.5, // 0=最もネガティブ、1=最もポジティブ
@@ -47,11 +77,6 @@ class EmotionalContagionDetector {
       timestamp: comment.timestamp ? new Date(comment.timestamp) : new Date(),
       userId:    comment.user
     });
-
-    // 古いデータを削除
-    if (window.length > MAX_HISTORY) {
-      window.splice(0, window.length - MAX_HISTORY);
-    }
 
     // 炎上リスクを再計算
     return this.evaluate(comment.platform, comment.channelId);
@@ -62,12 +87,13 @@ class EmotionalContagionDetector {
   // ─────────────────────────────────────────
   evaluate(platform, channelId) {
     const key    = this._key(platform, channelId);
-    const window = this.history.get(key) ?? [];
+    const buffer = this.history.get(key);
 
-    if (window.length < 3) {
+    if (!buffer || buffer.length() < 3) {
       return this._safeResult();
     }
 
+    const window = buffer.toArray();
     const recent = window.slice(-WINDOW_SIZE);
 
     // 1. 平均センチメント（低いほど危険）
@@ -125,9 +151,10 @@ class EmotionalContagionDetector {
   // ─────────────────────────────────────────
   getHealthSummary(platform, channelId) {
     const key    = this._key(platform, channelId);
-    const window = this.history.get(key) ?? [];
-    if (window.length === 0) return null;
+    const buffer = this.history.get(key);
+    if (!buffer || buffer.length() === 0) return null;
 
+    const window = buffer.toArray();
     const sentiments = window.map(c => c.sentiment);
     const now        = new Date();
     const oneMin     = 60 * 1000;
