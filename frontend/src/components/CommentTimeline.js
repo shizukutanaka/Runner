@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -9,7 +9,6 @@ import {
   Button,
   Snackbar,
   Stack,
-  IconButton,
   Tabs,
   Tab,
   InputAdornment,
@@ -18,8 +17,9 @@ import {
   FormControl,
   useTheme,
   Chip,
-  Menu
+  Tooltip,
 } from '@mui/material';
+import { Virtuoso } from 'react-virtuoso';
 import SearchIcon from '@mui/icons-material/Search';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useComments } from '../hooks/useComments';
@@ -339,6 +339,18 @@ export default function CommentTimeline({ platform = 'youtube' }) {
     setRelatedPapersDialog({ open: false, comment: null });
   }, []);
 
+  const handleGenerateReply = useCallback(async (commentId, content) => {
+    setAnsweringId(commentId);
+    try {
+      const answer = await fetchAutoAnswer(content);
+      setAiAnswer(prev => ({ ...prev, [commentId]: answer }));
+    } catch (e) {
+      setAiAnswer(prev => ({ ...prev, [commentId]: t('auto_answer_failed', 'AI応答の取得に失敗しました') }));
+    } finally {
+      setAnsweringId(null);
+    }
+  }, [t]);
+
   return (
     <Box sx={{ mb: 3 }}>
       <Paper
@@ -656,24 +668,35 @@ export default function CommentTimeline({ platform = 'youtube' }) {
           </Paper>
         )}
 
-        <Stack spacing={2}>
-          {effectiveComments && effectiveComments.map((c) => (
-            <CommentItem
-              key={c.id}
-              comment={c}
-              onPin={handlePin}
-              onDelete={handleDelete}
-              onStatusChange={handleStatusUpdate}
-              onGenerateReply={handleGenerateReply}
-              onSuggestRelatedVideos={handleSuggestRelatedVideos}
-              onSuggestRelatedPapers={handleSuggestRelatedPapers}
-              isReplying={answeringId === c.id}
-              aiReply={aiAnswer[c.id]}
-              formatTimestamp={formatTimestamp}
-              platformLabelMap={platformLabelMap}
-            />
-          ))}
-        </Stack>
+        {hasResults ? (
+          <Virtuoso
+            style={{ height: '600px' }}
+            totalCount={effectiveComments.length}
+            overscan={5}
+            itemContent={(index) => {
+              const c = effectiveComments[index];
+              if (!c) return null;
+              return (
+                <Box sx={{ pb: 2 }}>
+                  <CommentItem
+                    key={c.id}
+                    comment={c}
+                    onPin={handlePin}
+                    onDelete={handleDelete}
+                    onStatusChange={handleStatusUpdate}
+                    onGenerateReply={handleGenerateReply}
+                    onSuggestRelatedVideos={handleSuggestRelatedVideos}
+                    onSuggestRelatedPapers={handleSuggestRelatedPapers}
+                    isReplying={answeringId === c.id}
+                    aiReply={aiAnswer[c.id]}
+                    formatTimestamp={formatTimestamp}
+                    platformLabelMap={platformLabelMap}
+                  />
+                </Box>
+              );
+            }}
+          />
+        ) : null}
       </Box>
 
       {/* 関連動画ダイアログ */}

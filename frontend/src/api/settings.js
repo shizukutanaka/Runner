@@ -1,8 +1,8 @@
 import axios from 'axios';
 import { APIError, handleAPIError } from './comments';
 
-// API ベースURL設定
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api';
+// API ベースURL設定（Vite環境変数）
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 // 設定取得
 export const getSettings = async (userId) => {
