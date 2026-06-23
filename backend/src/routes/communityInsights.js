@@ -1,17 +1,23 @@
 /**
  * Community Insights API Routes
  *
- * ソクラテス式問答から生まれた3つの新視点を提供するエンドポイント:
+ * ソクラテス式問答から生まれた6つの新視点を提供するエンドポイント:
  *   1. 炎上リスクスコア（感情伝播）
  *   2. コミュニティ健全性スコア
  *   3. コンテキスト認識分析
+ *   4. クリエイター文化プロファイル（チャンネルごとの許容度）
+ *   5. サイレント離脱検知（常連の沈黙 = 衰退の最初の警告）
+ *   6. モデレーター・トリアージ（医療的緊急度分類）
  */
 
-const express  = require('express');
-const router   = express.Router();
-const detector = require('../services/emotionalContagionDetector');
-const health   = require('../services/communityHealthService');
-const logger   = require('../logger');
+const express   = require('express');
+const router    = express.Router();
+const detector  = require('../services/emotionalContagionDetector');
+const health    = require('../services/communityHealthService');
+const culture   = require('../services/creatorCultureService');
+const departure = require('../services/silentDepartureDetector');
+const triage    = require('../services/moderatorTriageService');
+const logger    = require('../logger');
 
 // ─────────────────────────────────────────
 // 1. 炎上リスクスコア取得
@@ -189,5 +195,142 @@ function _contextInsight(base, adjusted, contextSize) {
   }
   return `周囲の雰囲気（ネガティブ傾向）を考慮するとスコアが ${Math.round(Math.abs(diff) * 100)}pt 低下しました。炎上連鎖に注意してください。`;
 }
+
+// ─────────────────────────────────────────
+// 6. クリエイター文化プロファイル取得
+//    GET /api/insights/culture/:platform/:channelId
+// ─────────────────────────────────────────
+router.get('/culture/:platform/:channelId', (req, res) => {
+  try {
+    const { platform, channelId } = req.params;
+    const profile = culture.getProfile(platform, channelId);
+    res.json({ status: 200, data: profile });
+  } catch (err) {
+    logger.error('[CommunityInsights] Culture get error:', err);
+    res.status(500).json({ status: 500, message: '文化プロファイルの取得に失敗しました' });
+  }
+});
+
+// ─────────────────────────────────────────
+// 7. クリエイター文化プロファイル設定
+//    PUT /api/insights/culture/:platform/:channelId
+// ─────────────────────────────────────────
+router.put('/culture/:platform/:channelId', (req, res) => {
+  try {
+    const { platform, channelId } = req.params;
+    const { cultureType, customOverrides = {} } = req.body;
+
+    if (!cultureType) {
+      return res.status(400).json({
+        status:  400,
+        message: 'cultureType は必須です（family/educational/entertainment/gaming/mature）'
+      });
+    }
+
+    const profile = culture.setProfile(platform, channelId, cultureType, customOverrides);
+    res.json({ status: 200, data: profile });
+  } catch (err) {
+    logger.error('[CommunityInsights] Culture set error:', err);
+    const status = err.message?.includes('Unknown culture type') ? 400 : 500;
+    res.status(status).json({ status, message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────
+// 8. 文化プリセット一覧
+//    GET /api/insights/culture-presets
+// ─────────────────────────────────────────
+router.get('/culture-presets', (req, res) => {
+  try {
+    res.json({ status: 200, data: culture.listPresets() });
+  } catch (err) {
+    logger.error('[CommunityInsights] Culture presets error:', err);
+    res.status(500).json({ status: 500, message: 'プリセット一覧の取得に失敗しました' });
+  }
+});
+
+// ─────────────────────────────────────────
+// 9. モデレーションスコアを文化調整
+//    POST /api/insights/culture-adjust
+// ─────────────────────────────────────────
+router.post('/culture-adjust', (req, res) => {
+  try {
+    const { platform, channelId, rawScore, context = {} } = req.body;
+
+    if (rawScore == null || typeof rawScore !== 'number') {
+      return res.status(400).json({
+        status:  400,
+        message: 'rawScore（数値）は必須です'
+      });
+    }
+
+    const result = culture.adjustScore(platform ?? 'youtube', channelId ?? 'default', rawScore, context);
+    res.json({ status: 200, data: result });
+  } catch (err) {
+    logger.error('[CommunityInsights] Culture adjust error:', err);
+    res.status(500).json({ status: 500, message: 'スコア調整に失敗しました' });
+  }
+});
+
+// ─────────────────────────────────────────
+// 10. サイレント離脱検知
+//     GET /api/insights/silent-departure/:platform/:channelId
+// ─────────────────────────────────────────
+router.get('/silent-departure/:platform/:channelId', (req, res) => {
+  try {
+    const { platform, channelId } = req.params;
+    const result = departure.analyze(platform, channelId);
+    res.json({ status: 200, data: result });
+  } catch (err) {
+    logger.error('[CommunityInsights] Silent departure error:', err);
+    res.status(500).json({ status: 500, message: 'サイレント離脱分析に失敗しました' });
+  }
+});
+
+// ─────────────────────────────────────────
+// 11. コメントアクティビティを離脱検知エンジンに記録
+//     POST /api/insights/record-activity
+// ─────────────────────────────────────────
+router.post('/record-activity', (req, res) => {
+  try {
+    const { platform, channelId, userId, timestamp } = req.body;
+
+    if (!platform || !userId) {
+      return res.status(400).json({
+        status:  400,
+        message: 'platform と userId は必須です'
+      });
+    }
+
+    departure.record(platform, channelId ?? 'default', userId, timestamp);
+    res.json({ status: 200, data: { recorded: true } });
+  } catch (err) {
+    logger.error('[CommunityInsights] Record activity error:', err);
+    res.status(500).json({ status: 500, message: 'アクティビティ記録に失敗しました' });
+  }
+});
+
+// ─────────────────────────────────────────
+// 12. モデレーター・トリアージキュー
+//     POST /api/insights/triage
+// ─────────────────────────────────────────
+router.post('/triage', (req, res) => {
+  try {
+    const { pendingComments = [], channelContext = {}, options = {} } = req.body;
+
+    if (!Array.isArray(pendingComments)) {
+      return res.status(400).json({
+        status:  400,
+        message: 'pendingComments は配列で指定してください'
+      });
+    }
+
+    const result = triage.triage(pendingComments, channelContext, options);
+    res.json({ status: 200, data: result });
+  } catch (err) {
+    logger.error('[CommunityInsights] Triage error:', err);
+    res.status(500).json({ status: 500, message: 'トリアージに失敗しました' });
+  }
+});
 
 module.exports = router;

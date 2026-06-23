@@ -5,6 +5,7 @@ import {
   Tab,
   Paper,
   Grid,
+  Stack,
 } from '@mui/material';
 import {
   Timeline as TimelineIcon,
@@ -20,6 +21,8 @@ import AnalyticsPanel from './AnalyticsPanel';
 import SettingsPanel from './SettingsPanel';
 import ModeratorDashboard from './ModeratorDashboard';
 import CommunityHealthWidget from './CommunityHealthWidget';
+import SilentDepartureAlert from './SilentDepartureAlert';
+import TriageQueue from './TriageQueue';
 
 function TabPanel(props) {
   const { children, value, index, ...other } = props;
@@ -55,14 +58,28 @@ export default function Dashboard() {
         <CommentTimeline />
       </Grid>
       <Grid item xs={12} lg={3}>
-        <CommunityHealthWidget platform="youtube" channelId="default" />
+        <Stack spacing={2}>
+          <CommunityHealthWidget platform="youtube" channelId="default" />
+          <SilentDepartureAlert platform="youtube" channelId="default" />
+        </Stack>
+      </Grid>
+    </Grid>
+  );
+
+  const moderatorTab = (
+    <Grid container spacing={2} alignItems="flex-start">
+      <Grid item xs={12} lg={8}>
+        <ModeratorDashboard />
+      </Grid>
+      <Grid item xs={12} lg={4}>
+        <TriageQueue platform="youtube" channelId="default" pendingComments={[]} />
       </Grid>
     </Grid>
   );
 
   const tabs = [
-    { component: timelineTab, label: t('dashboard_tab_timeline', 'Timeline'), icon: <TimelineIcon /> },
-    { component: <ModeratorDashboard />, label: t('dashboard_tab_moderator', 'Moderator'), icon: <ModeratorIcon /> },
+    { component: timelineTab,   label: t('dashboard_tab_timeline',  'Timeline'),  icon: <TimelineIcon /> },
+    { component: moderatorTab,  label: t('dashboard_tab_moderator', 'Moderator'), icon: <ModeratorIcon /> },
     { component: <UserPanel />, label: t('dashboard_tab_users', 'Users'), icon: <PeopleIcon /> },
     { component: <AnalyticsPanel />, label: t('dashboard_tab_analytics', 'Analytics'), icon: <AnalyticsIcon /> },
     { component: <SettingsPanel />, label: t('dashboard_tab_settings', 'Settings'), icon: <SettingsIcon /> },
