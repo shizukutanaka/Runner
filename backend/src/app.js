@@ -17,6 +17,7 @@ const papersRouter = require('./routes/papers');
 const integratedAnalysisRouter = require('./routes/integratedAnalysis');
 const advancedAIServicesRouter = require('./routes/advancedAIServices');
 const innovativeTechnologiesRouter = require('./routes/innovativeTechnologies');
+const communityInsightsRouter = require('./routes/communityInsights');
 const billingController = require('./controllers/billingController');
 const config = require('./config');
 const { errorHandler, notFoundHandler, requestTimeout } = require('./middleware/errorHandler');
@@ -253,6 +254,7 @@ app.use('/api/papers', papersRouter);
 app.use('/api/analysis', integratedAnalysisRouter);
 app.use('/api/ai', advancedAIServicesRouter);
 app.use('/api/innovative', innovativeTechnologiesRouter);
+app.use('/api/insights',   communityInsightsRouter);
 app.use('/api/monitoring', require('./routes/monitoring'));
 
 // Fallback handlers
