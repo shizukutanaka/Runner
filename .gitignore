@@ -4,5 +4,6 @@ dist/
 .env
 *.sqlite
 *.log
+logs/
 .DS_Store
 *.cache
