@@ -242,6 +242,34 @@ async function setupWebSocket(server, app) {
 
     activeConnections.set(clientId, clientInfo);
 
+    // ─── WebSocketイベントレート制限（トークンバケット方式） ───
+    const rateLimiter = {
+      tokens: 20,           // 初期トークン数
+      maxTokens: 20,        // 最大トークン数
+      refillRate: 10,       // 秒あたりの補充レート
+      lastRefill: Date.now()
+    };
+
+    const checkRateLimit = () => {
+      const now = Date.now();
+      const elapsed = (now - rateLimiter.lastRefill) / 1000;
+
+      // トークン補充
+      rateLimiter.tokens = Math.min(
+        rateLimiter.maxTokens,
+        rateLimiter.tokens + (elapsed * rateLimiter.refillRate)
+      );
+      rateLimiter.lastRefill = now;
+
+      // トークン消費
+      if (rateLimiter.tokens >= 1) {
+        rateLimiter.tokens -= 1;
+        return true;
+      }
+
+      return false; // レート制限超過
+    };
+
     logger.info(`[WebSocket] Client connected: ${clientId} from ${clientInfo.ip}`);
     logger.info(`[WebSocket] Active connections: ${activeConnections.size}`);
 
@@ -349,6 +377,13 @@ async function setupWebSocket(server, app) {
 
     // コメントイベント
     socket.on('newComment', (comment) => {
+      // レート制限チェック
+      if (!checkRateLimit()) {
+        logger.warn(`[WebSocket] Rate limit exceeded for ${clientId}`);
+        socket.emit('error', { type: 'rateLimit', message: 'リクエストが多すぎます。しばらく待ってから再試行してください。' });
+        return;
+      }
+
       const validation = validateInput(comment, {
         platform: { required: true, type: 'string', enum: ['youtube', 'twitch', 'other'] },
         user: { required: true, type: 'string', maxLength: 255 },
@@ -398,6 +433,13 @@ async function setupWebSocket(server, app) {
 
     // モデレーションイベント
     socket.on('moderationAction', (data) => {
+      // レート制限チェック
+      if (!checkRateLimit()) {
+        logger.warn(`[WebSocket] Rate limit exceeded for ${clientId}`);
+        socket.emit('error', { type: 'rateLimit', message: 'リクエストが多すぎます。しばらく待ってから再試行してください。' });
+        return;
+      }
+
       const validation = validateInput(data, {
         action: { required: true, type: 'string', enum: ['hide', 'mute', 'ban', 'approve', 'flag'] },
         commentId: { required: true, type: 'string', maxLength: 255 },
@@ -437,6 +479,13 @@ async function setupWebSocket(server, app) {
 
     // ユーザーアクティビティ
     socket.on('userActivity', (data) => {
+      // レート制限チェック
+      if (!checkRateLimit()) {
+        logger.warn(`[WebSocket] Rate limit exceeded for ${clientId}`);
+        socket.emit('error', { type: 'rateLimit', message: 'リクエストが多すぎます。しばらく待ってから再試行してください。' });
+        return;
+      }
+
       const validation = validateInput(data, {
         userId: { required: true,  type: 'string', maxLength: 255 },
         action: { required: true,  type: 'string', enum: ['view', 'comment', 'moderate', 'export', 'login', 'logout'] },
