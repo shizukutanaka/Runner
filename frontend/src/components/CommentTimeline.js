@@ -295,7 +295,7 @@ export default function CommentTimeline({ platform = 'youtube' }) {
       await postComment({ platform, user: 'demoUser', content: input });
       setInput('');
       setSuccess(true);
-      // TODO: コメント再取得やWebSocket即時反映
+      await refetch(); // コメント再取得で即時反映
     } catch (e) {
       setPostError(t('comment_post_failed'));
     } finally {
