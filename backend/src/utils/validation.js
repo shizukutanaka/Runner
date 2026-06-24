@@ -43,6 +43,15 @@ class ForbiddenError extends Error {
   }
 }
 
+class RateLimitError extends Error {
+  constructor(message = 'Rate limit exceeded', retryAfter = 60) {
+    super(message);
+    this.name = 'RateLimitError';
+    this.status = 429;
+    this.retryAfter = retryAfter; // 秒単位で再試行までの待機時間
+  }
+}
+
 const commonSchemas = {
   id: Joi.string().trim().min(1).max(255),
   email: Joi.string().email().lowercase().trim(),
@@ -248,6 +257,7 @@ module.exports = {
   ConflictError,
   UnauthorizedError,
   ForbiddenError,
+  RateLimitError,
   commonSchemas,
   commentSchemas,
   userSchemas,
