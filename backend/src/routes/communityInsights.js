@@ -100,6 +100,14 @@ router.post('/health-score', (req, res) => {
       });
     }
 
+    // 入力サイズ制限（DoS対策）
+    if (comments.length > 1000) {
+      return res.status(400).json({
+        status: 400,
+        message: 'comments は最大1000件までです'
+      });
+    }
+
     const report = health.calculateHealth(comments, { windowSize });
     res.json({ status: 200, data: report });
 
@@ -122,6 +130,14 @@ router.post('/context-analysis', async (req, res) => {
       return res.status(400).json({
         status:  400,
         message: 'targetComment.content は必須です'
+      });
+    }
+
+    // 入力サイズ制限（DoS対策）
+    if (contextComments.length > 200) {
+      return res.status(400).json({
+        status: 400,
+        message: 'contextComments は最大200件までです'
       });
     }
 
@@ -160,6 +176,11 @@ router.post('/context-analysis', async (req, res) => {
 
 // ルールベースのシンプルなセンチメントスコア（AIなしで高速）
 function _simpleSentimentScore(text) {
+  // 入力長制限（ReDoS対策）
+  if (!text || text.length > 10000) {
+    return 0.5; // 中立スコア
+  }
+
   const pos = /すごい|最高|good|great|love|nice|thanks|ありがとう|楽しい|好き|笑|ｗ|草/i;
   const neg = /最悪|ひどい|bad|hate|クソ|うざい|死|消えろ|バカ|アホ|stupid/i;
   if (pos.test(text) && !neg.test(text)) return 0.75;
@@ -322,6 +343,14 @@ router.post('/triage', (req, res) => {
       return res.status(400).json({
         status:  400,
         message: 'pendingComments は配列で指定してください'
+      });
+    }
+
+    // 入力サイズ制限（DoS対策）
+    if (pendingComments.length > 500) {
+      return res.status(400).json({
+        status: 400,
+        message: 'pendingComments は最大500件までです'
       });
     }
 
