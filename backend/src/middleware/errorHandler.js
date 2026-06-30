@@ -127,51 +127,76 @@ function getRecoveryStrategy(errorType, error, req) {
   }
 }
 
+// 最近のリトライ追跡（メモリ内、本番はRedis推奨）
+const recentRetries = new Map();
+const RETRY_WINDOW_MS = 60_000;
+const MAX_RETRIES = 3;
+
 // Error recovery executor
 async function executeRecovery(strategy, error, req, res) {
+  const key = `${req.method}:${req.originalUrl}`;
+
   switch (strategy) {
-    case RecoveryStrategies.RETRY:
-      // For certain errors, we might want to retry the operation
-      // This would be implemented based on the specific operation
-      logger.info('[ErrorHandler] Retry strategy selected', {
+    case RecoveryStrategies.RETRY: {
+      const now = Date.now();
+      const entry = recentRetries.get(key) || { count: 0, firstAt: now };
+      if (now - entry.firstAt > RETRY_WINDOW_MS) {
+        entry.count = 0;
+        entry.firstAt = now;
+      }
+      entry.count++;
+      recentRetries.set(key, entry);
+
+      logger.warn('[ErrorHandler] Retry strategy', {
         error: error.message,
-        url: req.originalUrl
+        url: req.originalUrl,
+        retryCount: entry.count,
+        maxRetries: MAX_RETRIES
       });
+
+      // リトライ回数をレスポンスヘッダーで通知
+      if (res && !res.headersSent) {
+        const retryAfter = Math.min(entry.count * 2, 30);
+        res.setHeader('Retry-After', retryAfter);
+      }
       break;
+    }
 
     case RecoveryStrategies.DEGRADATION:
-      // Provide degraded service response
-      logger.info('[ErrorHandler] Degradation strategy selected', {
+      logger.warn('[ErrorHandler] Degradation mode - returning partial response', {
         error: error.message,
         url: req.originalUrl
       });
-      // Could return cached data or simplified response
+      // 縮退サービス: Retry-After ヘッダーで再試行を促す
+      if (res && !res.headersSent) {
+        res.setHeader('Retry-After', '30');
+        res.setHeader('X-Degraded-Mode', 'true');
+      }
       break;
 
     case RecoveryStrategies.FALLBACK:
-      // Use fallback service or default response
-      logger.info('[ErrorHandler] Fallback strategy selected', {
+      logger.warn('[ErrorHandler] Fallback activated', {
         error: error.message,
         url: req.originalUrl
       });
       break;
 
     case RecoveryStrategies.ALERT:
-      // Alert monitoring system
-      logger.error('[ErrorHandler] Alert strategy - critical error detected', {
+      // 重大エラー: 詳細ログ記録
+      logger.error('[ErrorHandler] ALERT - critical error requires attention', {
         error: error.message,
         stack: error.stack,
         url: req.originalUrl,
         method: req.method,
         ip: req.ip,
-        userAgent: req.get('User-Agent')
+        userAgent: req.get('User-Agent'),
+        errorCode: error.code,
+        timestamp: new Date().toISOString()
       });
-      // Here you could integrate with monitoring services like Sentry, DataDog, etc.
       break;
 
     case RecoveryStrategies.IGNORE:
     default:
-      // Just log and continue with normal error response
       logger.debug('[ErrorHandler] Error handled normally', {
         error: error.message,
         url: req.originalUrl

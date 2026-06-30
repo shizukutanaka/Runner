@@ -35,10 +35,11 @@ export const useComments = (platform) => {
         const response = await fetchComments(platform);
         if (!cancelled) {
           setComments(extractComments(response));
+          setError(null);
         }
       } catch (err) {
         if (!cancelled) {
-          setComments([]);
+          // 既存のコメントを保持（エラー時に空にしない）
           setError(err);
         }
       } finally {
@@ -62,7 +63,7 @@ export const useComments = (platform) => {
       const response = await fetchComments(platform);
       setComments(extractComments(response));
     } catch (err) {
-      setComments([]);
+      // refetch 失敗時も既存データを保持
       setError(err);
     } finally {
       setLoading(false);

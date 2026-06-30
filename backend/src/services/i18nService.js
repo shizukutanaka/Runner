@@ -25,7 +25,22 @@ class I18nService {
   }
 
   addLanguage(language, messages) {
-    // Implementation for adding new languages
+    if (!language || typeof language !== 'string') {
+      throw new Error('language は文字列で指定してください');
+    }
+    if (!messages || typeof messages !== 'object') {
+      throw new Error('messages はオブジェクトで指定してください');
+    }
+    i18next.addResourceBundle(language, 'translation', messages, true, true);
+  }
+
+  getSupportedLanguages() {
+    return Object.keys(i18next.store?.data || { ja: true, en: true });
+  }
+
+  async hasKey(key, language = 'ja') {
+    await this.initPromise;
+    return i18next.exists(key, { lng: language });
   }
 }
 

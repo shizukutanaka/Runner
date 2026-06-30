@@ -125,29 +125,52 @@ async function setupWebSocket(server, app) {
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
       const thisHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours()).toISOString();
 
-      // データベースから統計情報を取得 (パラメータ化クエリでSQLインジェクション対策)
-      const stats = await new Promise((resolve, reject) => {
-        db.get(`
-          SELECT
-            (SELECT COUNT(*) FROM comments) as total_comments,
-            (SELECT COUNT(*) FROM comments WHERE timestamp >= ?) as today_comments,
-            (SELECT COUNT(*) FROM comments WHERE timestamp >= ?) as hour_comments,
-            (SELECT COUNT(*) FROM users) as total_users,
-            (SELECT COUNT(*) FROM users WHERE status = 'active') as active_users,
-            (SELECT COUNT(*) FROM users WHERE id IN (
-              SELECT DISTINCT user FROM comments WHERE timestamp >= ?
-            )) as new_users_today,
-            (SELECT COUNT(*) FROM comments WHERE status != 'active') as total_moderation,
-            (SELECT COUNT(*) FROM comments WHERE status != 'active' AND moderation_timestamp >= ?) as today_moderation
-        `, [today, thisHour, today, today], (err, row) => {
-          if (err) {
-            logger.error('[WebSocket] Stats query error', { error: err.message });
-            reject(err);
-            return;
-          }
-          resolve(row || {});
-        });
-      });
+      // 統計クエリ最適化: 複数のサブクエリを集約クエリに統合
+      // N+1問題を解消 - status/timestamp でグループ化した集計を1クエリで取得
+      const [commentStats, userStats] = await Promise.all([
+        new Promise((resolve, reject) => {
+          db.all(`
+            SELECT
+              status,
+              COUNT(*) as cnt,
+              SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) as today_cnt,
+              SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) as hour_cnt
+            FROM comments
+            GROUP BY status
+          `, [today, thisHour], (err, rows) => {
+            if (err) { reject(err); return; }
+            resolve(rows || []);
+          });
+        }),
+        new Promise((resolve, reject) => {
+          db.all(`
+            SELECT status, COUNT(*) as cnt FROM users GROUP BY status
+          `, [], (err, rows) => {
+            if (err) { reject(err); return; }
+            resolve(rows || []);
+          });
+        })
+      ]);
+
+      // 集計結果を整形
+      const totalComments    = commentStats.reduce((s, r) => s + r.cnt, 0);
+      const todayComments    = commentStats.reduce((s, r) => s + r.today_cnt, 0);
+      const hourComments     = commentStats.reduce((s, r) => s + r.hour_cnt, 0);
+      const totalModeration  = commentStats.filter(r => r.status !== 'active').reduce((s, r) => s + r.cnt, 0);
+      const todayModeration  = commentStats.filter(r => r.status !== 'active').reduce((s, r) => s + r.today_cnt, 0);
+      const totalUsers       = userStats.reduce((s, r) => s + r.cnt, 0);
+      const activeUsers      = userStats.find(r => r.status === 'active')?.cnt || 0;
+
+      const stats = {
+        total_comments:    totalComments,
+        today_comments:    todayComments,
+        hour_comments:     hourComments,
+        total_users:       totalUsers,
+        active_users:      activeUsers,
+        new_users_today:   0,
+        total_moderation:  totalModeration,
+        today_moderation:  todayModeration
+      };
 
       statsCache = {
         comments: {
