@@ -4,6 +4,20 @@ const { withRetry } = require('../utils/retryMechanism');
 
 const isDevelopment = config.environment === 'development';
 
+const ErrorTypes = {
+  VALIDATION_ERROR: 'VALIDATION_ERROR',
+  AUTHENTICATION_ERROR: 'AUTHENTICATION_ERROR',
+  AUTHORIZATION_ERROR: 'AUTHORIZATION_ERROR',
+  NOT_FOUND_ERROR: 'NOT_FOUND_ERROR',
+  CONFLICT_ERROR: 'CONFLICT_ERROR',
+  RATE_LIMIT_ERROR: 'RATE_LIMIT_ERROR',
+  DATABASE_ERROR: 'DATABASE_ERROR',
+  NETWORK_ERROR: 'NETWORK_ERROR',
+  EXTERNAL_API_ERROR: 'EXTERNAL_API_ERROR',
+  CONFIGURATION_ERROR: 'CONFIGURATION_ERROR',
+  UNKNOWN_ERROR: 'UNKNOWN_ERROR'
+};
+
 // Enhanced error classification
 // Enhanced error messages for better UX
 const getErrorMessage = (errorType, error) => {

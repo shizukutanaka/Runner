@@ -5,12 +5,13 @@
  * 「医師は患者を到着順に診るか？ → トリアージで緊急度を分類する」
  */
 
-import React, { useEffect, useState, useCallback, memo } from 'react';
+import React, { useEffect, useState, useCallback, memo, useTransition } from 'react';
 import PropTypes from 'prop-types';
 import {
   Box, Paper, Typography, Stack, Chip, LinearProgress,
   Divider, Alert, CircularProgress, Button, Tooltip,
   List, ListItem, ListItemText, ListItemIcon, Badge, useTheme,
+  ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
 import {
   LocalHospital as TriageIcon,
@@ -113,9 +114,16 @@ const TriageLevelSection = memo(({ level, items, defaultOpen = false }) => {
 // ─── メインコンポーネント ──────────────────────────────────
 function TriageQueue({ platform = 'youtube', channelId = 'default', pendingComments = [] }) {
   const theme = useTheme();
-  const [result,  setResult]  = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error,   setError]   = useState(null);
+  const [result,       setResult]       = useState(null);
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState(null);
+  const [filterLevel,  setFilterLevel]  = useState('ALL');
+  const [isPending,    startTransition] = useTransition();
+
+  const handleFilterChange = (_e, newLevel) => {
+    if (!newLevel) return;
+    startTransition(() => setFilterLevel(newLevel));
+  };
 
   const runTriage = useCallback(async () => {
     if (pendingComments.length === 0) return;
@@ -165,6 +173,14 @@ function TriageQueue({ platform = 'youtube', channelId = 'default', pendingComme
 
   const summary = result?.summary;
   const hasUrgent = (summary?.emergency ?? 0) + (summary?.urgent ?? 0) > 0;
+
+  const filteredQueues = result?.queues
+    ? filterLevel === 'ALL'
+      ? result.queues
+      : Object.fromEntries(
+          Object.entries(result.queues).filter(([level]) => level === filterLevel)
+        )
+    : {};
 
   return (
     <Paper
@@ -230,10 +246,26 @@ function TriageQueue({ platform = 'youtube', channelId = 'default', pendingComme
             </Alert>
           )}
 
-          <Divider sx={{ mb: 1.5 }} />
+          <Divider sx={{ mb: 1 }} />
+
+          {/* フィルター（useTransition で非緊急UI更新） */}
+          <ToggleButtonGroup
+            value={filterLevel}
+            exclusive
+            onChange={handleFilterChange}
+            size="small"
+            sx={{ mb: 1.5, opacity: isPending ? 0.6 : 1, transition: 'opacity 0.15s' }}
+          >
+            <ToggleButton value="ALL" sx={{ fontSize: '0.7rem', py: 0.3 }}>全て</ToggleButton>
+            {Object.entries(LEVEL_META).map(([level, meta]) => (
+              <ToggleButton key={level} value={level} sx={{ fontSize: '0.7rem', py: 0.3 }}>
+                {meta.icon} {meta.label}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
 
           {/* キュー一覧 */}
-          {Object.entries(result.queues ?? {}).map(([level, items]) => (
+          {Object.entries(filteredQueues).map(([level, items]) => (
             <TriageLevelSection
               key={level}
               level={level}

@@ -63,13 +63,14 @@ const connectDatabase = () => {
 
         // PRAGMAを順次実行
         const pragmas = [
-          'PRAGMA journal_mode = WAL',      // Write-Ahead Loggingモード
-          'PRAGMA synchronous = NORMAL',     // バランスの取れた同期モード
-          'PRAGMA cache_size = -64000',      // 64MBのキャッシュ（負の値はKB単位）
-          'PRAGMA temp_store = MEMORY',      // メモリに一時データ保存
-          'PRAGMA mmap_size = 268435456',    // 256MBのメモリマップ
-          'PRAGMA page_size = 4096',         // 4KBページサイズ
-          'PRAGMA auto_vacuum = INCREMENTAL' // インクリメンタル自動バキューム
+          'PRAGMA journal_mode = WAL',       // Write-Ahead Loggingモード
+          'PRAGMA synchronous = NORMAL',      // バランスの取れた同期モード
+          'PRAGMA foreign_keys = ON',         // 外部キー制約を有効化（OWASP推奨）
+          'PRAGMA cache_size = -64000',       // 64MBのキャッシュ（負の値はKB単位）
+          'PRAGMA temp_store = MEMORY',       // メモリに一時データ保存
+          'PRAGMA mmap_size = 268435456',     // 256MBのメモリマップ
+          'PRAGMA page_size = 4096',          // 4KBページサイズ
+          'PRAGMA auto_vacuum = INCREMENTAL'  // インクリメンタル自動バキューム
         ];
 
         const executePragmas = (index = 0) => {
