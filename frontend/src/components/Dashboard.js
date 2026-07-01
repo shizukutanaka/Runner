@@ -13,6 +13,7 @@ import {
   Analytics as AnalyticsIcon,
   Settings as SettingsIcon,
   AdminPanelSettings as ModeratorIcon,
+  MonitorHeart as MonitoringIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import CommentTimeline from './CommentTimeline';
@@ -23,6 +24,7 @@ import ModeratorDashboard from './ModeratorDashboard';
 import CommunityHealthWidget from './CommunityHealthWidget';
 import SilentDepartureAlert from './SilentDepartureAlert';
 import TriageQueue from './TriageQueue';
+import MonitoringDashboard from './MonitoringDashboard';
 
 function TabPanel(props) {
   const { children, value, index, ...other } = props;
@@ -82,6 +84,7 @@ export default function Dashboard() {
     { component: moderatorTab,       label: t('dashboard_tab_moderator', 'Moderator'), icon: <ModeratorIcon /> },
     { component: <UserPanel />,      label: t('dashboard_tab_users',     'Users'),     icon: <PeopleIcon /> },
     { component: <AnalyticsPanel />, label: t('dashboard_tab_analytics', 'Analytics'), icon: <AnalyticsIcon /> },
+    { component: <MonitoringDashboard />, label: t('dashboard_tab_monitoring', 'Monitoring'), icon: <MonitoringIcon /> },
     { component: <SettingsPanel />,  label: t('dashboard_tab_settings',  'Settings'),  icon: <SettingsIcon /> },
   ], [t, timelineTab, moderatorTab]);
 

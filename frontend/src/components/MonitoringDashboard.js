@@ -27,9 +27,9 @@ import {
 } from '@mui/material';
 import {
   Memory,
-  Cpu,
+  DeveloperBoard,
   Storage,
-  Network,
+  NetworkCheck,
   Timeline,
   Warning,
   CheckCircle,
@@ -41,7 +41,8 @@ import {
   Speed,
   Assessment
 } from '@mui/icons-material';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { LineChart } from '@mui/x-charts/LineChart';
+import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 
 const MonitoringDashboard = () => {
@@ -62,13 +63,15 @@ const MonitoringDashboard = () => {
         .slice(0, 3)
     : [];
 
-  // データ取得
+  // データ取得（axios経由で認証トークンを自動付与）
   const fetchJson = useCallback(async (url, contextLabel, signal) => {
-    const response = await fetch(url, { signal });
-    if (!response.ok) {
-      throw new Error(`${contextLabel} fetch failed with status ${response.status}`);
+    try {
+      const response = await axios.get(url, { signal });
+      return response.data;
+    } catch (err) {
+      const status = err.response?.status;
+      throw new Error(`${contextLabel} fetch failed with status ${status ?? err.message}`);
     }
-    return response.json();
   }, []);
 
   const fetchData = useCallback(async (signal) => {
@@ -291,7 +294,7 @@ const MonitoringDashboard = () => {
                       {systemStats.cpu.usage}%
                     </Typography>
                   </Box>
-                  <Cpu sx={{ fontSize: 40, color: getStatusColor(systemStats.cpu.usage, { warning: 70, critical: 90 }) }} />
+                  <DeveloperBoard sx={{ fontSize: 40, color: getStatusColor(systemStats.cpu.usage, { warning: 70, critical: 90 }) }} />
                 </Box>
                 <LinearProgress
                   variant="determinate"
@@ -390,7 +393,7 @@ const MonitoringDashboard = () => {
                       {formatBytes(systemStats.network.totalRxBytes + systemStats.network.totalTxBytes)}
                     </Typography>
                   </Box>
-                  <Network sx={{ fontSize: 40, color: '#2196f3' }} />
+                  <NetworkCheck sx={{ fontSize: 40, color: '#2196f3' }} />
                 </Box>
                 <Typography variant="body2" sx={{ mt: 1 }}>
                   受信: {formatBytes(systemStats.network.totalRxBytes)}
@@ -527,16 +530,15 @@ const MonitoringDashboard = () => {
                 <Typography variant="h6" gutterBottom>
                   コメント統計推移
                 </Typography>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={appStats.data}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis />
-                    <RechartsTooltip />
-                    <Line type="monotone" dataKey="total_comments" stroke="#8884d8" name="コメント数" />
-                    <Line type="monotone" dataKey="moderated_comments" stroke="#82ca9d" name="モデレーション数" />
-                  </LineChart>
-                </ResponsiveContainer>
+                <LineChart
+                  height={300}
+                  xAxis={[{ scaleType: 'point', data: (appStats.data ?? []).map(d => d.date) }]}
+                  series={[
+                    { data: (appStats.data ?? []).map(d => d.total_comments), label: 'コメント数', color: '#8884d8' },
+                    { data: (appStats.data ?? []).map(d => d.moderated_comments), label: 'モデレーション数', color: '#82ca9d' },
+                  ]}
+                  margin={{ top: 20, right: 20, bottom: 30, left: 40 }}
+                />
               </CardContent>
             </Card>
           </Grid>
