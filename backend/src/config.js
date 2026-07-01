@@ -90,6 +90,11 @@ const validateConfig = () => {
     }
   }
 
+  // JWT_SECRET の強度確認 (全環境)
+  if (config.security.jwtSecret && config.security.jwtSecret.length < 32) {
+    errors.push('JWT_SECRET must be at least 32 characters');
+  }
+
   // 警告レベル: API連携が無効化される可能性
   const warnings = [];
   if (!config.services.openai.apiKey) {
@@ -113,8 +118,8 @@ const validateConfig = () => {
   }
 };
 
-// 本番環境では起動時に検証
-if (config.app.env === 'production') {
+// テスト環境以外では起動時に検証
+if (config.app.env !== 'test') {
   validateConfig();
 }
 

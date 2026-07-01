@@ -154,9 +154,15 @@ const getComments = async (filters = {}) => {
 
     sql += ' ORDER BY timestamp DESC';
 
-    if (filters.limit) {
+    if (filters.limit !== undefined) {
+      const limit = Math.min(Math.max(parseInt(filters.limit, 10) || 20, 1), 1000);
       sql += ' LIMIT ?';
-      params.push(filters.limit);
+      params.push(limit);
+      if (filters.offset !== undefined) {
+        const offset = Math.max(parseInt(filters.offset, 10) || 0, 0);
+        sql += ' OFFSET ?';
+        params.push(offset);
+      }
     }
 
     const rows = await dbAll(sql, params);

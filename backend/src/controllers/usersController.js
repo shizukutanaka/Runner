@@ -2,6 +2,18 @@ const db = require('../../src/db');
 const Joi = require('joi');
 const validator = require('validator');
 const { logDataMod } = require('../services/advancedAuditLogService');
+const asyncHandler = require('../utils/asyncHandler');
+const logger = require('../logger');
+
+const dbGet = (sql, params = []) => new Promise((resolve, reject) => {
+  db.get(sql, params, (err, row) => { if (err) reject(err); else resolve(row); });
+});
+const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
+  db.all(sql, params, (err, rows) => { if (err) reject(err); else resolve(rows); });
+});
+const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
+  db.run(sql, params, function(err) { if (err) reject(err); else resolve(this); });
+});
 
 const sanitizeToStorage = (value) => {
   if (typeof value !== 'string') {
