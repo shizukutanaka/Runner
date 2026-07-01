@@ -1,7 +1,8 @@
 const logger = require('../logger');
 
 const parseSchemaInput = (schema) => {
-  if (typeof schema === 'function' && typeof schema.validate === 'function') {
+  // Joiスキーマ自体が渡された場合（typeofは'object'だが.validate()を持つ）はbody用として扱う
+  if (schema && typeof schema.validate === 'function') {
     return { body: schema };
   }
 

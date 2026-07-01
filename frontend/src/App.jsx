@@ -3,16 +3,19 @@ import { useState } from 'react';
 import { I18nextProvider, useTranslation } from 'react-i18next';
 import i18n from './i18n';
 import Dashboard from './components/Dashboard';
+import Login from './components/Login';
 import ErrorBoundary from './components/ErrorBoundary';
 import ConnectionStatus from './components/ConnectionStatus';
 import CriticalAlertsBanner from './components/CriticalAlertsBanner';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import { ThemeProvider, useThemeMode } from './ThemeContext';
-import { AppBar, Toolbar, Typography, IconButton, Box, CssBaseline, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText } from '@mui/material';
+import { useAuth } from './hooks/useAuth';
+import { AppBar, Toolbar, Typography, IconButton, Box, CssBaseline, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, CircularProgress } from '@mui/material';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import SettingsIcon from '@mui/icons-material/Settings';
+import LogoutIcon from '@mui/icons-material/Logout';
 import { useTheme } from '@mui/material/styles';
 
 // アクセシビリティフック
@@ -70,7 +73,7 @@ const useAccessibility = () => {
   };
 };
 
-function AppInner() {
+function AppInner({ onLogout }) {
   const { mode, toggleTheme } = useThemeMode();
   const { t, skipLinkTarget } = useAccessibility();
   const mainContentRef = useRef(null);
@@ -157,6 +160,19 @@ function AppInner() {
           >
             {mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
           </IconButton>
+          <IconButton
+            color="inherit"
+            onClick={onLogout}
+            sx={{
+              color: 'text.secondary',
+              '&:hover': {
+                backgroundColor: 'action.hover',
+              },
+            }}
+            aria-label={t('logout', 'ログアウト')}
+          >
+            <LogoutIcon />
+          </IconButton>
         </Toolbar>
       </AppBar>
 
@@ -224,6 +240,24 @@ function AppInner() {
   );
 }
 
+function AuthGate() {
+  const { isAuthenticated, loading, login, logout } = useAuth();
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login onLogin={login} />;
+  }
+
+  return <AppInner onLogout={logout} />;
+}
+
 export default function App() {
   return (
     <>
@@ -234,7 +268,7 @@ export default function App() {
             <div id="app-root" role="application" aria-label="YouTube & Twitchコメント管理アプリケーション">
               <CriticalAlertsBanner />
               <LanguageSwitcher />
-              <AppInner />
+              <AuthGate />
               <ConnectionStatus />
             </div>
           </ThemeProvider>

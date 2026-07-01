@@ -315,7 +315,8 @@ const authenticateToken = (req, res, next) => {
 
   const decoded = verifyToken(token);
   if (!decoded) {
-    return res.status(403).json({ error: 'Invalid or expired token' });
+    // 401: 認証情報自体が無効（403は「認証済みだが権限不足」の場合に使用）
+    return res.status(401).json({ error: 'Invalid or expired token' });
   }
 
   req.user = decoded;

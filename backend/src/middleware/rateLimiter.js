@@ -67,12 +67,21 @@ const createLimiter = (options) => {
 
 // Different rate limiters for different endpoints
 const limiters = {
-  // Strict limit for auth endpoints
+  // Strict limit for login attempts (brute-force protection)
   auth: createLimiter({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5,
-    prefix: 'auth',
+    prefix: 'auth-login',
     skipSuccessfulRequests: false
+  }),
+
+  // Separate, more lenient limit for registration/password-reset flows
+  // (kept independent from login so login brute-force protection isn't
+  // exhausted by unrelated account-management requests)
+  authWrite: createLimiter({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 20,
+    prefix: 'auth-write'
   }),
 
   // Standard API rate limit

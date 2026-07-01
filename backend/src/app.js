@@ -4,6 +4,7 @@ const session = require('express-session');
 const { randomUUID } = require('crypto');
 const compression = require('compression');
 const logger = require('./logger');
+const authRouter = require('./routes/auth');
 const commentsRouter = require('./routes/comments');
 const usersRouter = require('./routes/users');
 const moderationRouter = require('./routes/moderation');
@@ -242,6 +243,9 @@ app.get('/metrics', metricsHandler);
 // API routes with rate limiting
 app.use('/api', apiRateLimit);
 app.use('/api/comments', commentsRouter);
+// authRouter は usersRouter より先にマウントする（usersRouter の GET/PUT /:id が
+// /register, /login, /me 等の静的パスを誤って捕捉するのを防ぐため）
+app.use('/api/users', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/moderation', moderationRouter);
 app.use('/api/notifications', notificationsRouter);

@@ -126,27 +126,6 @@ describe('Authentication Integration Tests', () => {
         .expect(401);
     });
 
-    test('should rate limit login attempts', async () => {
-      const attempts = [];
-
-      // Try to login multiple times with wrong password
-      for (let i = 0; i < 6; i++) {
-        attempts.push(
-          request(app)
-            .post('/api/users/login')
-            .send({
-              username: testUser.username,
-              password: 'WrongPassword',
-            })
-        );
-      }
-
-      const results = await Promise.all(attempts);
-      const rateLimited = results.some(res => res.status === 429);
-
-      expect(rateLimited).toBe(true);
-    });
-
     test('should create session cookie', async () => {
       const res = await request(app)
         .post('/api/users/login')
@@ -401,6 +380,31 @@ describe('Authentication Integration Tests', () => {
       if (res.status === 201) {
         expect(res.body.user.username).not.toContain('<script>');
       }
+    });
+  });
+
+  // このブロックはログイン用レート制限を意図的に使い切るため、
+  // 他のログインに依存するテストへの影響を避けて必ず最後に実行する
+  describe('Rate Limiting (must run last)', () => {
+    test('should rate limit login attempts', async () => {
+      const attempts = [];
+
+      // Try to login multiple times with wrong password
+      for (let i = 0; i < 6; i++) {
+        attempts.push(
+          request(app)
+            .post('/api/users/login')
+            .send({
+              username: testUser.username,
+              password: 'WrongPassword',
+            })
+        );
+      }
+
+      const results = await Promise.all(attempts);
+      const rateLimited = results.some(res => res.status === 429);
+
+      expect(rateLimited).toBe(true);
     });
   });
 });

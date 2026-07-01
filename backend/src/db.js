@@ -228,6 +228,25 @@ const initializeDB = async () => {
     CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
     CREATE INDEX IF NOT EXISTS idx_users_platform_status ON users(platform, status);
 
+    -- モデレーター/管理者のダッシュボードアカウント（プラットフォーム上のコメント投稿者=usersテーブルとは別概念）
+    CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'moderator',
+      status TEXT NOT NULL DEFAULT 'active',
+      reset_token_hash TEXT,
+      reset_token_expires DATETIME,
+      totp_secret TEXT,
+      totp_enabled INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_login_at DATETIME
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_accounts_username ON accounts(username);
+    CREATE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);
+
     CREATE TABLE IF NOT EXISTS moderation_settings (
       platform TEXT PRIMARY KEY,
       thresholds TEXT,
