@@ -821,7 +821,7 @@ exports.generateChatbotResponse = (req, res, next) => {
     } else if (lowerContent.match(/^(thanks?|thank you|ありがとう)/i)) {
       const thanks = [
         'どういたしまして！引き続き楽しんでくださいね！',
-        'You're welcome! Glad you're enjoying the stream!',
+        "You're welcome! Glad you're enjoying the stream!",
         'こちらこそありがとう！あなたのサポートが力になります！'
       ];
       response = thanks[Math.floor(Math.random() * thanks.length)];
@@ -1311,38 +1311,43 @@ exports.getTranslationStats = (req, res, next) => {
 };
 
 // AIモデレーションAPI
-exports.performAIModeration = (req, res, next) => {
+exports.performAIModeration = async (req, res, next) => {
   try {
-    const { content, provider = 'openai', model, options = {} } = req.body;
+    const { content, provider = 'openai' } = req.body;
 
     if (!content || typeof content !== 'string') {
       return next({ status: 400, message: '有効なcontentを指定してください' });
     }
 
-    // 実際の実装ではperformAIModeration関数を呼び出す
-    // ここではモックレスポンスを返す
-    const mockResult = {
-      provider,
-      available: true,
-      model: model || 'text-moderation-latest',
-      content,
-      score: Math.random() * 0.8,
-      categories: {
-        'hate': Math.random() * 0.3,
-        'harassment': Math.random() * 0.4,
-        'sexual': Math.random() * 0.2,
-        'violence': Math.random() * 0.3,
-        'self-harm': Math.random() * 0.1
-      },
-      flagged: Math.random() > 0.7,
-      timestamp: new Date().toISOString(),
-      processingTime: Math.random() * 1000 + 200,
-      note: 'This is a demo response. In production, this would use the actual AI API.'
-    };
+    if (provider !== 'openai') {
+      return res.json({
+        status: 200,
+        data: {
+          provider,
+          available: false,
+          content,
+          error: `Provider "${provider}" is not yet implemented`
+        },
+        message: 'AIモデレーションを実行しました'
+      });
+    }
+
+    const openaiService = require('../services/openaiService');
+    const result = await openaiService.detectToxicContent(content);
 
     res.json({
       status: 200,
-      data: mockResult,
+      data: {
+        provider,
+        available: !result.error,
+        model: result.model,
+        content,
+        score: result.score || 0,
+        categories: result.categories || {},
+        flagged: result.isToxic || false,
+        timestamp: new Date().toISOString(),
+        error: result.error
+      },
       message: 'AIモデレーションを実行しました'
     });
   } catch (err) {
@@ -1351,9 +1356,9 @@ exports.performAIModeration = (req, res, next) => {
 };
 
 // 複数プロバイダーAIモデレーションAPI
-exports.performMultiProviderAIModeration = (req, res, next) => {
+exports.performMultiProviderAIModeration = async (req, res, next) => {
   try {
-    const { content, providers = ['openai'], options = {} } = req.body;
+    const { content, providers = ['openai'] } = req.body;
 
     if (!content || typeof content !== 'string') {
       return next({ status: 400, message: '有効なcontentを指定してください' });
@@ -1363,41 +1368,34 @@ exports.performMultiProviderAIModeration = (req, res, next) => {
       return next({ status: 400, message: 'providersは配列で指定してください' });
     }
 
-    // 実際の実装ではperformMultiProviderAIModeration関数を呼び出す
-    // ここではモックレスポンスを返す
-    const mockResults = providers.map(provider => ({
-      provider,
-      available: true,
-      model: 'latest',
-      content,
-      score: Math.random() * 0.8,
-      categories: {
-        'hate': Math.random() * 0.3,
-        'harassment': Math.random() * 0.4,
-        'sexual': Math.random() * 0.2,
-        'violence': Math.random() * 0.3,
-        'self-harm': Math.random() * 0.1
-      },
-      flagged: Math.random() > 0.7,
-      processingTime: Math.random() * 1000 + 200
+    const openaiService = require('../services/openaiService');
+    const results = await Promise.all(providers.map(async (provider) => {
+      if (provider !== 'openai') {
+        return { provider, available: false, content, error: `Provider "${provider}" is not yet implemented` };
+      }
+      const result = await openaiService.detectToxicContent(content);
+      return {
+        provider,
+        available: !result.error,
+        model: result.model,
+        content,
+        score: result.score || 0,
+        categories: result.categories || {},
+        flagged: result.isToxic || false,
+        error: result.error
+      };
     }));
 
+    const availableResults = results.filter(r => r.available);
     const aggregatedResult = {
       content,
-      providers: mockResults,
-      errors: [],
-      aggregatedScore: mockResults.reduce((sum, r) => sum + r.score, 0) / mockResults.length,
-      aggregatedCategories: {
-        'hate': mockResults.reduce((sum, r) => sum + r.categories.hate, 0) / mockResults.length,
-        'harassment': mockResults.reduce((sum, r) => sum + r.categories.harassment, 0) / mockResults.length,
-        'sexual': mockResults.reduce((sum, r) => sum + r.categories.sexual, 0) / mockResults.length,
-        'violence': mockResults.reduce((sum, r) => sum + r.categories.violence, 0) / mockResults.length,
-        'self-harm': mockResults.reduce((sum, r) => sum + r.categories['self-harm'], 0) / mockResults.length
-      },
-      overallFlagged: mockResults.some(r => r.flagged),
-      consensusLevel: mockResults.filter(r => r.flagged).length >= mockResults.length / 2 ? 'medium' : 'low',
-      timestamp: new Date().toISOString(),
-      note: 'This is a demo response. In production, this would use actual AI APIs.'
+      providers: results,
+      aggregatedScore: availableResults.length
+        ? availableResults.reduce((sum, r) => sum + r.score, 0) / availableResults.length
+        : 0,
+      overallFlagged: availableResults.some(r => r.flagged),
+      consensusLevel: availableResults.length && availableResults.filter(r => r.flagged).length >= availableResults.length / 2 ? 'medium' : 'low',
+      timestamp: new Date().toISOString()
     };
 
     res.json({

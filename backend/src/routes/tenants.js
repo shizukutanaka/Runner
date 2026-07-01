@@ -1,28 +1,28 @@
 const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/tenantController');
-const auth = require('../middleware/auth');
+const { requireRole } = require('../middleware/auth');
 
 // テナント作成
-router.post('/', auth('admin'), ctrl.createTenant);
+router.post('/', requireRole('admin'), ctrl.createTenant);
 
 // テナント一覧取得
-router.get('/', auth('admin'), ctrl.getTenants);
+router.get('/', requireRole('admin'), ctrl.getTenants);
 
 // テナント情報取得
-router.get('/:tenantId', auth('admin'), ctrl.getTenant);
+router.get('/:tenantId', requireRole('admin'), ctrl.getTenant);
 
 // テナント更新
-router.put('/:tenantId', auth('admin'), ctrl.updateTenant);
+router.put('/:tenantId', requireRole('admin'), ctrl.updateTenant);
 
 // テナント削除
-router.delete('/:tenantId', auth('admin'), ctrl.deleteTenant);
+router.delete('/:tenantId', requireRole('admin'), ctrl.deleteTenant);
 
 // APIキー再生成
-router.post('/:tenantId/regenerate-key', auth('admin'), ctrl.regenerateApiKey);
+router.post('/:tenantId/regenerate-key', requireRole('admin'), ctrl.regenerateApiKey);
 
 // テナント使用状況取得
-router.get('/:tenantId/usage', auth('admin'), ctrl.getTenantUsage);
+router.get('/:tenantId/usage', requireRole('admin'), ctrl.getTenantUsage);
 
 // テナント認証ミドルウェア
 router.use('/tenant', ctrl.authenticateTenant);

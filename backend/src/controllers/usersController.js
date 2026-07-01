@@ -756,6 +756,11 @@ exports.getUserChannelActivity = (req, res, next) => {
         });
       });
     });
+  } catch (error) {
+    next({ status: 500, message: 'Failed to fetch channel activity', details: error });
+  }
+};
+
 // ユーザー外部連携設定
 const setExternalIntegration = asyncHandler(async (req, res, next) => {
   const { id } = req.params;

@@ -8,10 +8,10 @@ import { updateUser } from '../api/users';
 const userIds = ['user1', 'user2'];
 
 export default function UserPanel() {
-  const [selectedId, setSelectedId] = useState(userIds[0]);
+  const [selectedId] = useState(userIds[0]);
   const { user, history, loading, error } = useUser(selectedId);
-  const [actionOpen, setActionOpen] = useState(false);
-  const [actionType, setActionType] = useState('');
+  const [banDialog, setBanDialog] = useState(false);
+  const [muteDialog, setMuteDialog] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState(null);
   const { t } = useTranslation();
@@ -21,18 +21,45 @@ export default function UserPanel() {
     setActionError(null);
     try {
       await updateUser(selectedId, { action: type });
-      setActionOpen(false);
+      setBanDialog(false);
+      setMuteDialog(false);
     } catch (e) {
+      setActionError(e);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ maxWidth: 500, mx: 'auto', p: { xs: 1, sm: 2 } }}>
+        <Alert severity="error">{t('user_panel_load_error')}</Alert>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ maxWidth: 500, mx: 'auto', p: { xs: 1, sm: 2 } }}>
       <Typography variant="h6" gutterBottom>{t('user_panel_title')}</Typography>
+      {actionError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setActionError(null)}>
+          {t('user_panel_action_error')}
+        </Alert>
+      )}
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography>{t('user_panel_username', { name: user?.name ?? t('user_panel_unknown') })}</Typography>
         <Typography>{t('user_panel_status', { status: user?.status ?? t('user_panel_unknown') })}</Typography>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} mt={1}>
-          <Button variant="outlined" color="error" onClick={() => setBanDialog(true)}>{t('user_panel_action_ban')}</Button>
-          <Button variant="outlined" color="warning" onClick={() => setMuteDialog(true)}>{t('user_panel_action_mute')}</Button>
+          <Button variant="outlined" color="error" disabled={actionLoading} onClick={() => setBanDialog(true)}>{t('user_panel_action_ban')}</Button>
+          <Button variant="outlined" color="warning" disabled={actionLoading} onClick={() => setMuteDialog(true)}>{t('user_panel_action_mute')}</Button>
         </Stack>
       </Paper>
       <Typography variant="subtitle1">{t('user_panel_history')}</Typography>
@@ -48,7 +75,7 @@ export default function UserPanel() {
         <DialogContent>{t('user_panel_ban_confirm_description')}</DialogContent>
         <DialogActions>
           <Button onClick={() => setBanDialog(false)}>{t('common_cancel')}</Button>
-          <Button color="error" onClick={() => { banUser(); setBanDialog(false); }}>{t('user_panel_action_ban')}</Button>
+          <Button color="error" disabled={actionLoading} onClick={() => handleAction('ban')}>{t('user_panel_action_ban')}</Button>
         </DialogActions>
       </Dialog>
       <Dialog open={muteDialog} onClose={() => setMuteDialog(false)}>
@@ -56,7 +83,7 @@ export default function UserPanel() {
         <DialogContent>{t('user_panel_mute_confirm_description')}</DialogContent>
         <DialogActions>
           <Button onClick={() => setMuteDialog(false)}>{t('common_cancel')}</Button>
-          <Button color="warning" onClick={() => { muteUser(); setMuteDialog(false); }}>{t('user_panel_action_mute')}</Button>
+          <Button color="warning" disabled={actionLoading} onClick={() => handleAction('mute')}>{t('user_panel_action_mute')}</Button>
         </DialogActions>
       </Dialog>
     </Box>

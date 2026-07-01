@@ -71,7 +71,7 @@ const pathTraversalPatterns = [
   /\.\.\//g,
   /\.\.%2f/gi,
   /\.\.%5c/gi,
-  /\.\.\\\/g,
+  /\.\.\\/g,
   /%2e%2e/gi,
   /\.\./g
 ];

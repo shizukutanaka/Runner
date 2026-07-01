@@ -1,19 +1,64 @@
-// ダッシュボード統計・グラフ用コントローラ（ダミー実装）
-exports.getStats = (req, res) => {
-  res.json({
-    commentCount: 1234,
-    userCount: 56,
-    bannedCount: 3,
-    activeUsers: 42,
-  });
+const db = require('../db');
+const logger = require('../logger');
+
+const dbGet = (sql, params = []) => new Promise((resolve, reject) => {
+  db.get(sql, params, (err, row) => { if (err) reject(err); else resolve(row); });
+});
+const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
+  db.all(sql, params, (err, rows) => { if (err) reject(err); else resolve(rows || []); });
+});
+
+// ダッシュボード統計・グラフ用コントローラ
+exports.getStats = async (req, res, next) => {
+  try {
+    const [commentRow, userRow, bannedRow, activeRow] = await Promise.all([
+      dbGet('SELECT COUNT(*) as cnt FROM comments'),
+      dbGet('SELECT COUNT(*) as cnt FROM users'),
+      dbGet("SELECT COUNT(*) as cnt FROM users WHERE status = 'banned'"),
+      dbGet("SELECT COUNT(*) as cnt FROM users WHERE status = 'active'")
+    ]);
+
+    res.json({
+      commentCount: commentRow?.cnt || 0,
+      userCount: userRow?.cnt || 0,
+      bannedCount: bannedRow?.cnt || 0,
+      activeUsers: activeRow?.cnt || 0
+    });
+  } catch (err) {
+    logger.error('[Analytics] Error fetching stats', { error: err.message });
+    next({ status: 500, message: '統計の取得中にエラーが発生しました', details: err });
+  }
 };
 
-exports.getGraph = (req, res) => {
-  res.json({
-    labels: ['6/1','6/2','6/3'],
-    comments: [200, 300, 400],
-    bans: [2, 1, 0],
-  });
+exports.getGraph = async (req, res, next) => {
+  try {
+    // 直近7日間の日別コメント数とBAN数を集計
+    const rows = await dbAll(`
+      SELECT date(timestamp) as day, COUNT(*) as commentCount
+      FROM comments
+      WHERE timestamp >= datetime('now', '-7 days')
+      GROUP BY day
+      ORDER BY day ASC
+    `);
+    const banRows = await dbAll(`
+      SELECT date(ban_until) as day, COUNT(*) as banCount
+      FROM users
+      WHERE ban_until >= datetime('now', '-7 days')
+      GROUP BY day
+      ORDER BY day ASC
+    `);
+
+    const bansByDay = Object.fromEntries(banRows.map(r => [r.day, r.banCount]));
+
+    res.json({
+      labels: rows.map(r => r.day),
+      comments: rows.map(r => r.commentCount),
+      bans: rows.map(r => bansByDay[r.day] || 0)
+    });
+  } catch (err) {
+    logger.error('[Analytics] Error fetching graph data', { error: err.message });
+    next({ status: 500, message: 'グラフデータの取得中にエラーが発生しました', details: err });
+  }
 };
 
 // 期間指定統計

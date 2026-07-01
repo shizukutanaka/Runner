@@ -31,7 +31,7 @@ import {
   Security as SecurityIcon,
   Translate as TranslateIcon,
   SmartToy as ChatbotIcon,
-  ExpandMoreIcon
+  ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import { useTranslation } from 'react-i18next';

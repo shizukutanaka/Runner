@@ -269,6 +269,7 @@ class CoroutineService {
           channel.receivers.add('waiting');
           // 実際にはイベントやポーリングで待機
         });
+      }
     } else {
       // バッファドチャネル
       if (channel.buffer.length > 0) {

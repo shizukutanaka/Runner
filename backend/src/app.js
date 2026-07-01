@@ -184,7 +184,7 @@ app.use(validateOrigin);
 
 // CORS and body parsing
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 
 app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), billingController.handleWebhook);
 

@@ -2,6 +2,7 @@
 const db = require('../../src/db');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const asyncHandler = require('../utils/asyncHandler');
 
 // 通知設定デフォルト
 const defaultNotificationSettings = {
@@ -327,6 +328,18 @@ exports.setNotifications = (req, res, next) => {
   };
 
   updateUserSetting(userId, 'notifications', notificationSettings, res, next, '通知設定');
+};
+
+// デフォルト言語設定
+exports.setDefaultLanguage = (req, res, next) => {
+  const { userId } = req.params;
+  const { language } = req.body;
+
+  if (!language || typeof language !== 'string') {
+    return next({ status: 400, message: '言語を指定してください' });
+  }
+
+  updateUserSetting(userId, 'default_language', language.toLowerCase(), res, next, 'デフォルト言語設定');
 };
 
 // タイムゾーン設定
@@ -2160,6 +2173,9 @@ exports.checkExpirationStatus = (req, res, next) => {
     tokens: { expired: false, daysUntilExpiry: 30 }
   };
 
+  res.json({ status: 200, data: expirationStatus, message: 'Expiration status checked' });
+};
+
 // スローモード設定の取得
 const getSlowModeSettings = asyncHandler(async (req, res) => {
   const { userId } = req.params;
@@ -2272,8 +2288,5 @@ const updateSlowModeSettings = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = {
-  // ... existing exports
-  getSlowModeSettings,
-  updateSlowModeSettings
-};
+exports.getSlowModeSettings = getSlowModeSettings;
+exports.updateSlowModeSettings = updateSlowModeSettings;

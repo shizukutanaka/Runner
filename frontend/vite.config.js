@@ -71,8 +71,7 @@ export default defineConfig({
           ui: ['@mui/material', '@emotion/react', '@emotion/styled'],
           i18n: ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
           charts: ['@mui/x-charts'],
-          socket: ['socket.io-client'],
-          utils: ['lodash', 'date-fns']
+          socket: ['socket.io-client']
         },
         assetFileNames: (assetInfo) => {
           const info = assetInfo.name.split('.');
@@ -99,5 +98,19 @@ export default defineConfig({
   },
   define: {
     'process.env': {}
+  },
+  // 一部のコンポーネントが .js 拡張子で JSX を含むため、
+  // esbuild/依存事前バンドルで .js も JSX として扱う
+  esbuild: {
+    loader: 'jsx',
+    include: /src\/.*\.jsx?$/,
+    exclude: []
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      loader: {
+        '.js': 'jsx'
+      }
+    }
   }
 });

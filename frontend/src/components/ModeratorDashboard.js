@@ -57,10 +57,12 @@ import {
   SentimentDissatisfied as SentimentDissatisfiedIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
+import { useComments } from '../hooks/useComments';
 
 export default function ModeratorDashboard({ platform = 'all' }) {
   const theme = useTheme();
   const { t } = useTranslation();
+  const { comments: fetchedComments } = useComments(platform === 'all' ? undefined : platform);
 
   // 状態管理
   const [activeTab, setActiveTab] = useState(0);
@@ -108,7 +110,6 @@ export default function ModeratorDashboard({ platform = 'all' }) {
     },
   ]);
 
-  // モックデータ - 最近のコメント
   const [sentimentStats, setSentimentStats] = useState({
     totalAnalyzed: 0,
     sentimentBreakdown: { positive: 0, neutral: 0, negative: 0 },
@@ -116,6 +117,23 @@ export default function ModeratorDashboard({ platform = 'all' }) {
     topPositiveKeywords: [],
     topNegativeKeywords: []
   });
+
+  // 最近のコメント（APIから取得したデータを表示用に変換）
+  const [recentComments, setRecentComments] = useState([]);
+
+  useEffect(() => {
+    setRecentComments(
+      fetchedComments.map((c) => ({
+        id: c.id,
+        user: c.user,
+        content: c.content,
+        platform: c.platform === 'youtube' ? 'YouTube' : c.platform === 'twitch' ? 'Twitch' : c.platform,
+        timestamp: new Date(c.timestamp),
+        status: c.status,
+        riskScore: c.moderationScore || 0,
+      }))
+    );
+  }, [fetchedComments]);
 
   // フィルタリングされたコメント
   const filteredComments = recentComments.filter(comment =>

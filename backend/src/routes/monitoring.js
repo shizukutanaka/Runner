@@ -1,36 +1,35 @@
 const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/monitoringController');
-const auth = require('../middleware/auth');
 const { healthCheck, metricsCollector } = require('../middleware/monitoring');
 const { requireRole } = require('../middleware/auth');
 
 // システム統計情報取得
-router.get('/system/stats', auth('admin'), ctrl.getSystemStats);
+router.get('/system/stats', requireRole('admin'), ctrl.getSystemStats);
 
 // アプリケーション統計情報取得
-router.get('/app/stats', auth('admin'), ctrl.getAppStats);
+router.get('/app/stats', requireRole('admin'), ctrl.getAppStats);
 
 // ログ情報取得
-router.get('/logs', auth('admin'), ctrl.getLogs);
+router.get('/logs', requireRole('admin'), ctrl.getLogs);
 
 // パフォーマンスメトリクス取得
-router.get('/metrics', auth('admin'), ctrl.getPerformanceMetrics);
+router.get('/metrics', requireRole('admin'), ctrl.getPerformanceMetrics);
 
 // アラート情報取得
-router.get('/alerts', auth('admin'), ctrl.getAlerts);
+router.get('/alerts', requireRole('admin'), ctrl.getAlerts);
 
 // アラートの確認
-router.put('/alerts/:alertId/acknowledge', auth('admin'), ctrl.acknowledgeAlert);
+router.put('/alerts/:alertId/acknowledge', requireRole('admin'), ctrl.acknowledgeAlert);
 
 // システムヘルスチェック
 router.get('/health', ctrl.getHealthStatus);
 
 // 監視設定取得
-router.get('/settings', auth('admin'), ctrl.getMonitoringSettings);
+router.get('/settings', requireRole('admin'), ctrl.getMonitoringSettings);
 
 // 監視設定更新
-router.put('/settings', auth('admin'), ctrl.updateMonitoringSettings);
+router.put('/settings', requireRole('admin'), ctrl.updateMonitoringSettings);
 
 // Detailed health check (admin only)
 router.get('/health/detailed', requireRole('admin'), async (req, res) => {

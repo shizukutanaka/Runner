@@ -36,4 +36,18 @@ router.get('/videos/:videoId/comments', asyncHandler(async (req, res) => {
   });
 }));
 
+// コメント内容から関連動画を検索
+router.post('/related-videos', asyncHandler(async (req, res) => {
+  const { comments } = req.body;
+  if (!Array.isArray(comments) || comments.length === 0) {
+    return res.status(400).json({ status: 400, message: 'comments must be a non-empty array' });
+  }
+  logger.info('[YouTube] Related videos search requested', { commentCount: comments.length });
+  res.json({
+    status: 200,
+    data: [],
+    message: 'YouTube API integration pending - configure YOUTUBE_API_KEY'
+  });
+}));
+
 module.exports = router;

@@ -74,6 +74,8 @@ const YOUTUBE_COMMUNITY_FILTERS = {
     'passport', 'driver license', 'ssn', 'credit card number'
   ]
 };
+
+const CUSTOM_FILTER_CONFIG = {
   // デフォルトフィルタ
   defaultFilters: [
     {
@@ -110,7 +112,7 @@ const YOUTUBE_COMMUNITY_FILTERS = {
       name: '繰り返し文字',
       patterns: [
         /(.)\1{4,}/,  // 同じ文字が5回以上繰り返し
-        /\b(?:lol|haha|hehe)\b{3,}/i  // 笑い声の繰り返し
+        /(?:\b(?:lol|haha|hehe)\b){3,}/i  // 笑い声の繰り返し
       ],
       action: 'flag',
       severity: 'low',

@@ -461,6 +461,9 @@ ${t('error_boundary_report_footer')}`
               <Typography variant="caption" color="textSecondary">
                 {t('error_boundary_footer_note')}
               </Typography>
+              <Stack direction="row" spacing={2} justifyContent="center" sx={{ mt: 1 }}>
+                <Link
+                  href="mailto:support@example.com"
                   underline="hover"
                   sx={{
                     display: 'flex',

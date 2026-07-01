@@ -224,6 +224,9 @@ class MonitoringService extends EventEmitter {
       logger.error('[Monitoring] Database metrics collection failed', { error: error.message });
     }
   }
+
+  // Collect application metrics
+  async collectApplicationMetrics() {
     // Database metrics
     if (global.databaseService) {
       const dbMetrics = global.databaseService.getMetrics();

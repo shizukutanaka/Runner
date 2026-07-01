@@ -867,6 +867,11 @@ const holdMessage = async (holdData) => {
       durationSeconds,
       reasons
     };
+  } catch (error) {
+    logger.error('[MessageHold] Error holding message:', error);
+    throw error;
+  }
+};
 
 // コメント公開範囲設定
 const setCommentVisibility = asyncHandler(async (req, res) => {

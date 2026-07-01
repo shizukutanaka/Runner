@@ -21,9 +21,37 @@ const config = {
     helmetEnabled: process.env.HELMET_ENABLED !== 'false'
   },
 
+  // Server (HTTPサーバー/プロキシ関連)
+  server: {
+    port: parseInt(process.env.PORT) || 3000,
+    trustProxy: process.env.TRUST_PROXY === 'true'
+  },
+
+  // Session (express-session用)
+  session: {
+    name: process.env.SESSION_NAME || 'runner.sid',
+    secret: process.env.SESSION_SECRET,
+    rolling: process.env.SESSION_ROLLING === 'true',
+    cookie: {
+      secure: process.env.SESSION_COOKIE_SECURE === 'true',
+      httpOnly: process.env.SESSION_COOKIE_HTTPONLY !== 'false',
+      sameSite: process.env.SESSION_COOKIE_SAMESITE || 'strict',
+      maxAge: parseInt(process.env.SESSION_MAX_AGE) || 86400000,
+      domain: process.env.SESSION_COOKIE_DOMAIN || undefined
+    }
+  },
+
+  // Session Store (Redisセッションストアを使う場合)
+  sessionStore: {
+    type: process.env.SESSION_STORE || 'memory',
+    redisUrl: process.env.SESSION_REDIS_URL,
+    redisPrefix: process.env.SESSION_REDIS_PREFIX || 'runner:sess:'
+  },
+
   // Database
   database: {
     url: process.env.DATABASE_URL || 'sqlite:./data/database.db',
+    path: process.env.DATABASE_PATH || (process.env.DATABASE_URL || 'sqlite:./data/database.db').replace(/^sqlite:/, ''),
     poolSize: parseInt(process.env.DB_POOL_SIZE) || 5
   },
 
@@ -70,6 +98,14 @@ const config = {
     aiModeration: process.env.ENABLE_AI_MODERATION !== 'false',
     realTimeSync: process.env.ENABLE_REAL_TIME_SYNC !== 'false',
     analytics: process.env.ENABLE_ANALYTICS !== 'false'
+  },
+
+  // config.app.env のエイリアス（一部モジュールが config.environment を参照するため）
+  environment: process.env.NODE_ENV || 'development',
+
+  // 環境変数を直接取得するヘルパー（デフォルト値対応）
+  getEnv(key, defaultValue) {
+    return process.env[key] !== undefined ? process.env[key] : defaultValue;
   }
 };
 
