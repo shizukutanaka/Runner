@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const logger = require('../logger');
 const { asyncHandler } = require('../utils/asyncHandler');
+const { authenticateToken, requireRole } = require('../middleware/auth');
+
+router.use(authenticateToken);
+router.use(requireRole('moderator'));
 
 router.post('/comprehensive', asyncHandler(async (req, res) => {
   const { platform, channelId, comments = [] } = req.body;

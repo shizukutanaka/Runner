@@ -5,23 +5,35 @@
 const request = require('supertest');
 const express = require('express');
 const router = require('../../src/routes/communityInsights');
+const { generateToken } = require('../../src/middleware/auth');
 
 // テスト用のExpressアプリをセットアップ
 const app = express();
 app.use(express.json());
 app.use('/api/insights', router);
 
+const moderatorAuth = () => ({
+  Authorization: `Bearer ${generateToken({ id: 'moderator-tester', role: 'moderator' })}`
+});
+
 describe('Community Insights API', () => {
   describe('GET /api/insights/risk/:platform/:channelId', () => {
     it('returns risk evaluation for a channel', async () => {
       const res = await request(app)
         .get('/api/insights/risk/youtube/test-channel')
+        .set(moderatorAuth())
         .expect(200);
 
       expect(res.body).toHaveProperty('status', 200);
       expect(res.body).toHaveProperty('data');
       expect(res.body.data).toHaveProperty('riskScore');
       expect(res.body.data).toHaveProperty('level');
+    });
+
+    it('returns 401 without an auth token', async () => {
+      await request(app)
+        .get('/api/insights/risk/youtube/test-channel')
+        .expect(401);
     });
   });
 
@@ -36,6 +48,7 @@ describe('Community Insights API', () => {
 
       const res = await request(app)
         .post('/api/insights/ingest')
+        .set(moderatorAuth())
         .send(comment)
         .expect(200);
 
@@ -50,6 +63,7 @@ describe('Community Insights API', () => {
 
       const res = await request(app)
         .post('/api/insights/ingest')
+        .set(moderatorAuth())
         .send(comment)
         .expect(400);
 
@@ -64,6 +78,7 @@ describe('Community Insights API', () => {
 
       const res = await request(app)
         .post('/api/insights/ingest')
+        .set(moderatorAuth())
         .send(comment)
         .expect(400);
 
@@ -82,6 +97,7 @@ describe('Community Insights API', () => {
 
       const res = await request(app)
         .post('/api/insights/health-score')
+        .set(moderatorAuth())
         .send({ comments })
         .expect(200);
 
@@ -94,6 +110,7 @@ describe('Community Insights API', () => {
     it('returns 400 when comments is not an array', async () => {
       const res = await request(app)
         .post('/api/insights/health-score')
+        .set(moderatorAuth())
         .send({ comments: 'not an array' })
         .expect(400);
 
@@ -109,6 +126,7 @@ describe('Community Insights API', () => {
 
       const res = await request(app)
         .post('/api/insights/health-score')
+        .set(moderatorAuth())
         .send({ comments })
         .expect(400);
 
@@ -127,6 +145,7 @@ describe('Community Insights API', () => {
 
       const res = await request(app)
         .post('/api/insights/context-analysis')
+        .set(moderatorAuth())
         .send({ targetComment, contextComments })
         .expect(200);
 
@@ -139,6 +158,7 @@ describe('Community Insights API', () => {
     it('returns 400 when targetComment is missing', async () => {
       const res = await request(app)
         .post('/api/insights/context-analysis')
+        .set(moderatorAuth())
         .send({ contextComments: [] })
         .expect(400);
 
@@ -153,6 +173,7 @@ describe('Community Insights API', () => {
 
       const res = await request(app)
         .post('/api/insights/context-analysis')
+        .set(moderatorAuth())
         .send({ targetComment, contextComments })
         .expect(400);
 
@@ -165,6 +186,7 @@ describe('Community Insights API', () => {
     it('returns culture profile for a channel', async () => {
       const res = await request(app)
         .get('/api/insights/culture/youtube/test-channel')
+        .set(moderatorAuth())
         .expect(200);
 
       expect(res.body).toHaveProperty('status', 200);
@@ -177,6 +199,7 @@ describe('Community Insights API', () => {
     it('sets culture profile successfully', async () => {
       const res = await request(app)
         .put('/api/insights/culture/youtube/test-channel')
+        .set(moderatorAuth())
         .send({ cultureType: 'family' })
         .expect(200);
 
@@ -187,6 +210,7 @@ describe('Community Insights API', () => {
     it('returns 400 when cultureType is missing', async () => {
       const res = await request(app)
         .put('/api/insights/culture/youtube/test-channel')
+        .set(moderatorAuth())
         .send({})
         .expect(400);
 
@@ -196,6 +220,7 @@ describe('Community Insights API', () => {
     it('returns 400 for unknown culture type', async () => {
       const res = await request(app)
         .put('/api/insights/culture/youtube/test-channel')
+        .set(moderatorAuth())
         .send({ cultureType: 'unknown_type' })
         .expect(400);
 
@@ -207,6 +232,7 @@ describe('Community Insights API', () => {
     it('returns list of culture presets', async () => {
       const res = await request(app)
         .get('/api/insights/culture-presets')
+        .set(moderatorAuth())
         .expect(200);
 
       expect(res.body).toHaveProperty('status', 200);
@@ -219,6 +245,7 @@ describe('Community Insights API', () => {
     it('adjusts score based on culture profile', async () => {
       const res = await request(app)
         .post('/api/insights/culture-adjust')
+        .set(moderatorAuth())
         .send({
           platform: 'youtube',
           channelId: 'test',
@@ -234,6 +261,7 @@ describe('Community Insights API', () => {
     it('returns 400 when rawScore is not a number', async () => {
       const res = await request(app)
         .post('/api/insights/culture-adjust')
+        .set(moderatorAuth())
         .send({
           platform: 'youtube',
           rawScore: 'not a number',
@@ -248,6 +276,7 @@ describe('Community Insights API', () => {
     it('returns silent departure analysis', async () => {
       const res = await request(app)
         .get('/api/insights/silent-departure/youtube/test-channel')
+        .set(moderatorAuth())
         .expect(200);
 
       expect(res.body).toHaveProperty('status', 200);
@@ -259,6 +288,7 @@ describe('Community Insights API', () => {
     it('records user activity successfully', async () => {
       const res = await request(app)
         .post('/api/insights/record-activity')
+        .set(moderatorAuth())
         .send({
           platform: 'youtube',
           userId: 'user123',
@@ -273,6 +303,7 @@ describe('Community Insights API', () => {
     it('returns 400 when platform is missing', async () => {
       const res = await request(app)
         .post('/api/insights/record-activity')
+        .set(moderatorAuth())
         .send({ userId: 'user123' })
         .expect(400);
 
@@ -282,6 +313,7 @@ describe('Community Insights API', () => {
     it('returns 400 when userId is missing', async () => {
       const res = await request(app)
         .post('/api/insights/record-activity')
+        .set(moderatorAuth())
         .send({ platform: 'youtube' })
         .expect(400);
 
@@ -298,6 +330,7 @@ describe('Community Insights API', () => {
 
       const res = await request(app)
         .post('/api/insights/triage')
+        .set(moderatorAuth())
         .send({ pendingComments })
         .expect(200);
 
@@ -309,6 +342,7 @@ describe('Community Insights API', () => {
     it('returns 400 when pendingComments is not an array', async () => {
       const res = await request(app)
         .post('/api/insights/triage')
+        .set(moderatorAuth())
         .send({ pendingComments: 'not an array' })
         .expect(400);
 
@@ -323,6 +357,7 @@ describe('Community Insights API', () => {
 
       const res = await request(app)
         .post('/api/insights/triage')
+        .set(moderatorAuth())
         .send({ pendingComments })
         .expect(400);
 

@@ -834,22 +834,14 @@ const holdMessage = async (holdData) => {
     const holdDurations = { low_risk: 300, medium_risk: 1800, high_risk: 3600 };
     const durationSeconds = holdDurations[`${holdLevel}_risk`] || holdDurations.medium_risk;
     const holdUntil = new Date(Date.now() + durationSeconds * 1000).toISOString();
+    const messageId = `msg_${Date.now()}`;
 
-    // 実際の実装ではデータベースに保存
-    const holdRecord = {
-      id: Date.now(), // 実際の実装ではDBのAUTO_INCREMENT
-      messageId: `msg_${Date.now()}`,
-      content,
-      user,
-      platform,
-      holdReason,
-      riskScore: moderationResult.score,
-      aiAnalysis: JSON.stringify(moderationResult),
-      holdUntil,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      reasons: JSON.stringify(reasons)
-    };
+    const insertResult = await dbRun(
+      `INSERT INTO held_messages
+        (message_id, content, user, platform, hold_reason, risk_score, hold_level, reasons, status, hold_until)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      [messageId, content, user, platform, holdReason, moderationResult.score, holdLevel, JSON.stringify(reasons), holdUntil]
+    );
 
     // ログ記録
     logger.info('[MessageHold] Message held for moderation', {
@@ -861,7 +853,7 @@ const holdMessage = async (holdData) => {
     });
 
     return {
-      holdId: holdRecord.id,
+      holdId: insertResult.lastID,
       holdUntil,
       holdLevel,
       durationSeconds,

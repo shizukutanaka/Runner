@@ -1,4 +1,16 @@
 const moderationService = require('../services/moderationService');
+const db = require('../db');
+const logger = require('../logger');
+
+const dbGet = (sql, params = []) => new Promise((resolve, reject) => {
+  db.get(sql, params, (err, row) => { if (err) reject(err); else resolve(row); });
+});
+const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
+  db.all(sql, params, (err, rows) => { if (err) reject(err); else resolve(rows || []); });
+});
+const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
+  db.run(sql, params, function(err) { if (err) reject(err); else resolve({ lastID: this.lastID, changes: this.changes }); });
+});
 
 exports.moderateComment = async (req, res, next) => {
   const { content, platform, user, timestamp } = req.body;
@@ -1710,65 +1722,62 @@ exports.updateMessageHoldSettings = (req, res, next) => {
 };
 
 // 保留メッセージの取得（キュー表示）
-exports.getHeldMessages = (req, res, next) => {
+const HELD_MESSAGE_SORT_COLUMNS = new Set(['created_at', 'risk_score', 'hold_until', 'status']);
+
+const mapHeldMessageRow = (row) => ({
+  id: row.id,
+  messageId: row.message_id,
+  content: row.content,
+  user: row.user,
+  platform: row.platform,
+  holdReason: row.hold_reason,
+  riskScore: row.risk_score,
+  holdLevel: row.hold_level,
+  holdUntil: row.hold_until,
+  status: row.status,
+  createdAt: row.created_at,
+  processedAt: row.processed_at,
+  processedBy: row.processed_by,
+  reasons: row.reasons ? JSON.parse(row.reasons) : []
+});
+
+exports.getHeldMessages = async (req, res, next) => {
   try {
     const { status = 'pending', limit = 50, offset = 0, sortBy = 'created_at', sortOrder = 'desc' } = req.query;
 
-    // 実際の実装ではデータベースから保留メッセージを取得
-    const mockHeldMessages = [
-      {
-        id: 1,
-        messageId: 'msg_123',
-        content: 'Check out this amazing deal! https://suspicious-site.com/prize',
-        user: 'suspicious_user',
-        platform: 'YouTube',
-        holdReason: 'multiple_links',
-        riskScore: 0.75,
-        holdLevel: 'medium',
-        holdUntil: new Date(Date.now() + 1800000).toISOString(),
-        status: 'pending',
-        createdAt: new Date(Date.now() - 300000).toISOString(),
-        reasons: [
-          { type: 'multiple_links', severity: 'medium', linkCount: 2, threshold: 2 },
-          { type: 'ai_score', severity: 'high', score: 0.75, threshold: 0.6 }
-        ]
-      },
-      {
-        id: 2,
-        messageId: 'msg_124',
-        content: 'URGENT: You won $1,000,000! Click here to claim!',
-        user: 'spam_user',
-        platform: 'Twitch',
-        holdReason: 'suspicious_keywords',
-        riskScore: 0.85,
-        holdLevel: 'high',
-        holdUntil: new Date(Date.now() + 3600000).toISOString(),
-        status: 'pending',
-        createdAt: new Date(Date.now() - 600000).toISOString(),
-        reasons: [
-          { type: 'suspicious_keywords', severity: 'medium', keywords: ['urgent', 'won', 'claim'] },
-          { type: 'ai_score', severity: 'high', score: 0.85, threshold: 0.6 }
-        ]
-      }
-    ];
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+    const safeOffset = Math.max(parseInt(offset, 10) || 0, 0);
+    const sortColumn = HELD_MESSAGE_SORT_COLUMNS.has(sortBy) ? sortBy : 'created_at';
+    const sortDirection = sortOrder === 'asc' ? 'ASC' : 'DESC';
 
-    const filteredMessages = mockHeldMessages.filter(msg =>
-      status === 'all' || msg.status === status
+    const whereClause = status === 'all' ? '' : 'WHERE status = ?';
+    const whereParams = status === 'all' ? [] : [status];
+
+    const rows = await dbAll(
+      `SELECT * FROM held_messages ${whereClause} ORDER BY ${sortColumn} ${sortDirection} LIMIT ? OFFSET ?`,
+      [...whereParams, safeLimit, safeOffset]
     );
+
+    const countsByStatus = await dbAll(
+      'SELECT status, COUNT(*) as cnt FROM held_messages GROUP BY status'
+    );
+    const counts = Object.fromEntries(countsByStatus.map(r => [r.status, r.cnt]));
+
+    const messages = rows.map(mapHeldMessageRow);
 
     res.json({
       status: 200,
       data: {
-        messages: filteredMessages,
-        total: filteredMessages.length,
-        pending: filteredMessages.filter(m => m.status === 'pending').length,
-        approved: filteredMessages.filter(m => m.status === 'approved').length,
-        rejected: filteredMessages.filter(m => m.status === 'rejected').length,
-        expired: filteredMessages.filter(m => m.status === 'expired').length,
+        messages,
+        total: messages.length,
+        pending: counts.pending || 0,
+        approved: counts.approved || 0,
+        rejected: counts.rejected || 0,
+        expired: counts.expired || 0,
         pagination: {
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          hasMore: filteredMessages.length === parseInt(limit)
+          limit: safeLimit,
+          offset: safeOffset,
+          hasMore: messages.length === safeLimit
         }
       },
       message: '保留メッセージを取得しました'
@@ -1779,7 +1788,7 @@ exports.getHeldMessages = (req, res, next) => {
 };
 
 // 保留メッセージに対するアクション（承認/拒否）
-exports.processHeldMessage = (req, res, next) => {
+exports.processHeldMessage = async (req, res, next) => {
   try {
     const { holdId } = req.params;
     const { action, reason, notes, moderator } = req.body;
@@ -1789,20 +1798,44 @@ exports.processHeldMessage = (req, res, next) => {
       return next({ status: 400, message: 'actionはapprove, reject, escalateのいずれかで指定してください' });
     }
 
-    // 実際の実装ではデータベースを更新し、アクションを記録
-    const processedMessage = {
-      holdId: parseInt(holdId),
-      action,
-      reason: reason || '',
-      notes: notes || '',
-      moderator: moderator || 'unknown',
-      processedAt: new Date().toISOString(),
-      processingTime: Math.random() * 5000 + 1000 // 1-6秒
-    };
+    const held = await dbGet('SELECT * FROM held_messages WHERE id = ?', [holdId]);
+    if (!held) {
+      return next({ status: 404, message: '保留メッセージが見つかりません' });
+    }
+    if (held.status !== 'pending') {
+      return next({ status: 409, message: 'このメッセージは既に処理済みです' });
+    }
+
+    const newStatus = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'escalated';
+    const processedAt = new Date().toISOString();
+    const moderatorId = moderator || req.user?.id || 'unknown';
+
+    if (action === 'approve') {
+      const { v4: uuidv4 } = require('uuid');
+      await dbRun(
+        `INSERT INTO comments (id, platform, user, content, timestamp, status, moderator)
+         VALUES (?, ?, ?, ?, ?, 'active', ?)`,
+        [uuidv4(), held.platform, held.user, held.content, processedAt, moderatorId]
+      );
+    }
+
+    await dbRun(
+      `UPDATE held_messages
+       SET status = ?, processed_at = ?, processed_by = ?, process_reason = ?, process_notes = ?
+       WHERE id = ?`,
+      [newStatus, processedAt, moderatorId, reason || '', notes || '', holdId]
+    );
 
     res.json({
       status: 200,
-      data: processedMessage,
+      data: {
+        holdId: parseInt(holdId, 10),
+        action,
+        reason: reason || '',
+        notes: notes || '',
+        moderator: moderatorId,
+        processedAt
+      },
       message: `メッセージを${action === 'approve' ? '承認' : action === 'reject' ? '拒否' : 'エスカレート'}しました`
     });
   } catch (err) {
@@ -1811,7 +1844,7 @@ exports.processHeldMessage = (req, res, next) => {
 };
 
 // 保留メッセージの一括処理
-exports.bulkProcessHeldMessages = (req, res, next) => {
+exports.bulkProcessHeldMessages = async (req, res, next) => {
   try {
     const { holdIds, action, reason, notes, moderator } = req.body;
 
@@ -1819,26 +1852,53 @@ exports.bulkProcessHeldMessages = (req, res, next) => {
     if (!Array.isArray(holdIds) || holdIds.length === 0) {
       return next({ status: 400, message: 'holdIdsは配列で指定してください' });
     }
+    if (holdIds.length > 200) {
+      return next({ status: 400, message: 'holdIdsは最大200件までです' });
+    }
 
     if (!['approve', 'reject'].includes(action)) {
       return next({ status: 400, message: 'actionはapproveまたはrejectで指定してください' });
     }
 
-    // 実際の実装では一括処理を実行
-    const result = {
-      processed: holdIds.length,
-      action,
-      reason: reason || '',
-      notes: notes || '',
-      moderator: moderator || 'unknown',
-      processedAt: new Date().toISOString(),
-      processingTime: Math.random() * 10000 + 5000 // 5-15秒
-    };
+    const newStatus = action === 'approve' ? 'approved' : 'rejected';
+    const processedAt = new Date().toISOString();
+    const moderatorId = moderator || req.user?.id || 'unknown';
+    const { v4: uuidv4 } = require('uuid');
+
+    let processed = 0;
+    for (const holdId of holdIds) {
+      const held = await dbGet('SELECT * FROM held_messages WHERE id = ? AND status = ?', [holdId, 'pending']);
+      if (!held) continue;
+
+      if (action === 'approve') {
+        await dbRun(
+          `INSERT INTO comments (id, platform, user, content, timestamp, status, moderator)
+           VALUES (?, ?, ?, ?, ?, 'active', ?)`,
+          [uuidv4(), held.platform, held.user, held.content, processedAt, moderatorId]
+        );
+      }
+
+      await dbRun(
+        `UPDATE held_messages
+         SET status = ?, processed_at = ?, processed_by = ?, process_reason = ?, process_notes = ?
+         WHERE id = ?`,
+        [newStatus, processedAt, moderatorId, reason || '', notes || '', holdId]
+      );
+      processed++;
+    }
 
     res.json({
       status: 200,
-      data: result,
-      message: `${holdIds.length}件のメッセージを${action === 'approve' ? '承認' : '拒否'}しました`
+      data: {
+        processed,
+        requested: holdIds.length,
+        action,
+        reason: reason || '',
+        notes: notes || '',
+        moderator: moderatorId,
+        processedAt
+      },
+      message: `${processed}件のメッセージを${action === 'approve' ? '承認' : '拒否'}しました`
     });
   } catch (err) {
     next({ status: 500, message: '保留メッセージの一括処理中にエラーが発生しました', details: err });
@@ -1846,61 +1906,48 @@ exports.bulkProcessHeldMessages = (req, res, next) => {
 };
 
 // 保留メッセージの統計取得
-exports.getMessageHoldStats = (req, res, next) => {
+exports.getMessageHoldStats = async (req, res, next) => {
   try {
     const { period = '24h' } = req.query;
+    const periodHours = { '1h': 1, '24h': 24, '7d': 168, '30d': 720 }[period] || 24;
+    const since = new Date(Date.now() - periodHours * 3600000).toISOString();
 
-    // 実際の実装ではデータベースから統計を取得
-    const stats = {
-      period,
-      queueStatus: {
-        total: 156,
-        pending: 89,
-        approved: 34,
-        rejected: 23,
-        expired: 10
-      },
-      holdReasons: {
-        ai_score: 67,
-        suspicious_keywords: 45,
-        multiple_links: 23,
-        repeated_chars: 12,
-        negative_sentiment: 9
-      },
-      processingStats: {
-        averageProcessingTime: 4500, // ms
-        autoApproved: 12,
-        autoRejected: 8,
-        manualReviews: 69,
-        approvalRate: 0.76
-      },
-      riskLevels: {
-        low: 23,
-        medium: 45,
-        high: 21
-      },
-      recentActivity: [
-        {
-          action: 'approved',
-          count: 5,
-          timestamp: new Date(Date.now() - 3600000).toISOString()
-        },
-        {
-          action: 'rejected',
-          count: 3,
-          timestamp: new Date(Date.now() - 7200000).toISOString()
-        }
-      ],
-      performance: {
-        queueGrowthRate: 1.2, // per hour
-        averageHoldTime: 1800, // seconds
-        moderatorEfficiency: 0.85 // messages per minute
-      }
-    };
+    const [statusRows, reasonRows, levelRows, avgRow] = await Promise.all([
+      dbAll('SELECT status, COUNT(*) as cnt FROM held_messages WHERE created_at >= ? GROUP BY status', [since]),
+      dbAll('SELECT hold_reason, COUNT(*) as cnt FROM held_messages WHERE created_at >= ? GROUP BY hold_reason', [since]),
+      dbAll('SELECT hold_level, COUNT(*) as cnt FROM held_messages WHERE created_at >= ? GROUP BY hold_level', [since]),
+      dbGet(
+        `SELECT AVG((julianday(processed_at) - julianday(created_at)) * 86400000) as avgMs
+         FROM held_messages WHERE processed_at IS NOT NULL AND created_at >= ?`,
+        [since]
+      )
+    ]);
+
+    const queueStatus = { total: 0, pending: 0, approved: 0, rejected: 0, escalated: 0, expired: 0 };
+    statusRows.forEach(r => { queueStatus[r.status] = r.cnt; queueStatus.total += r.cnt; });
+
+    const holdReasons = {};
+    reasonRows.forEach(r => { holdReasons[r.hold_reason || 'unknown'] = r.cnt; });
+
+    const riskLevels = { low: 0, medium: 0, high: 0 };
+    levelRows.forEach(r => { if (r.hold_level in riskLevels) riskLevels[r.hold_level] = r.cnt; });
+
+    const approvalRate = (queueStatus.approved + queueStatus.rejected) > 0
+      ? queueStatus.approved / (queueStatus.approved + queueStatus.rejected)
+      : null;
 
     res.json({
       status: 200,
-      data: stats,
+      data: {
+        period,
+        queueStatus,
+        holdReasons,
+        riskLevels,
+        processingStats: {
+          averageProcessingTimeMs: avgRow?.avgMs != null ? Math.round(avgRow.avgMs) : null,
+          approvalRate
+        }
+      },
       message: 'メッセージ保留統計を取得しました'
     });
   } catch (err) {

@@ -18,6 +18,10 @@ const culture   = require('../services/creatorCultureService');
 const departure = require('../services/silentDepartureDetector');
 const triage    = require('../services/moderatorTriageService');
 const logger    = require('../logger');
+const { authenticateToken, requireRole } = require('../middleware/auth');
+
+router.use(authenticateToken);
+router.use(requireRole('moderator'));
 
 // ─────────────────────────────────────────
 // 1. 炎上リスクスコア取得

@@ -3,6 +3,10 @@ const router = express.Router();
 const logger = require('../logger');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { NotFoundError } = require('../utils/validation');
+const { authenticateToken, requireRole } = require('../middleware/auth');
+
+router.use(authenticateToken);
+router.use(requireRole('moderator'));
 
 router.get('/channels/:channelId', asyncHandler(async (req, res) => {
   const { channelId } = req.params;

@@ -326,6 +326,28 @@ const initializeDB = async () => {
       FOREIGN KEY (comment_id) REFERENCES comments(id)
     );
 
+    CREATE TABLE IF NOT EXISTS held_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id TEXT,
+      content TEXT NOT NULL,
+      user TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      hold_reason TEXT,
+      risk_score REAL,
+      hold_level TEXT,
+      reasons TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      hold_until DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      processed_at DATETIME,
+      processed_by TEXT,
+      process_reason TEXT,
+      process_notes TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_held_messages_status ON held_messages(status);
+    CREATE INDEX IF NOT EXISTS idx_held_messages_created_at ON held_messages(created_at DESC);
+
     CREATE INDEX IF NOT EXISTS idx_analytics_captured_at ON analytics_snapshots(captured_at DESC);
   `;
 
