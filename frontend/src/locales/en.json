@@ -92,6 +92,7 @@
   "common_cancel": "Cancel",
   "settings_title": "Settings Management",
   "settings_load_error": "Failed to load settings.",
+  "settings_forbidden_error": "Managing settings requires administrator privileges. Please ask an administrator to grant you access.",
   "settings_save_error": "Failed to save settings.",
   "settings_tab_moderation": "Moderation",
   "settings_tab_ai": "AI",

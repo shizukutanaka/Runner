@@ -35,65 +35,75 @@ import {
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../hooks/useAuth';
+import { getSettings, updateSettings as persistSettings } from '../api/settings';
 
 export default function SettingsPanel({ platform = 'YouTube' }) {
   const theme = useTheme();
   const { t } = useTranslation();
+  const { account } = useAuth();
   const [activeTab, setActiveTab] = useState('moderation');
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
 
+  // UI側のデフォルト値（バックエンドに未保存のカテゴリを埋める）
+  const UI_DEFAULT_SETTINGS = {
+    moderation: {
+      commentMaxLength: 500,
+      autoTranslation: {
+        enabled: false,
+        targetLanguage: 'ja',
+        sourceLanguage: 'auto'
+      },
+      pinLimit: 10,
+      autoDeleteTime: 24,
+      autoNGWord: {
+        enabled: false,
+        threshold: 0.8,
+        minOccurrences: 3
+      }
+    },
+    ai: {
+      individualThresholds: {},
+      modelVersion: 'gpt-3.5-turbo'
+    },
+    ui: {
+      theme: 'light',
+      primaryColor: '#2563eb',
+      secondaryColor: '#7c3aed'
+    },
+    notifications: {
+      enabled: true,
+      email: true,
+      push: true,
+      sound: true
+    },
+    security: {
+      banHistory: {},
+      userMuteSettings: {},
+      userCommentColors: {}
+    }
+  };
+
   // 設定の初期化
   useEffect(() => {
-    loadSettings();
-  }, [platform]);
+    if (account?.id) {
+      loadSettings();
+    }
+  }, [platform, account?.id]);
 
   const loadSettings = async () => {
     setLoading(true);
+    setError(null);
     try {
-      // 実際の実装ではAPIから設定を取得
-      const defaultSettings = {
-        moderation: {
-          commentMaxLength: 500,
-          autoTranslation: {
-            enabled: false,
-            targetLanguage: 'ja',
-            sourceLanguage: 'auto'
-          },
-          pinLimit: 10,
-          autoDeleteTime: 24,
-          autoNGWord: {
-            enabled: false,
-            threshold: 0.8,
-            minOccurrences: 3
-          }
-        },
-        ai: {
-          individualThresholds: {},
-          modelVersion: 'gpt-3.5-turbo'
-        },
-        ui: {
-          theme: 'light',
-          primaryColor: '#2563eb',
-          secondaryColor: '#7c3aed'
-        },
-        notifications: {
-          enabled: true,
-          email: true,
-          push: true,
-          sound: true
-        },
-        security: {
-          banHistory: {},
-          userMuteSettings: {},
-          userCommentColors: {}
-        }
-      };
-      setSettings(defaultSettings);
+      const stored = await getSettings(account.id);
+      // バックエンドに未保存のカテゴリはUI側デフォルトで補完
+      setSettings({ ...UI_DEFAULT_SETTINGS, ...stored });
     } catch (err) {
-      setError('settings_load_error');
+      setError(err?.status === 403 ? 'settings_forbidden_error' : 'settings_load_error');
+      setSettings(UI_DEFAULT_SETTINGS);
     } finally {
       setLoading(false);
     }
@@ -101,11 +111,13 @@ export default function SettingsPanel({ platform = 'YouTube' }) {
 
   const handleSave = async (category, data) => {
     setLoading(true);
+    setError(null);
     try {
-      // 実際の実装ではAPIに保存
+      const mergedCategory = { ...settings[category], ...data };
+      await persistSettings(account.id, { [category]: mergedCategory });
       setSettings(prev => ({
         ...prev,
-        [category]: { ...prev[category], ...data }
+        [category]: mergedCategory
       }));
       setSuccess(true);
     } catch (err) {

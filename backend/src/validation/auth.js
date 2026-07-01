@@ -29,3 +29,7 @@ exports.changePassword = Joi.object({
 exports.verify2FA = Joi.object({
   code: Joi.string().length(6).pattern(/^\d+$/).required()
 });
+
+exports.setRole = Joi.object({
+  role: Joi.string().valid('moderator', 'admin').required()
+});

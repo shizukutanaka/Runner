@@ -84,6 +84,7 @@
   "common_cancel": "キャンセル",
   "settings_title": "設定管理",
   "settings_load_error": "設定の取得に失敗しました。",
+  "settings_forbidden_error": "設定の管理には管理者権限が必要です。管理者に権限の付与を依頼してください。",
   "settings_save_error": "設定の保存に失敗しました。",
   "settings_tab_moderation": "モデレーション",
   "settings_tab_ai": "AI",

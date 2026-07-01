@@ -17,6 +17,9 @@ const dbGet = (sql, params = []) => new Promise((resolve, reject) => {
 const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
   db.run(sql, params, function(err) { if (err) reject(err); else resolve({ lastID: this.lastID, changes: this.changes }); });
 });
+const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
+  db.all(sql, params, (err, rows) => { if (err) reject(err); else resolve(rows || []); });
+});
 
 const sanitizeAccount = (account) => ({
   id: account.id,
@@ -45,10 +48,14 @@ exports.register = async (req, res, next) => {
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const id = uuidv4();
 
+    // 最初に登録されたアカウントは管理者にする（他に管理者を作成する手段がないため）
+    const { cnt } = await dbGet('SELECT COUNT(*) as cnt FROM accounts');
+    const role = cnt === 0 ? 'admin' : 'moderator';
+
     await dbRun(
       `INSERT INTO accounts (id, username, email, password_hash, role, status)
-       VALUES (?, ?, ?, ?, 'moderator', 'active')`,
-      [id, username, email, passwordHash]
+       VALUES (?, ?, ?, ?, ?, 'active')`,
+      [id, username, email, passwordHash, role]
     );
 
     const account = await dbGet('SELECT * FROM accounts WHERE id = ?', [id]);
@@ -107,6 +114,42 @@ exports.login = async (req, res, next) => {
   } catch (err) {
     logger.error('[Auth] Login failed', { error: err.message });
     next({ status: 500, message: 'ログイン処理中にエラーが発生しました', details: err });
+  }
+};
+
+// アカウント一覧取得（管理者用）
+exports.listAccounts = async (req, res, next) => {
+  try {
+    const accounts = await dbAll('SELECT * FROM accounts ORDER BY created_at ASC');
+    res.json({ success: true, accounts: accounts.map(sanitizeAccount) });
+  } catch (err) {
+    logger.error('[Auth] Listing accounts failed', { error: err.message });
+    next({ status: 500, message: 'アカウント一覧の取得中にエラーが発生しました', details: err });
+  }
+};
+
+// アカウントの役割変更（管理者用）
+exports.setAccountRole = async (req, res, next) => {
+  const { id } = req.params;
+  const { role } = req.body;
+
+  if (!['moderator', 'admin'].includes(role)) {
+    return next({ status: 400, message: 'roleはmoderatorまたはadminを指定してください' });
+  }
+
+  try {
+    const account = await dbGet('SELECT id FROM accounts WHERE id = ?', [id]);
+    if (!account) {
+      return next({ status: 404, message: 'アカウントが見つかりません' });
+    }
+
+    await dbRun('UPDATE accounts SET role = ? WHERE id = ?', [role, id]);
+    logger.info('[Auth] Account role changed', { id, role, changedBy: req.user.id });
+
+    res.json({ success: true, message: 'ロールを更新しました' });
+  } catch (err) {
+    logger.error('[Auth] Setting account role failed', { error: err.message });
+    next({ status: 500, message: 'ロール更新中にエラーが発生しました', details: err });
   }
 };
 

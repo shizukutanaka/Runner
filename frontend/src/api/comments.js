@@ -36,7 +36,7 @@ export class APIError extends Error {
 }
 
 // エラーハンドリングヘルパー
-const handleAPIError = (error, defaultMessage = 'API エラーが発生しました') => {
+export const handleAPIError = (error, defaultMessage = 'API エラーが発生しました') => {
   if (error.response) {
     // サーバーからのエラーレスポンス
     const { status, data } = error.response;

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { APIError, handleAPIError } from './comments';
+import { handleAPIError } from './comments';
 
 // API ベースURL設定（Vite環境変数）
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -7,7 +7,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 // 設定取得
 export const getSettings = async (userId) => {
   try {
-    const res = await axios.get(`${API_BASE_URL}/settings/${userId}`);
+    const res = await axios.get(`${API_BASE_URL}/settings/user/${userId}`);
     return res.data.data;
   } catch (error) {
     handleAPIError(error, '設定の取得に失敗しました');
@@ -17,7 +17,7 @@ export const getSettings = async (userId) => {
 // 設定更新
 export const updateSettings = async (userId, settings) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/${userId}`, settings);
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}`, settings);
     return res.data.data;
   } catch (error) {
     handleAPIError(error, '設定の更新に失敗しました');
@@ -27,7 +27,7 @@ export const updateSettings = async (userId, settings) => {
 // テーマ設定
 export const setTheme = async (userId, theme) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/theme`, { theme });
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/theme`, { theme });
     return res.data.data;
   } catch (error) {
     handleAPIError(error, 'テーマ設定の更新に失敗しました');
@@ -37,7 +37,7 @@ export const setTheme = async (userId, theme) => {
 // 通知設定
 export const setNotifications = async (userId, notificationSettings) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/notifications`, notificationSettings);
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/notifications`, notificationSettings);
     return res.data.data;
   } catch (error) {
     handleAPIError(error, '通知設定の更新に失敗しました');
@@ -47,7 +47,7 @@ export const setNotifications = async (userId, notificationSettings) => {
 // 言語設定
 export const setLanguage = async (userId, language) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/default-language`, { language });
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/default-language`, { language });
     return res.data.data;
   } catch (error) {
     handleAPIError(error, '言語設定の更新に失敗しました');
@@ -57,7 +57,7 @@ export const setLanguage = async (userId, language) => {
 // タイムゾーン設定
 export const setTimezone = async (userId, timezone) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/timezone`, { timezone });
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/timezone`, { timezone });
     return res.data.data;
   } catch (error) {
     handleAPIError(error, 'タイムゾーン設定の更新に失敗しました');
@@ -67,7 +67,7 @@ export const setTimezone = async (userId, timezone) => {
 // UIカスタマイズ設定
 export const setUICustomization = async (userId, customization) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/ui-custom`, customization);
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/ui-custom`, customization);
     return res.data.data;
   } catch (error) {
     handleAPIError(error, 'UIカスタマイズ設定の更新に失敗しました');
@@ -77,7 +77,7 @@ export const setUICustomization = async (userId, customization) => {
 // 自動バックアップ設定
 export const setAutoBackup = async (userId, backupSettings) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/auto-backup`, backupSettings);
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/auto-backup`, backupSettings);
     return res.data.data;
   } catch (error) {
     handleAPIError(error, '自動バックアップ設定の更新に失敗しました');
@@ -87,7 +87,7 @@ export const setAutoBackup = async (userId, backupSettings) => {
 // 外部連携設定
 export const setExternalIntegration = async (userId, service, credentials) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/external-integration`, {
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/external-integration`, {
       service,
       action: 'connect',
       credentials
@@ -101,7 +101,7 @@ export const setExternalIntegration = async (userId, service, credentials) => {
 // APIキー管理
 export const manageApiKeys = async (userId, action, keyData) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/api-keys`, {
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/api-keys`, {
       action,
       ...keyData
     });
@@ -112,7 +112,7 @@ export const manageApiKeys = async (userId, action, keyData) => {
 };
 
 // 設定エクスポート
-export const exportSettings = async (userId, format = 'json', includeSensitive = false) => {
+export const exportSettings = async (format = 'json', includeSensitive = false) => {
   try {
     const res = await axios.get(`${API_BASE_URL}/settings/export`, {
       params: { format, includeSensitive },
@@ -125,7 +125,7 @@ export const exportSettings = async (userId, format = 'json', includeSensitive =
 };
 
 // 設定インポート
-export const importSettings = async (userId, settingsData, merge = true) => {
+export const importSettings = async (settingsData, merge = true) => {
   try {
     const res = await axios.post(`${API_BASE_URL}/settings/import`, {
       settings: settingsData,
@@ -140,7 +140,7 @@ export const importSettings = async (userId, settingsData, merge = true) => {
 // 管理者メール設定
 export const setAdminEmail = async (userId, email) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/admin-email`, { email });
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/admin-email`, { email });
     return res.data.data;
   } catch (error) {
     handleAPIError(error, '管理者メール設定の更新に失敗しました');
@@ -167,20 +167,10 @@ export const getTerms = async () => {
   }
 };
 
-// ヘルプ取得
-export const getHelp = async () => {
-  try {
-    const res = await axios.get(`${API_BASE_URL}/settings/help`);
-    return res.data.data;
-  } catch (error) {
-    handleAPIError(error, 'ヘルプの取得に失敗しました');
-  }
-};
-
 // コメント最大文字数設定
 export const setCommentMaxLength = async (userId, maxLength) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/comment-max-length`, { maxLength });
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/comment-max-length`, { maxLength });
     return res.data.data;
   } catch (error) {
     handleAPIError(error, 'コメント最大文字数設定の更新に失敗しました');
@@ -190,7 +180,7 @@ export const setCommentMaxLength = async (userId, maxLength) => {
 // コメント自動翻訳設定
 export const setAutoTranslation = async (userId, translationSettings) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/auto-translation`, translationSettings);
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/auto-translation`, translationSettings);
     return res.data.data;
   } catch (error) {
     handleAPIError(error, '自動翻訳設定の更新に失敗しました');
@@ -200,7 +190,7 @@ export const setAutoTranslation = async (userId, translationSettings) => {
 // コメントピン固定数設定
 export const setPinLimit = async (userId, limit) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/pin-limit`, { limit });
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/pin-limit`, { limit });
     return res.data.data;
   } catch (error) {
     handleAPIError(error, 'ピン固定数設定の更新に失敗しました');
@@ -210,7 +200,7 @@ export const setPinLimit = async (userId, limit) => {
 // コメント自動削除時間設定
 export const setAutoDeleteTime = async (userId, hours) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/auto-delete-time`, { hours });
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/auto-delete-time`, { hours });
     return res.data.data;
   } catch (error) {
     handleAPIError(error, '自動削除時間設定の更新に失敗しました');
@@ -220,7 +210,7 @@ export const setAutoDeleteTime = async (userId, hours) => {
 // NGワード自動追加設定
 export const setAutoNGWordAddition = async (userId, ngWordSettings) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/auto-ng-word`, ngWordSettings);
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/auto-ng-word`, ngWordSettings);
     return res.data.data;
   } catch (error) {
     handleAPIError(error, 'NGワード自動追加設定の更新に失敗しました');
@@ -230,7 +220,7 @@ export const setAutoNGWordAddition = async (userId, ngWordSettings) => {
 // AI閾値個別設定
 export const setIndividualAIThreshold = async (userId, commentId, threshold) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/individual-ai-threshold`, {
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/individual-ai-threshold`, {
       commentId,
       threshold
     });
@@ -243,7 +233,7 @@ export const setIndividualAIThreshold = async (userId, commentId, threshold) => 
 // ユーザーごとのテーマ設定
 export const setUserTheme = async (userId, themeSettings) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/user-theme`, themeSettings);
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/user-theme`, themeSettings);
     return res.data.data;
   } catch (error) {
     handleAPIError(error, 'ユーザーごとのテーマ設定の更新に失敗しました');
@@ -253,7 +243,7 @@ export const setUserTheme = async (userId, themeSettings) => {
 // ユーザーごとのBAN理由記録
 export const setBanReason = async (userId, targetUserId, reason, duration, moderatorNotes) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/ban-reason`, {
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/ban-reason`, {
       targetUserId,
       reason,
       duration,
@@ -268,7 +258,7 @@ export const setBanReason = async (userId, targetUserId, reason, duration, moder
 // ユーザーごとのミュート期間設定
 export const setUserMuteDuration = async (userId, targetUserId, duration, reason) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/user-mute-duration`, {
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/user-mute-duration`, {
       targetUserId,
       duration,
       reason
@@ -282,7 +272,7 @@ export const setUserMuteDuration = async (userId, targetUserId, duration, reason
 // ユーザーごとのコメント色設定
 export const setUserCommentColor = async (userId, targetUserId, color, applyTo) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/user-comment-color`, {
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/user-comment-color`, {
       targetUserId,
       color,
       applyTo
@@ -296,7 +286,7 @@ export const setUserCommentColor = async (userId, targetUserId, color, applyTo) 
 // コメントごとのリアクション設定
 export const setCommentReaction = async (userId, commentId, reactionType) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/comment-reaction`, {
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/comment-reaction`, {
       commentId,
       reactionType
     });
@@ -309,7 +299,7 @@ export const setCommentReaction = async (userId, commentId, reactionType) => {
 // コメントごとのタグ付与
 export const setCommentTag = async (userId, commentId, tag) => {
   try {
-    const res = await axios.put(`${API_BASE_URL}/settings/comment-tag`, {
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/comment-tag`, {
       commentId,
       tag
     });
