@@ -78,4 +78,17 @@ router.get('/health/check/:name', requireRole('moderator'), async (req, res) => 
   }
 });
 
+// OpenAI コスト統計 (admin only)
+router.get('/ai/costs', requireRole('admin'), (req, res) => {
+  try {
+    const openaiService = require('../services/openaiService');
+    res.json({
+      success: true,
+      data: openaiService.getCostStats()
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get AI cost stats', message: error.message });
+  }
+});
+
 module.exports = router;

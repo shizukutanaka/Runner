@@ -1,10 +1,101 @@
 // OpenAI Service for GPT-4o integration
 const OpenAI = require('openai');
+const crypto = require('crypto');
 const config = require('../config');
 const logger = require('../logger');
 
 let openai = null;
 let isAvailable = false;
+
+// ─── インメモリキャッシュ (TTL付き) ───────────────────────────────────────
+const _cache = new Map();
+const CACHE_TTL_MS = {
+  sentiment: 10 * 60 * 1000,   // 10分 - 同じテキストの感情分析は変わらない
+  toxicity:  30 * 60 * 1000,   // 30分 - 毒性スコアは安定
+  translate:  5 * 60 * 1000,   // 5分
+  summarize:  3 * 60 * 1000,   // 3分 - コメントは変動
+  chatbot:    0                  // キャッシュしない (文脈依存)
+};
+
+function _cacheKey(type, ...args) {
+  const raw = JSON.stringify([type, ...args]);
+  return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 16);
+}
+
+function _cacheGet(key) {
+  const entry = _cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { _cache.delete(key); return null; }
+  return entry.value;
+}
+
+function _cacheSet(key, value, ttlMs) {
+  if (ttlMs === 0) return;
+  _cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+  // メモリ保護: 最大 1000 エントリ
+  if (_cache.size > 1000) {
+    const oldest = _cache.keys().next().value;
+    _cache.delete(oldest);
+  }
+}
+
+// ─── コスト追跡 ──────────────────────────────────────────────────────────
+const _costTracker = {
+  totalCalls: 0,
+  cachedHits: 0,
+  totalInputTokens: 0,
+  totalOutputTokens: 0,
+  // GPT-4o 料金 (2025年: $2.5/1M input, $10/1M output)
+  estimatedCostUSD: 0,
+  byType: {}
+};
+
+function _trackUsage(type, usage, fromCache = false) {
+  _costTracker.totalCalls++;
+  if (fromCache) { _costTracker.cachedHits++; return; }
+  if (!usage) return;
+  const inputTokens  = usage.prompt_tokens     || 0;
+  const outputTokens = usage.completion_tokens  || 0;
+  _costTracker.totalInputTokens  += inputTokens;
+  _costTracker.totalOutputTokens += outputTokens;
+  _costTracker.estimatedCostUSD  += (inputTokens / 1e6) * 2.5 + (outputTokens / 1e6) * 10;
+  _costTracker.byType[type] = (_costTracker.byType[type] || 0) + 1;
+}
+
+// ─── タイムアウト付き API 呼び出し ───────────────────────────────────────
+const API_TIMEOUT_MS = 15_000;
+
+async function _callWithTimeout(fn) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('OpenAI API timeout after 15s')),
+      API_TIMEOUT_MS
+    );
+    fn().then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); }
+    );
+  });
+}
+
+// ─── エクスポネンシャルバックオフ付きリトライ ──────────────────────────────
+async function _withRetry(fn, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const isRetryable = err.status === 429 || err.status === 503 || err.status >= 500
+        || err.message?.includes('timeout');
+      if (!isRetryable || attempt === maxRetries - 1) throw err;
+      const delayMs = Math.min(1000 * Math.pow(2, attempt), 8000);
+      logger.warn(`[OpenAI] Retry ${attempt + 1}/${maxRetries} in ${delayMs}ms`, {
+        error: err.message,
+        status: err.status
+      });
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+}
 
 // Initialize OpenAI client
 function initializeOpenAI() {
@@ -31,13 +122,16 @@ async function analyzeSentiment(text, language = 'auto') {
   if (!isAvailable) {
     initializeOpenAI();
     if (!isAvailable) {
-      return {
-        sentiment: 'neutral',
-        score: 0.5,
-        confidence: 0,
-        error: 'OpenAI not available'
-      };
+      return { sentiment: 'neutral', score: 0.5, confidence: 0, error: 'OpenAI not available' };
     }
+  }
+
+  // キャッシュ確認
+  const cacheKey = _cacheKey('sentiment', text, language);
+  const cached = _cacheGet(cacheKey);
+  if (cached) {
+    _trackUsage('sentiment', null, true);
+    return { ...cached, fromCache: true };
   }
 
   try {
@@ -57,45 +151,39 @@ Respond with ONLY valid JSON in this exact format:
   "toxicity": 0.0-1.0
 }`;
 
-    const completion = await openai.chat.completions.create({
-      model: config.services.openai.model,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a multilingual sentiment analysis expert. Analyze sentiment accurately across languages including English, Japanese, Chinese, Korean, Spanish, French, German, and others. Always respond with valid JSON only.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: 0.3,
-      max_tokens: 200,
-      response_format: { type: 'json_object' }
-    });
+    const completion = await _withRetry(() => _callWithTimeout(() =>
+      openai.chat.completions.create({
+        model: config.services.openai.model,
+        messages: [
+          { role: 'system', content: 'You are a multilingual sentiment analysis expert. Always respond with valid JSON only.' },
+          { role: 'user',   content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 200,
+        response_format: { type: 'json_object' }
+      })
+    ));
 
     const result = JSON.parse(completion.choices[0].message.content);
-
-    return {
-      sentiment: result.sentiment || 'neutral',
-      score: result.score || 0.5,
-      intensity: result.intensity || 'neutral',
+    const output = {
+      sentiment:  result.sentiment  || 'neutral',
+      score:      result.score      || 0.5,
+      intensity:  result.intensity  || 'neutral',
       confidence: result.confidence || 0.7,
-      language: result.language || 'unknown',
-      emotions: result.emotions || [],
-      toxicity: result.toxicity || 0,
+      language:   result.language   || 'unknown',
+      emotions:   result.emotions   || [],
+      toxicity:   result.toxicity   || 0,
       model: config.services.openai.model,
       usage: completion.usage
     };
 
+    _cacheSet(cacheKey, output, CACHE_TTL_MS.sentiment);
+    _trackUsage('sentiment', completion.usage);
+    return output;
+
   } catch (error) {
     logger.error('[OpenAI] Sentiment analysis failed:', error.message);
-    return {
-      sentiment: 'neutral',
-      score: 0.5,
-      confidence: 0,
-      error: error.message
-    };
+    return { sentiment: 'neutral', score: 0.5, confidence: 0, error: error.message };
   }
 }
 
@@ -104,39 +192,38 @@ async function detectToxicContent(text) {
   if (!isAvailable) {
     initializeOpenAI();
     if (!isAvailable) {
-      return {
-        isToxic: false,
-        score: 0,
-        categories: {},
-        error: 'OpenAI not available'
-      };
+      return { isToxic: false, score: 0, categories: {}, error: 'OpenAI not available' };
     }
   }
 
+  const cacheKey = _cacheKey('toxicity', text);
+  const cached = _cacheGet(cacheKey);
+  if (cached) {
+    _trackUsage('toxicity', null, true);
+    return { ...cached, fromCache: true };
+  }
+
   try {
-    // Use OpenAI's Moderation API (most accurate for toxicity)
-    const moderation = await openai.moderations.create({
-      input: text
-    });
+    const moderation = await _withRetry(() => _callWithTimeout(() =>
+      openai.moderations.create({ input: text })
+    ));
 
     const result = moderation.results[0];
-
-    return {
-      isToxic: result.flagged,
-      score: Math.max(...Object.values(result.category_scores)),
+    const output = {
+      isToxic:    result.flagged,
+      score:      Math.max(...Object.values(result.category_scores)),
       categories: result.category_scores,
-      details: result.categories,
-      model: 'text-moderation-latest'
+      details:    result.categories,
+      model:      'text-moderation-latest'
     };
+
+    _cacheSet(cacheKey, output, CACHE_TTL_MS.toxicity);
+    _trackUsage('toxicity', null);
+    return output;
 
   } catch (error) {
     logger.error('[OpenAI] Toxicity detection failed:', error.message);
-    return {
-      isToxic: false,
-      score: 0,
-      categories: {},
-      error: error.message
-    };
+    return { isToxic: false, score: 0, categories: {}, error: error.message };
   }
 }
 
@@ -174,27 +261,27 @@ async function generateChatbotResponse(userMessage, context = {}) {
 
     messages.push({ role: 'user', content: userMessage });
 
-    const completion = await openai.chat.completions.create({
-      model: config.services.openai.model,
-      messages: messages,
-      temperature: 0.8,
-      max_tokens: 150
-    });
+    const completion = await _withRetry(() => _callWithTimeout(() =>
+      openai.chat.completions.create({
+        model: config.services.openai.model,
+        messages,
+        temperature: 0.8,
+        max_tokens: 150
+      })
+    ));
 
-    return {
-      response: completion.choices[0].message.content,
+    const output = {
+      response:   completion.choices[0].message.content,
       confidence: 0.8,
       model: config.services.openai.model,
       usage: completion.usage
     };
+    _trackUsage('chatbot', completion.usage);
+    return output;
 
   } catch (error) {
     logger.error('[OpenAI] Chatbot response generation failed:', error.message);
-    return {
-      response: 'Sorry, I couldn\'t process your message right now.',
-      confidence: 0,
-      error: error.message
-    };
+    return { response: 'Sorry, I couldn\'t process your message right now.', confidence: 0, error: error.message };
   }
 }
 
@@ -222,35 +309,38 @@ ${options.language ? `Respond in ${options.language}.` : 'Respond in the predomi
 Comments:
 ${commentsText}`;
 
-    const completion = await openai.chat.completions.create({
-      model: config.services.openai.model,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an expert at analyzing and summarizing live chat conversations. Be concise and capture the essence of the discussion.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: 0.5,
-      max_tokens: 200
-    });
+    const cacheKey = _cacheKey('summarize', commentsText);
+    const cached = _cacheGet(cacheKey);
+    if (cached) {
+      _trackUsage('summarize', null, true);
+      return { ...cached, fromCache: true };
+    }
 
-    return {
-      summary: completion.choices[0].message.content,
+    const completion = await _withRetry(() => _callWithTimeout(() =>
+      openai.chat.completions.create({
+        model: config.services.openai.model,
+        messages: [
+          { role: 'system', content: 'You are an expert at analyzing and summarizing live chat conversations. Be concise and capture the essence of the discussion.' },
+          { role: 'user',   content: prompt }
+        ],
+        temperature: 0.5,
+        max_tokens: 200
+      })
+    ));
+
+    const output = {
+      summary:      completion.choices[0].message.content,
       commentCount: comments.length,
       model: config.services.openai.model,
       usage: completion.usage
     };
+    _cacheSet(cacheKey, output, CACHE_TTL_MS.summarize);
+    _trackUsage('summarize', completion.usage);
+    return output;
 
   } catch (error) {
     logger.error('[OpenAI] Comment summarization failed:', error.message);
-    return {
-      summary: 'Failed to generate summary.',
-      error: error.message
-    };
+    return { summary: 'Failed to generate summary.', error: error.message };
   }
 }
 
@@ -273,48 +363,65 @@ Text: "${text}"
 
 Respond with ONLY the translation, no explanations.`;
 
-    const completion = await openai.chat.completions.create({
-      model: config.services.openai.model,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a professional translator. Provide accurate, natural translations while preserving meaning and tone.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: 0.3,
-      max_tokens: 500
-    });
+    const cacheKey = _cacheKey('translate', text, targetLanguage);
+    const cached = _cacheGet(cacheKey);
+    if (cached) {
+      _trackUsage('translate', null, true);
+      return { ...cached, fromCache: true };
+    }
 
-    return {
-      translatedText: completion.choices[0].message.content.trim(),
-      sourceLanguage: 'auto-detected',
-      targetLanguage: targetLanguage,
+    const completion = await _withRetry(() => _callWithTimeout(() =>
+      openai.chat.completions.create({
+        model: config.services.openai.model,
+        messages: [
+          { role: 'system', content: 'You are a professional translator. Provide accurate, natural translations while preserving meaning and tone.' },
+          { role: 'user',   content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 500
+      })
+    ));
+
+    const output = {
+      translatedText:  completion.choices[0].message.content.trim(),
+      sourceLanguage:  'auto-detected',
+      targetLanguage,
       model: config.services.openai.model,
       usage: completion.usage
     };
+    _cacheSet(cacheKey, output, CACHE_TTL_MS.translate);
+    _trackUsage('translate', completion.usage);
+    return output;
 
   } catch (error) {
     logger.error('[OpenAI] Translation failed:', error.message);
-    return {
-      translatedText: text,
-      error: error.message
-    };
+    return { translatedText: text, error: error.message };
   }
+}
+
+// コスト統計を取得（監視・モニタリング用）
+function getCostStats() {
+  const cacheHitRate = _costTracker.totalCalls > 0
+    ? ((_costTracker.cachedHits / _costTracker.totalCalls) * 100).toFixed(1)
+    : '0.0';
+  return {
+    ..._costTracker,
+    cacheHitRate: `${cacheHitRate}%`,
+    cacheSize: _cache.size,
+    estimatedCostUSD: _costTracker.estimatedCostUSD.toFixed(4)
+  };
 }
 
 // Initialize on module load
 initializeOpenAI();
 
 module.exports = {
-  isAvailable: () => isAvailable,
+  isAvailable:            () => isAvailable,
   analyzeSentiment,
   detectToxicContent,
   generateChatbotResponse,
   summarizeComments,
   translateText,
+  getCostStats,
   initializeOpenAI
 };

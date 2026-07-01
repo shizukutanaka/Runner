@@ -52,11 +52,20 @@ const handleAPIError = (error, defaultMessage = 'API エラーが発生しまし
   }
 };
 
+// トークンストレージ:
+// 理想は httpOnly Cookie (XSS耐性) だが、それにはサーバーサイドのセッション管理が必要。
+// 現状は sessionStorage を使用: タブ閉じで自動削除、localStorage より安全。
+// 本番への移行時は backend の /auth/login を httpOnly Cookie を発行するよう変更すること。
+const tokenStorage = {
+  get:    () => sessionStorage.getItem('authToken') ?? localStorage.getItem('authToken'),
+  set:    (t) => { sessionStorage.setItem('authToken', t); localStorage.removeItem('authToken'); },
+  remove: () => { sessionStorage.removeItem('authToken'); localStorage.removeItem('authToken'); }
+};
+
 // リクエストインターセプター
 axios.interceptors.request.use(
   (config) => {
-    // リクエスト前に実行する処理（例: 認証トークンの追加）
-    const token = localStorage.getItem('authToken');
+    const token = tokenStorage.get();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -69,9 +78,8 @@ axios.interceptors.request.use(
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
-    // 認証エラーの場合、ログアウト処理
     if (error.response?.status === 401) {
-      localStorage.removeItem('authToken');
+      tokenStorage.remove();
       window.location.href = '/login';
     }
     return Promise.reject(error);
