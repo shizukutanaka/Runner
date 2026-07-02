@@ -565,6 +565,9 @@ For a comprehensive bilingual walkthrough of daily operations, refer to [`USER_G
 
 詳細なAPI仕様は [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md) を参照してください。
 
+開発に着手する前に、既知の機能過不足（未配線・スタブ・欠落機能）の監査リストは [`docs/FEATURE_AUDIT.md`](docs/FEATURE_AUDIT.md) を参照してください。
+Before starting development work, see [`docs/FEATURE_AUDIT.md`](docs/FEATURE_AUDIT.md) for the audit list of known feature gaps (unwired code, stubs, missing functionality).
+
 ### 詳細機能ガイド / Detailed Feature Guide
 
 #### ダッシュボード / Dashboard
