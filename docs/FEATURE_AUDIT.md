@@ -1,6 +1,6 @@
 # 機能過不足監査（Feature Audit）
 
-**最終検証日: 2026-07-02** / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
+**最終検証日: 2026-07-02**（第2ラウンド追記済み） / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
 
 ## この文書の目的と使い方
 
@@ -69,19 +69,58 @@
 - **証拠**: 「configure YOUTUBE_API_KEY to enable」等と明記して空データを返す誠実なスタブ。認証は追加済み
 - **推奨アクション**: 現状維持可。youtube.js は不足D-2の実装時に本実装へ置換
 
+### E-9. uiController.js — 自認するダミーAPI群
+
+- **ファイル**: `backend/src/controllers/uiController.js`（41行）, `routes/ui.js`
+- **証拠**: ファイル先頭コメントが「UIテーマ・レイアウト・アクセシビリティ・フォント・拡大縮小・通知バッジ・ヘルプ・言語・カスタムCSS用ダミーAPI群」と自認。全ハンドラがリクエストボディをそのままエコーバックするだけで何も永続化しない。ルート自体は認証・レート制限・バリデーション付きで `/api/ui` にマウント済み
+- **推奨アクション**: UIカスタマイズ設定は既に `settingsController.js`（D-8と表裏）にも一部重複した機能があるため、統合するか本実装する
+- **再検証**: `head -3 backend/src/controllers/uiController.js` → 「ダミーAPI群」の文言が残っていれば未対応
+
+### E-10. デッドミドルウェア3件（実装済みだが一度も適用されていない）
+
+- **ファイル**: `backend/src/middleware/csrf.js`, `middleware/tokenRotation.js`, `middleware/inputSanitizer.js`
+- **証拠**: 3ファイルとも `app.js` や `routes/` から一切importされていない（grep 0件）。CSRF保護一式（csrfProtection/csrfVerifier/csrfTokenGenerator）が実装されているのに`app.use`されておらず、実質CSRF防御が無い。`inputSanitizer.js` は本セッション序盤で正規表現バグを修正したが、そもそも一度も呼ばれないため**その修正は無意味だった**（正直な記録として残す）。app.js は代わりに `middleware/security.js` の `sanitizeInput` を使用している
+- **推奨アクション**: CSRF保護は本番運用前に必須級 → `app.js` に `csrfProtection` を適用するか、`security.js` 側で同等の対策が既にあるか確認して不要なら削除。tokenRotation/inputSanitizer は重複なら削除
+- **再検証**: `grep -rln "middleware/csrf\|middleware/tokenRotation\|middleware/inputSanitizer" backend/src | grep -v "middleware/csrf.js\|middleware/tokenRotation.js\|middleware/inputSanitizer.js"` → 空なら未対応
+
+### E-11. デッドサービス9件（importer 0件）
+
+- **ファイル**: `backend/src/services/backupService.js`, `coroutineService.js`, `databaseService.js`, `interactiveNotificationService.js`, `pureFunctionalNotificationService.js`, `notificationBuilder.js`, `notificationJobQueue.js`, `services/i18nService.js`, `utils/dbAnalyzer.js`
+- **証拠**: いずれも他のどのファイルからも `require` されていない。特に `services/i18nService.js` は本セッション序盤で `addLanguage()` を実装したが、実際にアプリが使っているのは別ファイル `backend/src/i18n.js` であり、**その修正も無意味だった**（正直な記録として残す）。`monitoringService.js` は `global.databaseService`/`global.cacheService` を参照するが、どこにも代入されないため常に未定義（該当の分岐は常にデッド）
+- **推奨アクション**: 各ファイルごとに「配線して活かす」か「削除」かを判断。特に `backupService.js` は D-14 で不足側からも指摘（自動バックアップが機能していない一次原因）
+- **再検証**: 各ファイル名で `grep -rln "<ファイル名の拡張子抜き>" backend/src --include="*.js" | grep -v "services/<ファイル名>"` → 空なら未対応
+
+### E-12. routes/health.js — 実装は本物だがマウントされていない
+
+- **ファイル**: `backend/src/routes/health.js`（272行）
+- **証拠**: `scripts/healthCheck` の `HealthChecker` を使う本物の実装だが、`app.js` はこのファイルを一切 `require` しない。実際に `/health` を提供しているのは `middleware/monitoring` 経由の別実装
+- **推奨アクション**: 重複なら削除、より詳細なヘルスチェックとして活かすなら `/api/health/detailed` 等でマウント
+- **再検証**: `grep -n "routes/health" backend/src/app.js` → 空ならマウントされていない
+
+### E-13. MSWモックの経路不一致（実害小・開発時の誤診断リスク）
+
+- **ファイル**: `frontend/src/mocks/handlers.js`
+- **証拠**: `POST /auth/login` をモックするが実際のバックエンドは `/api/users/login`（`api/auth.js:21`）。`baseURL` も絶対URL `http://localhost:4000/api` 固定で、フロントのaxiosは相対パス `/api` を使うため通常は素通りする。既定では `VITE_ENABLE_MSW=true` を明示しない限り無効
+- **推奨アクション**: 低優先。有効化して使うならパスをそろえる、使わないなら削除
+- **再検証**: `grep -n "auth/login" frontend/src/mocks/handlers.js`
+
 ---
 
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
-### D-1. ★★★ リアルタイム層が事実上ゼロ稼働 【最優先・小工数】
+### D-1. ★★★ リアルタイム層が事実上ゼロ稼働 【最優先・両側断線】
 
-- **証拠**:
+- **証拠（フロント側）**:
   - バックエンド `backend/src/ws.js` は room 配信を実装済み: `socket.on('authenticate')` で `user:${userId}` / `platform:${platform}` roomに参加させ、`commentUpdate`(426行付近) / `moderationNotification`(495) / `notification`(551) を配信
   - しかしフロントエンド `frontend/src/ws.js` は **`socket.emit('authenticate', ...)` を一度も送信しない**（grep 0件）→ どの room にも参加せず、リアルタイム更新は一切届かない
   - `frontend/src/hooks/useRealtimeComments.js`（46行）は正しく書かれているが**どのコンポーネントからも未使用**の孤児
-  - 結果: `ConnectionStatus` は「接続中」と表示するが、実際には何も流れてこない。「ライブコメント管理」という製品の核心価値が不履行
-- **推奨アクション**: (1) ログイン成功後（`hooks/useAuth.js` の login / セッション復元時）に `socket.emit('authenticate', { userId: account.id, platform })` を送信、(2) `useRealtimeComments` を `CommentTimeline.js` に接続、(3) 再接続時の再authenticate処理
-- **再検証**: `grep -rn "emit('authenticate'" frontend/src` → 0件なら未修正
+  - `CommentTimeline.js` は WebSocket にもポーリングにも依存しない一発取得のみ（AI要約だけ12秒間隔で再取得、コメント一覧自体は「更新」ボタンでの手動 `refetch()` のみ）
+- **証拠（バックエンド側 — フロント修正だけでは不十分）**:
+  - `commentUpdate`/`moderationNotification`/`notification` の配信は **socket側のinboundイベント（`newComment`/`moderationAction`/`sendNotification`）内でのみ発火**しており、`POST /api/comments` を処理する `commentsController.js`/`commentService.js` には `io.emit`/`req.app.get('io')` の呼び出しが**一切ない**（grep 0件）。`app.set('io', io)` の消費者は `monitoringController.js` のみ
+  - 結果: 仮にフロントが `authenticate` を送って room に参加しても、**HTTP経由でコメントを投稿・モデレーションした場合はイベントが飛ばない**。ブロードキャストが起きるのは誰かがsocketで直接 `newComment` 等を送った場合のみ
+  - `ConnectionStatus` は「接続中」と表示するが、実際には何も流れてこない。「ライブコメント管理」という製品の核心価値が不履行
+- **推奨アクション**: (1) フロント: ログイン成功後（`hooks/useAuth.js`）に `socket.emit('authenticate', { userId: account.id, platform })`、(2) `useRealtimeComments` を `CommentTimeline.js` に接続、(3) **バックエンド: `commentService.createComment`/`updateComment` の成功パスで `req.app.get('io')` を使い `commentUpdate`/`moderationNotification` を明示的にemitする処理を追加**（socket側の既存broadcastロジックを関数化して両方から呼べるようにするのが妥当）
+- **再検証**: `grep -rn "emit('authenticate'" frontend/src` → 0件なら未修正。`grep -n "get('io')\|\.emit(" backend/src/controllers/commentsController.js backend/src/services/commentService.js` → 0件ならバックエンド側も未修正
 
 ### D-2. ★★★ 実プラットフォーム連携（YouTube/Twitch API取り込み）が存在しない
 
@@ -128,6 +167,37 @@
 - **証拠**: `cd backend && NODE_ENV=test npx jest` → 13スイート失敗/124件失敗（2026-07-02時点）。主因: (a) notifications テーブルに `user_id` 列が無い等のスキーマ不一致、(b) openaiService テストのモック構造不良、(c) レスポンス形状不一致（`success` vs `status`）、(d) E-7の存在しないサービス
 - **推奨アクション**: スキーマ整合（ALTER TABLE で不足列追加）から着手すると最も多く直る
 
+### D-10. ★★ CriticalAlertsBanner が二重に壊れている — 全画面表示コンポーネントで常時発火
+
+- **ファイル**: `frontend/src/components/CriticalAlertsBanner.jsx`（`App.jsx` 直下、全ページ共通で表示される）
+- **証拠**: (a) 生の `fetch()` で `GET /api/monitoring/alerts?status=active&severity=critical&limit=5` を呼ぶが Authorization ヘッダーを付けていない（axiosのグローバルインターセプターを経由しない）→ 本番では常に401、(b) 対象ルートは `requireRole('admin')`（`routes/monitoring.js:20`）→ moderatorロールでは200が返っても403。**MonitoringDashboardで直したのと全く同じ「fetch()に認証ヘッダーが無い」バグが、こちらは未修正のまま残っている**
+- **推奨アクション**: `fetch()` を `axios.get()` に置き換える（`MonitoringDashboard.js` の修正パターン踏襲）。role要件も見直す
+- **再検証**: `grep -n "fetch(" frontend/src/components/CriticalAlertsBanner.jsx` → 生fetchのままなら未対応
+
+### D-11. ★★ Usersタブが実データに対して機能しない
+
+- **証拠**: バックエンドに `GET /api/users`（一覧取得）が存在しない（`routes/users.js` の先頭ルートは `GET /:id`）。`UserPanel.js` は `userIds=['user1','user2']` をハードコードして `fetchUser('user1')` を呼ぶのみ
+- **推奨アクション**: `GET /api/users`（一覧・検索・ページネーション）をusersControllerに追加し、UserPanelを実データ連動に書き換え
+- **再検証**: `grep -n "router.get('/'" backend/src/routes/users.js` → 空なら一覧エンドポイント無し
+
+### D-12. ★★ 登録UIが存在しない
+
+- **証拠**: `frontend/src/api/auth.js` の `register()` 関数はどのコンポーネントからも import されていない（grep該当は定義のみ）。`Login.jsx` に登録画面へのリンクが無い。初回管理者（ブートストラップadmin、コミット6820ac2で実装）はcurl等API直叩きでしか作成できない
+- **推奨アクション**: `Login.jsx` に「アカウント作成」タブ/リンクを追加した `Register.jsx` を実装
+- **再検証**: `grep -rn "from '.*api/auth'" frontend/src/components` → `register` の呼び出し元が無ければ未対応
+
+### D-13. ★ 言語スイッチャーの15言語中13言語が張りぼて
+
+- **証拠**: `frontend/src/i18n.js` の `SUPPORTED_LANGUAGES` は15言語を定義しUIに全表示するが、実在するロケールファイルは `locales/en.json` と `locales/ja.json` のみ。残り13言語（zh-CN, ko, es, fr, de, pt-BR, ru, ar, hi, th, vi, id, tr）を選択すると動的importが失敗し英語へ無言フォールバック。`ar` はRTL反転だけ発生し表示は英語のまま
+- **推奨アクション**: (a) 主要言語から順にロケールファイルを追加、または (b) `SUPPORTED_LANGUAGES` を実在するロケールのみに絞る
+- **再検証**: `ls frontend/src/locales/` → en.json/ja.jsonの2つのみなら未対応
+
+### D-14. ★ 自動バックアップが一度も起動していない
+
+- **証拠**: `backend/src/services/backupService.js` は cron スケジューリング（`cron.schedule`）とファイル書き出し（`fs.writeFile`＋マニフェスト）を正しく実装しているが、`initialize()` を呼ぶコードがアプリ内のどこにも無い（E-11と表裏）。データ消失時の復旧手段が事実上存在しない
+- **推奨アクション**: `server.js` または `app.js` の起動処理で `backupService.initialize()` を呼ぶ
+- **再検証**: `grep -rln "backupService" backend/src --include="*.js" | grep -v "services/backupService.js"` → 空なら未起動のまま
+
 ---
 
 ## 第3部: 解決済み（再監査不要）
@@ -146,8 +216,9 @@
 
 ## 推奨着手順
 
-1. **D-1 リアルタイム配線**（半日・製品価値直結・資産は揃っている）
-2. **D-2 YouTube取り込み**（中規模・製品名の約束を果たす）
-3. **D-3 メール送信**（小・認証機能の completion）
-4. **D-4 保留キューUI**（小〜中）
-5. **E-3 テナント意思決定** ＋ クイックウィン一括（E-4/E-6/E-7削除、D-5リフレッシュ実装）
+1. **D-10 CriticalAlertsBannerの認証ヘッダー修正**（数行・全画面で発火する既知の壊れ方・最小工数）
+2. **D-1 リアルタイム両側配線**（半日・製品価値直結・フロント＋バックエンド両方が必要と判明）
+3. **D-2 YouTube取り込み**（中規模・製品名の約束を果たす）
+4. **D-3 メール送信 ＋ D-14 自動バックアップ起動**（小・どちらも「実装済みだが呼ばれていない」系）
+5. **D-4 保留キューUI ＋ D-12 登録UI**（小〜中）
+6. **E-3 テナント意思決定** ＋ クイックウィン一括削除（E-4/E-6/E-7/E-9/E-13、E-10のCSRFのみ「削除でなく適用」を検討）＋ D-5リフレッシュ実装 ＋ D-11 ユーザー一覧API
