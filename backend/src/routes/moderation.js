@@ -77,4 +77,10 @@ router.put('/ai-threshold/comments/:id', requireRole('moderator'), moderationCon
 router.put('/ai-threshold/users/:id', requireRole('admin'), moderationController.setUserDefaultAIThreshold);
 router.post('/ai-threshold/batch', requireRole('admin'), moderationController.batchUpdateAIThreshold);
 
+// 保留メッセージキュー関連（getHeldMessages等は実装済みだったが、ルートが一度も追加されていなかった）
+router.get('/held-messages', requireRole('moderator'), moderationController.getHeldMessages);
+router.get('/held-messages/stats', requireRole('moderator'), moderationController.getMessageHoldStats);
+router.put('/held-messages/:holdId', requireRole('moderator'), moderationController.processHeldMessage);
+router.post('/held-messages/bulk', requireRole('moderator'), moderationController.bulkProcessHeldMessages);
+
 module.exports = router;

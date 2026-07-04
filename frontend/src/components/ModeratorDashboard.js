@@ -58,6 +58,7 @@ import {
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useComments } from '../hooks/useComments';
+import HeldMessagesQueue from './HeldMessagesQueue';
 
 export default function ModeratorDashboard({ platform = 'all' }) {
   const theme = useTheme();
@@ -321,6 +322,7 @@ export default function ModeratorDashboard({ platform = 'all' }) {
           <Tab label="最近のアクション" />
           <Tab label="感情分析" />
           <Tab label="ユーザー管理" />
+          <Tab label="保留メッセージキュー" />
         </Tabs>
       </Paper>
 
@@ -704,6 +706,8 @@ export default function ModeratorDashboard({ platform = 'all' }) {
           </CardContent>
         </Card>
       )}
+
+      {activeTab === 4 && <HeldMessagesQueue />}
       <Dialog
         open={userDialogOpen}
         onClose={() => setUserDialogOpen(false)}

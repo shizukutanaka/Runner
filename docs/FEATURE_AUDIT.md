@@ -1,6 +1,6 @@
 # 機能過不足監査（Feature Audit）
 
-**最終検証日: 2026-07-04**（D-1/D-3/D-10/D-12/D-14実装 + 重大バグ発見・修正済み） / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
+**最終検証日: 2026-07-04**（D-1/D-3/D-4/D-10/D-12/D-14実装 + 重大バグ発見・修正済み） / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
 
 ## この文書の目的と使い方
 
@@ -142,11 +142,13 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **既知の残課題**: 実際にメールを届けるには運用環境で `SMTP_HOST` 等を設定する必要がある（本書はコード配線の完了を記録するものであり、本番SMTP認証情報の設定は運用側のタスク）。`authController.forgotPassword` からリセットURLを含む本文を送るテンプレート化は未実施
 - **再検証**: `grep -n "createTransport\|SMTP_HOST" backend/src/services/notificationChannelService.js` → ヒットすれば修正済み
 
-### D-4. ★★ 保留メッセージキューのUIが無い
+### D-4. ✅ 解決済み（2026-07-04） — 保留メッセージキューのUIが無かった
 
-- **証拠**: バックエンドはコミット `a3b7af1` で実データ化済み（`held_messages` テーブル、`GET /api/moderation/held-messages` 相当の取得/承認/却下/一括処理/統計API群 — `moderationController.js` の getHeldMessages / processHeldMessage / bulkProcessHeldMessages / getMessageHoldStats）。しかし承認/却下を操作するフロントエンド画面が存在しない
-- **推奨アクション**: `ModeratorDashboard.js` に保留キューのタブまたはパネルを追加（一覧表示 + 承認/却下/エスカレートボタン + 一括操作）
-- **再検証**: `grep -rln "held-messages\|heldMessages" frontend/src` → 0件なら未対応
+- **元の証拠**: バックエンドはコミット `a3b7af1` で実データ化済み（`held_messages` テーブル、getHeldMessages/processHeldMessage/bulkProcessHeldMessages/getMessageHoldStats）だったが、承認/却下を操作するフロントエンド画面が存在しなかった
+- **実装中に発見した追加バグ**: 上記の実データ化されたコントローラー関数は、**`routes/moderation.js`にルートとして一度も追加されていなかった**（`GET /api/moderation/held-messages`等は404だった）。「バックエンドは実データ化済み」という前回の記述は不正確で、実際にはAPIとして到達不能だった
+- **実施した修正**: `routes/moderation.js`に4ルート追加（`GET /held-messages`、`GET /held-messages/stats`、`PUT /held-messages/:holdId`、`POST /held-messages/bulk`、いずれも`requireRole('moderator')`）。フロントエンドに`api/moderation.js`（新規）・`components/HeldMessagesQueue.jsx`（新規、一覧表示+承認/却下ボタン+ステータスフィルタ）を作成し、`ModeratorDashboard.js`に新タブとして統合
+- **検証**: `tests/integration/heldMessages.test.js`（新規、6テスト）で認証拒否・一覧取得・統計取得・承認時の実コメント作成・却下時のコメント非作成・不正holdId/actionの拒否を確認済み。全6件合格
+- **再検証**: `grep -n "held-messages" backend/src/routes/moderation.js` → 4件ヒットすればルート修正済み。`grep -rln "HeldMessagesQueue" frontend/src` → `ModeratorDashboard.js`にヒットすればUI統合済み
 
 ### D-5. ★★ リフレッシュトークンがスタブ — セッションが黙って切れる
 
@@ -224,10 +226,10 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 | **D-1 リアルタイム両側配線**（フロントauthenticate送信 + バックエンドcommentUpdate emit追加）・**D-10 CriticalAlertsBanner認証ヘッダー修正+ログイン後描画化**・**`analyzeLinks`/`analyzeSentiment`未定義によるコメント作成の全面ReferenceError修正（最重要）** | 2026-07-04 |
 | **D-3 メール送信（nodemailer本接続、SMTP未設定時は安全にフォールバック）**・**D-14 自動バックアップ起動配線 + パス誤り修正（`backend/backend/...`という存在しないパスを一度も参照できていなかった）+ sqlite3 CLI無し環境でのフェイルセーフ化** | 2026-07-04 |
 | **D-12 登録UI新規実装**（`Register.jsx`・`useAuth.js`にregister追加・Login⇔Register切り替え） | 2026-07-04 |
+| **D-4 保留メッセージキューUI新規実装** + **未発見だったルート欠落の修正**（`getHeldMessages`等はコントローラーのみ実装済みで`routes/moderation.js`に一度もルート登録されておらず404だった） | 2026-07-04 |
 
 ## 推奨着手順
 
 1. **D-2 YouTube取り込み**（中規模・製品名の約束を果たす）
-2. **D-4 保留キューUI**（小〜中）
-3. **E-3 テナント意思決定** ＋ クイックウィン一括削除（E-4/E-6/E-7/E-9/E-13、E-10のCSRFのみ「削除でなく適用」を検討）＋ D-5リフレッシュ実装 ＋ D-11 ユーザー一覧API
-4. **D-9 残存テスト失敗の解消**（スキーマ不一致・レスポンス形状不一致から着手）— 今回`analyzeLinks`修正で一部テストの失敗理由が「500クラッシュ」から「別の形状不一致」に変わったことが判明したため、テストごとに現在の実際の失敗理由を再確認してから着手すること
+2. **E-3 テナント意思決定** ＋ クイックウィン一括削除（E-4/E-6/E-7/E-9/E-13、E-10のCSRFのみ「削除でなく適用」を検討）＋ D-5リフレッシュ実装 ＋ D-11 ユーザー一覧API
+3. **D-9 残存テスト失敗の解消**（スキーマ不一致・レスポンス形状不一致から着手）— 今回`analyzeLinks`修正で一部テストの失敗理由が「500クラッシュ」から「別の形状不一致」に変わったことが判明したため、テストごとに現在の実際の失敗理由を再確認してから着手すること
