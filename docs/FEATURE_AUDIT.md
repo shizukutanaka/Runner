@@ -1,6 +1,6 @@
 # 機能過不足監査（Feature Audit）
 
-**最終検証日: 2026-07-04**（D-1/D-3/D-4/D-10/D-12/D-14実装 + 重大バグ発見・修正済み） / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
+**最終検証日: 2026-07-04**（D-1/D-3/D-4/D-10/D-11/D-12/D-14実装、E-4/E-6/E-7解決 + 重大バグ多数発見・修正済み） / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
 
 ## この文書の目的と使い方
 
@@ -45,12 +45,11 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **推奨アクション**: 製品方針の意思決定が必要。(a) SaaS化するなら全クエリに tenant_id を配線する大工事、(b) しないなら tenantController/routes/tenants.js を削除。**短期対応: 少なくとも delete系エンドポイントを無効化**
 - **再検証**: `grep -c "tenant_id" backend/src/controllers/commentsController.js backend/src/services/commentService.js` → 両方0なら未配線のまま
 
-### E-4. utils/websocket.js — 重複した第2のWebSocketクライアント
+### E-4. ✅ 解決済み（2026-07-04） — utils/websocket.jsを削除
 
-- **ファイル**: `frontend/src/utils/websocket.js`（253行）
-- **証拠**: どこからも import されていない（grep 0件）。正規実装は `frontend/src/ws.js`（`ConnectionStatus.jsx` と `hooks/useRealtimeComments.js` が参照）
-- **推奨アクション**: 削除
-- **再検証**: `grep -rln "utils/websocket" frontend/src | grep -v "utils/websocket.js"` → 0件なら安全に削除可
+- **元の証拠**: どこからも import されていない重複した第2のWebSocketクライアント（253行）
+- **実施した対応**: ファイルを削除
+- **再検証**: `test -f frontend/src/utils/websocket.js` → 存在しなければ削除済み
 
 ### E-5. Stripe課金バックエンド — フロントエンド呼び出しゼロ
 
@@ -59,19 +58,18 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **推奨アクション**: 保留可（バックエンドは実装済みのため、課金UIを作る段階まで放置してよい）。ただし製品計画に課金がないなら削除候補
 - **再検証**: `grep -rln "billing" frontend/src --include="*.js" --include="*.jsx"` → 0件なら未接続のまま
 
-### E-6. getComprehensiveSystemStats — 装飾的静的データ
+### E-6. ✅ 解決済み（2026-07-04） — getComprehensiveSystemStatsを削除
 
-- **ファイル**: `backend/src/controllers/notificationsController.js:623`、ルートは `routes/notifications.js:34`（`GET /api/notifications/system/comprehensive`）
-- **証拠**: 「18のプログラミング言語とその機能一覧」というハードコード配列を返すだけ。コメントモデレーション業務と無関係（過去に削除した約24個の「言語風通知生成」機能群の残骸）
-- **推奨アクション**: 関数とルートを削除
-- **再検証**: `grep -n "getComprehensiveSystemStats" backend/src/controllers/notificationsController.js` → ヒットすれば未対応
+- **元の証拠**: 「18のプログラミング言語とその機能一覧」というハードコード配列を返すだけの装飾的エンドポイント。過去に削除した約24個の「言語風通知生成」機能群の残骸
+- **実施した対応**: `notificationsController.js`から関数を削除、`routes/notifications.js`から`GET /system/comprehensive`ルートを削除
+- **再検証**: `grep -n "getComprehensiveSystemStats" backend/src/controllers/notificationsController.js` → ヒットしなければ削除済み
 
-### E-7. 存在しないサービスへのテスト
+### E-7. ✅ 解決済み（2026-07-04） — 存在しないサービスへのテストを実サービスに向けて修正
 
-- **ファイル**: `backend/tests/services/advancedEncryptionService.test.js`
-- **証拠**: テスト対象 `backend/src/services/advancedEncryptionService.js` が存在しない（実在するのは `encryptionService.js`）。スイートは常に "Cannot find module" で失敗し、テスト失敗数を水増ししている
-- **推奨アクション**: テストを `encryptionService.js` に向けて書き直すか削除
-- **再検証**: `test -f backend/src/services/advancedEncryptionService.js` → 無ければ未対応
+- **元の証拠**: `advancedEncryptionService.test.js`が存在しない`advancedEncryptionService.js`を対象にしていた（実在するのは`encryptionService.js`）。常に"Cannot find module"で失敗していた
+- **実施した対応**: テストファイルを`encryptionService.test.js`にリネームし、実際に存在する`encrypt`/`decrypt`メソッドを対象にするよう修正（メソッドシグネチャ・出力形式は元テストと一致）。`generateSessionKey`/`getEncryptionStats`という実サービスに存在しないメソッドを対象にしていたテストブロックは削除
+- **検証**: 3テスト全て合格
+- **再検証**: `test -f backend/tests/services/encryptionService.test.js` → 存在すれば修正済み
 
 ### E-8. 正直なスタブルート群（低優先）
 
@@ -183,11 +181,13 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **実施した修正**: `axios.get()` へ置き換えて認証トークンを自動付与、403/401（権限不足）時は驚かせる赤いエラーバナーを出さず静かに何も表示しないよう変更、コンポーネント自体を`App.jsx`の`AuthGate`内（ログイン成功後）に移動してログイン前は描画されないようにした
 - **再検証**: `grep -n "fetch(" frontend/src/components/CriticalAlertsBanner.jsx` → 生fetchが残っていれば未対応。`grep -n "CriticalAlertsBanner" frontend/src/App.jsx` → `AuthGate`関数の外にあれば未対応
 
-### D-11. ★★ Usersタブが実データに対して機能しない
+### D-11. ✅ 解決済み（2026-07-04） — Usersタブが実データに対して機能しなかった
 
-- **証拠**: バックエンドに `GET /api/users`（一覧取得）が存在しない（`routes/users.js` の先頭ルートは `GET /:id`）。`UserPanel.js` は `userIds=['user1','user2']` をハードコードして `fetchUser('user1')` を呼ぶのみ
-- **推奨アクション**: `GET /api/users`（一覧・検索・ページネーション）をusersControllerに追加し、UserPanelを実データ連動に書き換え
-- **再検証**: `grep -n "router.get('/'" backend/src/routes/users.js` → 空なら一覧エンドポイント無し
+- **元の証拠**: バックエンドに `GET /api/users`（一覧取得）が存在せず、`UserPanel.js` は `userIds=['user1','user2']` をハードコードしていた
+- **実施した修正**: `usersController.js`に`listUsers`（platform/status/search フィルタ + ページネーション）を追加し、`routes/users.js`に`GET /`として登録（`GET /:id`より前に配置し、動的パラメータとの衝突が無いことを確認済み）。`UserPanel.js`を検索可能なユーザー一覧+詳細パネルの2ペイン構成に書き換え
+- **実装中に発見した追加バグ**: `api/users.js`の`fetchUser`/`fetchUserHistory`/`updateUser`がレスポンス封筒`{status,data,message}`を`.data`で展開せずそのまま返しており、`UserPanel.js`の`user?.status`は実際のユーザー状態ではなく**HTTPステータスコード(200)を表示**していた。さらに`user?.name`は存在しないフィールド参照（実際は`username`）、`history?.map`は封筒オブジェクトに対する呼び出しで**クラッシュしうる**状態だった。全て修正
+- **検証**: `tests/integration/listUsers.test.js`（新規、6テスト）で認証拒否・一覧取得・platform/statusフィルタ・検索・`GET /:id`との非衝突を確認済み。全6件合格
+- **再検証**: `grep -n "router.get('/'" backend/src/routes/users.js` → ヒットすれば一覧エンドポイント追加済み
 
 ### D-12. ✅ 解決済み（2026-07-04） — 登録UIが存在しなかった
 
@@ -227,9 +227,10 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 | **D-3 メール送信（nodemailer本接続、SMTP未設定時は安全にフォールバック）**・**D-14 自動バックアップ起動配線 + パス誤り修正（`backend/backend/...`という存在しないパスを一度も参照できていなかった）+ sqlite3 CLI無し環境でのフェイルセーフ化** | 2026-07-04 |
 | **D-12 登録UI新規実装**（`Register.jsx`・`useAuth.js`にregister追加・Login⇔Register切り替え） | 2026-07-04 |
 | **D-4 保留メッセージキューUI新規実装** + **未発見だったルート欠落の修正**（`getHeldMessages`等はコントローラーのみ実装済みで`routes/moderation.js`に一度もルート登録されておらず404だった） | 2026-07-04 |
+| **E-4/E-6/E-7 クイックウィン削除・修正**（死角WebSocketクライアント削除、装飾的エンドポイント削除、壊れたテストを実サービスに向けて修正）・**D-11 ユーザー一覧API新規実装 + UserPanel実データ連動化 + api/users.jsのレスポンス封筒展開バグ修正（HTTPステータスコードがユーザー状態として表示されていた等）** | 2026-07-04 |
 
 ## 推奨着手順
 
 1. **D-2 YouTube取り込み**（中規模・製品名の約束を果たす）
-2. **E-3 テナント意思決定** ＋ クイックウィン一括削除（E-4/E-6/E-7/E-9/E-13、E-10のCSRFのみ「削除でなく適用」を検討）＋ D-5リフレッシュ実装 ＋ D-11 ユーザー一覧API
+2. **E-3 テナント意思決定** ＋ 残りのクイックウィン（E-9/E-13、E-10のCSRFのみ「削除でなく適用」を検討）＋ D-5リフレッシュ実装
 3. **D-9 残存テスト失敗の解消**（スキーマ不一致・レスポンス形状不一致から着手）— 今回`analyzeLinks`修正で一部テストの失敗理由が「500クラッシュ」から「別の形状不一致」に変わったことが判明したため、テストごとに現在の実際の失敗理由を再確認してから着手すること

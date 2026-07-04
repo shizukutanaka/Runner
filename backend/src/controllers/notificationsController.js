@@ -619,52 +619,6 @@ exports.createTemplateNotification = async (req, res, next) => {
   }
 };
 
-// 包括的なシステム統計取得（多言語機能の概要）
-exports.getComprehensiveSystemStats = async (req, res, next) => {
-  try {
-    const stats = {};
-
-    // 言語と機能の概要
-    stats.languages = [
-      'JavaScript (Base)', 'Python (Django)', 'Java (Spring Boot)', 'C# (.NET)', 'Go',
-      'Rust', 'PHP (Laravel)', 'Ruby (Rails)', 'Scala (Akka)', 'Elixir (Phoenix)',
-      'Kotlin', 'Swift (iOS)', 'Haskell', 'Clojure', 'Erlang', 'F#', 'OCaml', 'Lua'
-    ];
-    stats.totalLanguages = stats.languages.length;
-
-    stats.overview = {
-      kotlinFeatures: ['Type Safety', 'Null Safety', 'Coroutines', 'Extension Functions', 'Type Providers'],
-      scalaFeatures: ['Actor Model', 'Message Passing', 'State Management', 'Hierarchy', 'Pattern Matching'],
-      elixirFeatures: ['OTP Fault Tolerance', 'Supervision', 'Process Monitoring', 'Hot Swapping', 'Distribution'],
-      railsFeatures: ['Convention over Configuration', 'Auto Associations', 'Naming Conventions', 'RESTful Routes', 'Migrations'],
-      goFeatures: ['Performance Optimization', 'Memory Efficiency', 'Concurrent Processing', 'Lightweight', 'Channels'],
-      haskellFeatures: ['Pure Functional', 'Monads', 'Type Classes', 'Function Composition', 'Pattern Matching'],
-      clojureFeatures: ['Immutable Data Structures', 'STM', 'Atoms', 'Refs', 'Agents'],
-      erlangFeatures: ['Lightweight Processes', 'Message Passing', 'Process Monitoring', 'Distribution', 'Hot Code Swapping'],
-      swiftFeatures: ['Interactive Notifications', 'Actions', 'Categories', 'User Responses', 'Real-time'],
-      fsharpFeatures: ['Type Providers', 'Active Patterns', 'Computation Expressions', 'Discriminated Unions', 'Units of Measure'],
-      ocamlFeatures: ['Advanced Pattern Matching', 'Algebraic Data Types', 'Type Inference', 'Module System', 'Functors'],
-      luaFeatures: ['Lightweight Scripting', 'Table Manipulation', 'Coroutines', 'Metatables', 'Embedded Execution']
-    };
-
-    stats.totalFeatures = Object.values(stats.overview).reduce((sum, features) => sum + features.length, 0);
-
-    res.json({
-      status: 200,
-      data: stats,
-      message: `Comprehensive multi-language notification system with ${stats.totalLanguages} languages and ${stats.totalFeatures} features`
-    });
-
-  } catch (error) {
-    logger.error('[Notifications] Get comprehensive stats error', { error: error.message });
-    return next({
-      status: 500,
-      message: 'Failed to retrieve comprehensive system statistics',
-      details: error.message
-    });
-  }
-};
-
 // 通知を既読にする
 exports.markAsRead = (req, res, next) => {
   const userId = req.user.id;

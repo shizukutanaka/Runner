@@ -30,7 +30,4 @@ router.post('/template', requireRole('moderator'), ctrl.createTemplateNotificati
 router.get('/channels', requireRole('admin'), ctrl.getNotificationChannels);
 router.put('/channels/:id', requireRole('admin'), ctrl.updateNotificationChannel);
 
-// 包括的なシステム統計
-router.get('/system/comprehensive', requireRole('admin'), ctrl.getComprehensiveSystemStats);
-
 module.exports = router;

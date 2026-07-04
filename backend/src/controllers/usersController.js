@@ -51,6 +51,58 @@ const validateId = (id) => {
   }
 };
 
+// プラットフォームユーザー一覧取得（検索・フィルタ・ページネーション対応）
+exports.listUsers = asyncHandler(async (req, res) => {
+  const { platform, status, search, limit = 50, offset = 0 } = req.query;
+
+  const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 200);
+  const safeOffset = Math.max(parseInt(offset, 10) || 0, 0);
+
+  const conditions = [];
+  const params = [];
+
+  if (platform) {
+    conditions.push('platform = ?');
+    params.push(platform);
+  }
+  if (status) {
+    conditions.push('status = ?');
+    params.push(status);
+  }
+  if (search) {
+    conditions.push('username LIKE ?');
+    params.push(`%${sanitizeToStorage(search)}%`);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const rows = await dbAll(
+    `SELECT id, platform, username, status, warning_count, ban_until, mute_until
+     FROM users ${whereClause} ORDER BY username ASC LIMIT ? OFFSET ?`,
+    [...params, safeLimit, safeOffset]
+  );
+
+  const totalRow = await dbGet(`SELECT COUNT(*) as cnt FROM users ${whereClause}`, params);
+
+  const sanitizedUsers = rows.map((row) =>
+    Object.fromEntries(Object.entries(row).map(([key, value]) => [key, sanitizeForResponse(value)]))
+  );
+
+  res.json({
+    status: 200,
+    data: {
+      users: sanitizedUsers,
+      total: totalRow?.cnt || 0,
+      pagination: {
+        limit: safeLimit,
+        offset: safeOffset,
+        hasMore: safeOffset + rows.length < (totalRow?.cnt || 0)
+      }
+    },
+    message: 'Users fetched'
+  });
+});
+
 exports.getUser = (req, res, next) => {
   const { id } = req.params;
   validateId(id);

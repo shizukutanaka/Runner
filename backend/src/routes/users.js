@@ -7,6 +7,7 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 
 router.use(authenticateToken);
 
+router.get('/', requireRole('moderator'), usersController.listUsers);
 router.get('/:id', requireRole('moderator'), usersController.getUser);
 router.put('/:id', requireRole('admin'), validate(userSchema.update), usersController.updateUser);
 router.get('/:id/history', requireRole('moderator'), usersController.getUserHistory);
