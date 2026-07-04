@@ -1,6 +1,6 @@
 # 機能過不足監査（Feature Audit）
 
-**最終検証日: 2026-07-04**（D-1/D-10実装 + 重大バグ発見・修正済み） / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
+**最終検証日: 2026-07-04**（D-1/D-3/D-10/D-14実装 + 重大バグ発見・修正済み） / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
 
 ## この文書の目的と使い方
 
@@ -135,11 +135,12 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **推奨アクション**: YouTube Data API v3 (`liveChatMessages.list`) ポーリングサービスを新規実装（`backend/src/services/youtubeIngestionService.js`）。取得コメントを既存の `commentService.createComment` 経由で投入すればモデレーションパイプラインに自動的に乗る。Twitchは後続（IRC/EventSub）
 - **再検証**: `grep -rln "googleapis\|liveChatMessages" backend/src/services/` → 実装ファイルが無ければ未対応
 
-### D-3. ★★ メール送信が偽装実装 — パスワードリセットが実際には機能しない
+### D-3. ✅ 解決済み（2026-07-04） — メール送信が偽装実装だった
 
-- **証拠**: `backend/src/services/notificationChannelService.js:89` の `sendEmail()` は setTimeout でシミュレートし偽の messageId を返すだけ。nodemailer 利用コードは98-99行でコメントアウト。`authController.forgotPassword` はリセットトークンを正しく発行・保存するが、メールが届かないためユーザーはトークンを知る術がない
-- **推奨アクション**: nodemailer + SMTP設定（環境変数 `SMTP_HOST/PORT/USER/PASS`）で本接続し、forgotPassword からリセットURL付きメールを送信
-- **再検証**: `grep -n "nodemailer" backend/src/services/notificationChannelService.js` → コメントアウトのままなら未対応
+- **元の証拠**: `sendEmail()` は setTimeout でシミュレートし偽の messageId を返すだけで、nodemailer 利用コードはコメントアウトされていた
+- **実施した修正**: `nodemailer` を追加インストールし、`SMTP_HOST` 環境変数が設定されていれば実際に `nodemailer.createTransport` 経由で送信、未設定の場合は従来通りログ出力のみのシミュレーションに安全にフォールバック（SMTP未設定の開発環境でも通知パイプライン自体はクラッシュしない）。関連env変数: `SMTP_HOST`/`SMTP_PORT`/`SMTP_SECURE`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`
+- **既知の残課題**: 実際にメールを届けるには運用環境で `SMTP_HOST` 等を設定する必要がある（本書はコード配線の完了を記録するものであり、本番SMTP認証情報の設定は運用側のタスク）。`authController.forgotPassword` からリセットURLを含む本文を送るテンプレート化は未実施
+- **再検証**: `grep -n "createTransport\|SMTP_HOST" backend/src/services/notificationChannelService.js` → ヒットすれば修正済み
 
 ### D-4. ★★ 保留メッセージキューのUIが無い
 
@@ -198,11 +199,12 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **推奨アクション**: (a) 主要言語から順にロケールファイルを追加、または (b) `SUPPORTED_LANGUAGES` を実在するロケールのみに絞る
 - **再検証**: `ls frontend/src/locales/` → en.json/ja.jsonの2つのみなら未対応
 
-### D-14. ★ 自動バックアップが一度も起動していない
+### D-14. ✅ 解決済み（2026-07-04） — 自動バックアップが一度も起動していなかった
 
-- **証拠**: `backend/src/services/backupService.js` は cron スケジューリング（`cron.schedule`）とファイル書き出し（`fs.writeFile`＋マニフェスト）を正しく実装しているが、`initialize()` を呼ぶコードがアプリ内のどこにも無い（E-11と表裏）。データ消失時の復旧手段が事実上存在しない
-- **推奨アクション**: `server.js` または `app.js` の起動処理で `backupService.initialize()` を呼ぶ
-- **再検証**: `grep -rln "backupService" backend/src --include="*.js" | grep -v "services/backupService.js"` → 空なら未起動のまま
+- **元の証拠**: `backupService.js` は cron スケジューリングとファイル書き出しを実装済みだったが、モジュール自体がどこからも `require` されず、コンストラクタが呼ぶ `initialize()` が実行されていなかった
+- **実施した修正**: `server.js` で `require('./services/backupService')` してモジュールを読み込み（コンストラクタが自動的に`initialize()`を実行）、graceful shutdown 時に `stopScheduledBackups()` を呼ぶよう追加。あわせて**別のバグを発見・修正**: `backupDatabase()`/`backupConfiguration()`/`backupUploadedFiles()`/`backupLogs()`（および対応するrestore系関数）が `path.join(process.cwd(), 'backend', ...)` という誤ったパス構築をしており（アプリは既に`backend/`ディレクトリから起動するため実際には`backend/backend/...`という存在しないパスを指していた）、一度も正しく動作したことがなかった。`config.database.path`を使うよう修正し、他のパスも二重の`'backend'`セグメントを除去。さらに`sqlite3` CLIが存在しない環境（本検証環境を含む）でSQLダンプが失敗し完全なバックアップを道連れにする問題も、ダンプ部分を独立してフェイルセーフにすることで修正
+- **検証**: `performFullBackup()` を実際に実行し、`{success: true, ...}` で完了、17ファイルを含む`.tar.gz`が生成されることを確認済み
+- **再検証**: `grep -rln "backupService" backend/src --include="*.js" | grep -v "services/backupService.js"` → `server.js`がヒットすれば修正済み
 
 ---
 
@@ -220,11 +222,11 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 | usersController ReferenceError・ページネーション上限・設定検証・死角コード3ファイル削除 | `dd18e88` |
 | OpenAIサービス（キャッシュ/タイムアウト/リトライ/コスト追跡）・sessionStorage移行・AI費用監視API | `7b38090` |
 | **D-1 リアルタイム両側配線**（フロントauthenticate送信 + バックエンドcommentUpdate emit追加）・**D-10 CriticalAlertsBanner認証ヘッダー修正+ログイン後描画化**・**`analyzeLinks`/`analyzeSentiment`未定義によるコメント作成の全面ReferenceError修正（最重要）** | 2026-07-04 |
+| **D-3 メール送信（nodemailer本接続、SMTP未設定時は安全にフォールバック）**・**D-14 自動バックアップ起動配線 + パス誤り修正（`backend/backend/...`という存在しないパスを一度も参照できていなかった）+ sqlite3 CLI無し環境でのフェイルセーフ化** | 2026-07-04 |
 
 ## 推奨着手順
 
 1. **D-2 YouTube取り込み**（中規模・製品名の約束を果たす）
-2. **D-3 メール送信 ＋ D-14 自動バックアップ起動**（小・どちらも「実装済みだが呼ばれていない」系）
-3. **D-4 保留キューUI ＋ D-12 登録UI**（小〜中）
-4. **E-3 テナント意思決定** ＋ クイックウィン一括削除（E-4/E-6/E-7/E-9/E-13、E-10のCSRFのみ「削除でなく適用」を検討）＋ D-5リフレッシュ実装 ＋ D-11 ユーザー一覧API
-5. **D-9 残存テスト失敗の解消**（スキーマ不一致・レスポンス形状不一致から着手）— 今回`analyzeLinks`修正で一部テストの失敗理由が「500クラッシュ」から「別の形状不一致」に変わったことが判明したため、テストごとに現在の実際の失敗理由を再確認してから着手すること
+2. **D-4 保留キューUI ＋ D-12 登録UI**（小〜中）
+3. **E-3 テナント意思決定** ＋ クイックウィン一括削除（E-4/E-6/E-7/E-9/E-13、E-10のCSRFのみ「削除でなく適用」を検討）＋ D-5リフレッシュ実装 ＋ D-11 ユーザー一覧API
+4. **D-9 残存テスト失敗の解消**（スキーマ不一致・レスポンス形状不一致から着手）— 今回`analyzeLinks`修正で一部テストの失敗理由が「500クラッシュ」から「別の形状不一致」に変わったことが判明したため、テストごとに現在の実際の失敗理由を再確認してから着手すること

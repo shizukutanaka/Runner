@@ -3,6 +3,7 @@ const app = require('./app');
 const setupWebSocket = require('./ws');
 const config = require('./config');
 const logger = require('./logger');
+const backupService = require('./services/backupService');
 
 const PORT = config.server.port;
 const server = http.createServer(app);
@@ -52,6 +53,9 @@ const shutdown = async (signal) => {
     }
 
     try {
+      // 定期バックアップを停止
+      backupService.stopScheduledBackups();
+
       // WebSocketの接続を閉じる
       const io = app.get('io');
       if (io) {

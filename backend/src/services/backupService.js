@@ -140,16 +140,22 @@ class BackupService {
 
   // Backup database
   async backupDatabase(backupPath) {
-    const dbPath = path.join(process.cwd(), 'backend', 'data', 'database.db');
+    const dbPath = config.database.path;
     const backupDbPath = path.join(backupPath, 'database.db');
 
     try {
-      // For SQLite, copy the database file
+      // For SQLite, copy the database file (primary, required backup mechanism)
       await fs.copyFile(dbPath, backupDbPath);
 
-      // Also create a SQL dump for portability
-      const dumpPath = path.join(backupPath, 'database.sql');
-      await execAsync(`sqlite3 ${dbPath} .dump > ${dumpPath}`);
+      // Also create a SQL dump for portability (best-effort: the sqlite3 CLI
+      // may not be installed in minimal/containerized environments; the file
+      // copy above is already a complete, restorable backup on its own)
+      try {
+        const dumpPath = path.join(backupPath, 'database.sql');
+        await execAsync(`sqlite3 ${dbPath} .dump > ${dumpPath}`);
+      } catch (dumpError) {
+        logger.warn('[BackupService] SQL dump skipped (sqlite3 CLI unavailable?)', { error: dumpError.message });
+      }
 
       logger.info('[BackupService] Database backed up');
     } catch (error) {
@@ -172,7 +178,7 @@ class BackupService {
     await fs.mkdir(configBackupPath, { recursive: true });
 
     for (const file of configFiles) {
-      const sourcePath = path.join(process.cwd(), 'backend', file);
+      const sourcePath = path.join(process.cwd(), file);
       const destPath = path.join(configBackupPath, file);
 
       try {
@@ -189,7 +195,7 @@ class BackupService {
 
   // Backup uploaded files
   async backupUploadedFiles(backupPath) {
-    const uploadsPath = path.join(process.cwd(), 'backend', 'uploads');
+    const uploadsPath = path.join(process.cwd(), 'uploads');
     const backupUploadsPath = path.join(backupPath, 'uploads');
 
     try {
@@ -205,7 +211,7 @@ class BackupService {
 
   // Backup logs
   async backupLogs(backupPath) {
-    const logsPath = path.join(process.cwd(), 'backend', 'logs');
+    const logsPath = path.join(process.cwd(), 'logs');
     const backupLogsPath = path.join(backupPath, 'logs');
 
     try {
@@ -416,7 +422,7 @@ class BackupService {
   // Restore database from backup
   async restoreDatabase(backupDir) {
     const dbBackupPath = path.join(backupDir, 'database.db');
-    const dbPath = path.join(process.cwd(), 'backend', 'data', 'database.db');
+    const dbPath = config.database.path;
 
     // Backup current database
     const currentBackup = `${dbPath}.backup-${Date.now()}`;
@@ -442,7 +448,7 @@ class BackupService {
 
     for (const file of allowedFiles) {
       const sourcePath = path.join(configBackupPath, file);
-      const destPath = path.join(process.cwd(), 'backend', file);
+      const destPath = path.join(process.cwd(), file);
 
       try {
         await fs.copyFile(sourcePath, destPath);
@@ -458,7 +464,7 @@ class BackupService {
   // Restore uploaded files from backup
   async restoreUploadedFiles(backupDir) {
     const backupUploadsPath = path.join(backupDir, 'uploads');
-    const uploadsPath = path.join(process.cwd(), 'backend', 'uploads');
+    const uploadsPath = path.join(process.cwd(), 'uploads');
 
     try {
       // Backup current uploads

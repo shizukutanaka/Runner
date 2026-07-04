@@ -1,5 +1,6 @@
 const db = require('../db');
 const logger = require('../logger');
+const config = require('../config');
 
 /**
  * 通知チャネルサービス
@@ -8,7 +9,36 @@ const logger = require('../logger');
 class NotificationChannelService {
   constructor() {
     this.channels = new Map();
+    this.mailTransporter = null;
     this.initializeChannels();
+  }
+
+  /**
+   * SMTPトランスポーターを取得（遅延初期化）。
+   * SMTP_HOST が未設定の場合はnullを返し、呼び出し側でシミュレーションにフォールバックする。
+   */
+  getMailTransporter() {
+    if (this.mailTransporter) {
+      return this.mailTransporter;
+    }
+
+    const host = config.getEnv('SMTP_HOST');
+    if (!host) {
+      return null;
+    }
+
+    const nodemailer = require('nodemailer');
+    this.mailTransporter = nodemailer.createTransport({
+      host,
+      port: parseInt(config.getEnv('SMTP_PORT', '587'), 10),
+      secure: config.getEnv('SMTP_SECURE', 'false') === 'true',
+      auth: config.getEnv('SMTP_USER') ? {
+        user: config.getEnv('SMTP_USER'),
+        pass: config.getEnv('SMTP_PASS')
+      } : undefined
+    });
+
+    return this.mailTransporter;
   }
 
   /**
@@ -85,29 +115,48 @@ class NotificationChannelService {
 
   /**
    * Emailチャネル経由で通知を送信
+   * SMTP_HOST が設定されていれば実際にnodemailer経由で送信し、
+   * 未設定の場合はログ出力のみのシミュレーションにフォールバックする
+   * （開発環境やSMTP未設定環境でも通知パイプライン自体は動作させるため）
    */
-  async sendEmail(userEmail, notification, config) {
-    // 実際のEmail送信実装（nodemailerなどを使用）
-    logger.info('[NotificationChannel] Email notification', {
-      to: userEmail,
-      title: notification.title,
-      config: config
-    });
+  async sendEmail(userEmail, notification, channelConfig) {
+    const transporter = this.getMailTransporter();
 
-    // ここに実際のEmail送信ロジックを実装
-    // const nodemailer = require('nodemailer');
-    // const transporter = nodemailer.createTransporter(config);
+    if (!transporter) {
+      logger.info('[NotificationChannel] Email notification (simulated - SMTP_HOST not configured)', {
+        to: userEmail,
+        title: notification.title
+      });
+      return {
+        success: true,
+        messageId: 'simulated-' + Date.now(),
+        provider: 'simulated'
+      };
+    }
 
-    return new Promise((resolve) => {
-      // シミュレーション
-      setTimeout(() => {
-        resolve({
-          success: true,
-          messageId: 'simulated-' + Date.now(),
-          provider: 'simulated'
-        });
-      }, 100);
-    });
+    try {
+      const info = await transporter.sendMail({
+        from: config.getEnv('SMTP_FROM', 'no-reply@localhost'),
+        to: userEmail,
+        subject: notification.title,
+        text: notification.message,
+        html: channelConfig?.html || `<p>${notification.message}</p>`
+      });
+
+      logger.info('[NotificationChannel] Email sent', { to: userEmail, messageId: info.messageId });
+      return {
+        success: true,
+        messageId: info.messageId,
+        provider: 'smtp'
+      };
+    } catch (error) {
+      logger.error('[NotificationChannel] Email send failed', { to: userEmail, error: error.message });
+      return {
+        success: false,
+        error: error.message,
+        provider: 'smtp'
+      };
+    }
   }
 
   /**
