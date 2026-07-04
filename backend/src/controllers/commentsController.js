@@ -7,6 +7,22 @@ const moderationService = require('../services/moderationService');
 const commentService = require('../services/commentService');
 const { asyncHandler } = require('../middleware/errorHandler');
 
+// HTTP経由のコメント作成/更新をWebSocketクライアントへブロードキャストする。
+// 従来はsocket.io側のinboundイベント(newComment等)からのみ配信されており、
+// POST/PUT /api/comments 経由の変更はリアルタイムに反映されなかった。
+// server.js経由で起動していないテスト環境では io が未設定のため何もしない。
+const broadcastCommentUpdate = (req, type, comment) => {
+  const io = req.app.get('io');
+  if (!io || !comment) {
+    return;
+  }
+  const payload = { type, data: comment, timestamp: new Date().toISOString() };
+  if (comment.platform) {
+    io.to(`platform:${comment.platform}`).emit('commentUpdate', payload);
+  }
+  io.to('dashboard').emit('commentUpdate', payload);
+};
+
 /**
  * Promisified wrapper for database get operation
  * @param {string} sql - SQL query string
@@ -387,6 +403,7 @@ const createComment = asyncHandler(async (req, res, next) => {
     const created = await dbGet('SELECT * FROM comments WHERE id = ?', [commentId]);
     await commentService.invalidateCommentCache(commentId);
     await commentService.invalidateCommentListCache();
+    broadcastCommentUpdate(req, 'new', mapCommentRow(created));
     res.status(201).json({
       status: 201,
       data: mapCommentRow(created),
@@ -415,6 +432,7 @@ const updateComment = asyncHandler(async (req, res, next) => {
     const updated = await dbGet('SELECT * FROM comments WHERE id = ?', [id]);
     await commentService.invalidateCommentCache(id);
     await commentService.invalidateCommentListCache();
+    broadcastCommentUpdate(req, 'update', mapCommentRow(updated));
     res.json({
       status: 200,
       data: mapCommentRow(updated),

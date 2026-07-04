@@ -23,6 +23,7 @@ import { Virtuoso } from 'react-virtuoso';
 import SearchIcon from '@mui/icons-material/Search';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useComments } from '../hooks/useComments';
+import { useRealtimeComments } from '../hooks/useRealtimeComments';
 import { postComment, updateComment, fetchAutoAnswer, fetchCommentsSummary, fetchComments } from '../api/comments';
 import { useTranslation } from 'react-i18next';
 import CommentItem from './CommentItem'; // 新しくインポート
@@ -229,6 +230,30 @@ export default function CommentTimeline({ platform = 'youtube' }) {
       setRefreshing(false);
     }
   }, [refetch]);
+
+  // リアルタイム更新受信（WebSocket）: 新規投稿・モデレーション更新の通知を受けたら
+  // 一覧を再取得する。個々のコメントをローカルで手動マージするより単純かつ確実。
+  const realtimeRefreshTimer = useRef(null);
+  const handleRealtimeCommentUpdate = useCallback((comment) => {
+    if (comment?.platform && normalizedPlatform && comment.platform !== normalizedPlatform) {
+      return;
+    }
+    if (realtimeRefreshTimer.current) {
+      clearTimeout(realtimeRefreshTimer.current);
+    }
+    realtimeRefreshTimer.current = setTimeout(() => {
+      refetch();
+      setSearchRefreshKey((prev) => prev + 1);
+    }, DEBOUNCE_INTERVAL);
+  }, [normalizedPlatform, refetch]);
+
+  useRealtimeComments(handleRealtimeCommentUpdate);
+
+  useEffect(() => () => {
+    if (realtimeRefreshTimer.current) {
+      clearTimeout(realtimeRefreshTimer.current);
+    }
+  }, []);
 
   const handleStatusMenuOpen = useCallback((event, commentId) => {
     setStatusMenu({ anchor: event.currentTarget, commentId });

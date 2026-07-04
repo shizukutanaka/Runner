@@ -1,6 +1,6 @@
 # 機能過不足監査（Feature Audit）
 
-**最終検証日: 2026-07-02**（第2ラウンド追記済み） / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
+**最終検証日: 2026-07-04**（D-1/D-10実装 + 重大バグ発見・修正済み） / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
 
 ## この文書の目的と使い方
 
@@ -9,6 +9,16 @@
 - 全項目は実際のコード読解・grep・テスト実行で検証済み。各項目に**証拠**と**再検証コマンド**を付記
 - **着手前に必ず該当項目の再検証コマンドを実行すること**。本書作成後に修正済みの可能性がある
 - 「過剰」= 作られたが機能していない・重複・偽装データを返す機能。「不足」= 製品の価値提案上必要なのに欠落・断線している機能
+
+## ⚠️ 追記: これまでで最も重大だったバグ（2026-07-04発見・修正済み）
+
+D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` によるコメント作成が全環境で常に失敗していた**ことが判明した。
+
+- **原因**: `backend/src/services/moderationService.js` の `analyzeComment()`（コメント作成時に必ず呼ばれる中核関数）が、定義されていない関数 `analyzeLinks(content)` と `analyzeSentiment(content)` を呼び出していた（`ReferenceError`）。他のバリデーション（必須フィールド等）を全て通過した有効なリクエストは、モデレーション処理の途中で例外を投げ、`commentsController.js` の catch節で握りつぶされて HTTP 500 になっていた
+- **影響範囲**: try/catchの外側にガードが無いため、フィーチャーフラグ等に関わらず**100%のコメント作成リクエストが失敗**していた。これは他の監査項目（スタブ関数・未配線機能）とは性質が異なり、「動くはずの中核機能が実は一度も動いていなかった」という最も深刻なクラスの欠陥
+- **なぜ今まで見つからなかったか**: 既存テスト（`tests/api/comments.test.js` 等）は認証トークン不備で401になり、実際にこの関数まで到達していなかった。到達する`tests/integration/comments.test.js`は500ではなく別の理由（レスポンス形状の期待値不一致）で失敗し続けていたため、根本原因が隠れていた
+- **実施した修正**: `moderationService.js` に `analyzeLinks()`（既存の`LINK_BLOCK_CONFIG`/`URL_REGEX`を使ったURL抽出・ブロック判定）と `analyzeSentiment()`（ルールベースの簡易感情分析）を実装
+- **再検証**: `grep -n "^function analyzeLinks\|^function analyzeSentiment" backend/src/services/moderationService.js` → 両方ヒットすれば修正済み。念のため直接呼び出しでの動作確認: `node --check` だけでは検出できない類のバグ（構文的には正しいReferenceError）なので、必ず実際にコメント作成を実行して確認すること
 
 ---
 
@@ -108,19 +118,16 @@
 
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
-### D-1. ★★★ リアルタイム層が事実上ゼロ稼働 【最優先・両側断線】
+### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】
 
-- **証拠（フロント側）**:
-  - バックエンド `backend/src/ws.js` は room 配信を実装済み: `socket.on('authenticate')` で `user:${userId}` / `platform:${platform}` roomに参加させ、`commentUpdate`(426行付近) / `moderationNotification`(495) / `notification`(551) を配信
-  - しかしフロントエンド `frontend/src/ws.js` は **`socket.emit('authenticate', ...)` を一度も送信しない**（grep 0件）→ どの room にも参加せず、リアルタイム更新は一切届かない
-  - `frontend/src/hooks/useRealtimeComments.js`（46行）は正しく書かれているが**どのコンポーネントからも未使用**の孤児
-  - `CommentTimeline.js` は WebSocket にもポーリングにも依存しない一発取得のみ（AI要約だけ12秒間隔で再取得、コメント一覧自体は「更新」ボタンでの手動 `refetch()` のみ）
-- **証拠（バックエンド側 — フロント修正だけでは不十分）**:
-  - `commentUpdate`/`moderationNotification`/`notification` の配信は **socket側のinboundイベント（`newComment`/`moderationAction`/`sendNotification`）内でのみ発火**しており、`POST /api/comments` を処理する `commentsController.js`/`commentService.js` には `io.emit`/`req.app.get('io')` の呼び出しが**一切ない**（grep 0件）。`app.set('io', io)` の消費者は `monitoringController.js` のみ
-  - 結果: 仮にフロントが `authenticate` を送って room に参加しても、**HTTP経由でコメントを投稿・モデレーションした場合はイベントが飛ばない**。ブロードキャストが起きるのは誰かがsocketで直接 `newComment` 等を送った場合のみ
-  - `ConnectionStatus` は「接続中」と表示するが、実際には何も流れてこない。「ライブコメント管理」という製品の核心価値が不履行
-- **推奨アクション**: (1) フロント: ログイン成功後（`hooks/useAuth.js`）に `socket.emit('authenticate', { userId: account.id, platform })`、(2) `useRealtimeComments` を `CommentTimeline.js` に接続、(3) **バックエンド: `commentService.createComment`/`updateComment` の成功パスで `req.app.get('io')` を使い `commentUpdate`/`moderationNotification` を明示的にemitする処理を追加**（socket側の既存broadcastロジックを関数化して両方から呼べるようにするのが妥当）
-- **再検証**: `grep -rn "emit('authenticate'" frontend/src` → 0件なら未修正。`grep -n "get('io')\|\.emit(" backend/src/controllers/commentsController.js backend/src/services/commentService.js` → 0件ならバックエンド側も未修正
+- **元の証拠**: バックエンド `backend/src/ws.js` は room 配信（`user:`/`platform:`/`dashboard`）を実装済みだったが、(a) フロントエンドが `socket.emit('authenticate', ...)` を一度も送信せずどの room にも参加しない、(b) `POST /api/comments` を処理する `commentsController.js` には `io.emit` 呼び出しが一切なく、socket側のinboundイベント経由でしかブロードキャストされなかった
+- **実施した修正**:
+  - `frontend/src/hooks/useAuth.js`: アカウント確定時（ログイン成功時・セッション復元時）および socket の `'connect'`（再接続含む）の度に `socket.emit('authenticate', {userId})` と `socket.emit('joinDashboard', 'default')` を送信
+  - `backend/src/controllers/commentsController.js`: `broadcastCommentUpdate(req, type, comment)` ヘルパーを追加し、`createComment`（type: 'new'）と `updateComment`（type: 'update'）の成功パスで `req.app.get('io')` 経由の `commentUpdate` を明示的にemit。`io` 未設定（テスト環境等）では何もしない安全なガード付き
+  - `frontend/src/hooks/useRealtimeComments.js`: `'update'` タイプのイベントも通すよう修正（従来は `'new'` のみ）
+  - `frontend/src/components/CommentTimeline.js`: `useRealtimeComments` を接続し、関連プラットフォームの更新受信時に300msデバウンスで `refetch()`
+- **再検証**: `grep -rn "emit('authenticate'" frontend/src` → `hooks/useAuth.js` にヒットすれば修正済み。`grep -n "broadcastCommentUpdate" backend/src/controllers/commentsController.js` → 3箇所ヒットすれば修正済み
+- **既知の残課題**: `moderationAction`/`sendNotification` 等、socket側にしか存在しないイベントに対応するHTTP操作（モデレーションアクション等）は今回未対応。必要になった時点で同じ `broadcastCommentUpdate` パターンを横展開すること
 
 ### D-2. ★★★ 実プラットフォーム連携（YouTube/Twitch API取り込み）が存在しない
 
@@ -167,12 +174,11 @@
 - **証拠**: `cd backend && NODE_ENV=test npx jest` → 13スイート失敗/124件失敗（2026-07-02時点）。主因: (a) notifications テーブルに `user_id` 列が無い等のスキーマ不一致、(b) openaiService テストのモック構造不良、(c) レスポンス形状不一致（`success` vs `status`）、(d) E-7の存在しないサービス
 - **推奨アクション**: スキーマ整合（ALTER TABLE で不足列追加）から着手すると最も多く直る
 
-### D-10. ★★ CriticalAlertsBanner が二重に壊れている — 全画面表示コンポーネントで常時発火
+### D-10. ✅ 解決済み（2026-07-04） — CriticalAlertsBannerが二重に壊れていた
 
-- **ファイル**: `frontend/src/components/CriticalAlertsBanner.jsx`（`App.jsx` 直下、全ページ共通で表示される）
-- **証拠**: (a) 生の `fetch()` で `GET /api/monitoring/alerts?status=active&severity=critical&limit=5` を呼ぶが Authorization ヘッダーを付けていない（axiosのグローバルインターセプターを経由しない）→ 本番では常に401、(b) 対象ルートは `requireRole('admin')`（`routes/monitoring.js:20`）→ moderatorロールでは200が返っても403。**MonitoringDashboardで直したのと全く同じ「fetch()に認証ヘッダーが無い」バグが、こちらは未修正のまま残っている**
-- **推奨アクション**: `fetch()` を `axios.get()` に置き換える（`MonitoringDashboard.js` の修正パターン踏襲）。role要件も見直す
-- **再検証**: `grep -n "fetch(" frontend/src/components/CriticalAlertsBanner.jsx` → 生fetchのままなら未対応
+- **元の証拠**: `frontend/src/components/CriticalAlertsBanner.jsx`（`App.jsx` 直下、全ページ共通表示）が生の `fetch()` で `GET /api/monitoring/alerts` を呼び Authorization ヘッダーを付けていなかった（MonitoringDashboardで直したのと同型のバグ）上、ログイン前（Login画面表示中）から発火していた
+- **実施した修正**: `axios.get()` へ置き換えて認証トークンを自動付与、403/401（権限不足）時は驚かせる赤いエラーバナーを出さず静かに何も表示しないよう変更、コンポーネント自体を`App.jsx`の`AuthGate`内（ログイン成功後）に移動してログイン前は描画されないようにした
+- **再検証**: `grep -n "fetch(" frontend/src/components/CriticalAlertsBanner.jsx` → 生fetchが残っていれば未対応。`grep -n "CriticalAlertsBanner" frontend/src/App.jsx` → `AuthGate`関数の外にあれば未対応
 
 ### D-11. ★★ Usersタブが実データに対して機能しない
 
@@ -213,12 +219,12 @@
 | MonitoringDashboard修復（未インストールのrecharts・存在しないCpu/Networkアイコンで一度もコンパイル不可能だった）＋Dashboardタブ配線＋fetch→axios認証付与 | `8ef8a4b` |
 | usersController ReferenceError・ページネーション上限・設定検証・死角コード3ファイル削除 | `dd18e88` |
 | OpenAIサービス（キャッシュ/タイムアウト/リトライ/コスト追跡）・sessionStorage移行・AI費用監視API | `7b38090` |
+| **D-1 リアルタイム両側配線**（フロントauthenticate送信 + バックエンドcommentUpdate emit追加）・**D-10 CriticalAlertsBanner認証ヘッダー修正+ログイン後描画化**・**`analyzeLinks`/`analyzeSentiment`未定義によるコメント作成の全面ReferenceError修正（最重要）** | 2026-07-04 |
 
 ## 推奨着手順
 
-1. **D-10 CriticalAlertsBannerの認証ヘッダー修正**（数行・全画面で発火する既知の壊れ方・最小工数）
-2. **D-1 リアルタイム両側配線**（半日・製品価値直結・フロント＋バックエンド両方が必要と判明）
-3. **D-2 YouTube取り込み**（中規模・製品名の約束を果たす）
-4. **D-3 メール送信 ＋ D-14 自動バックアップ起動**（小・どちらも「実装済みだが呼ばれていない」系）
-5. **D-4 保留キューUI ＋ D-12 登録UI**（小〜中）
-6. **E-3 テナント意思決定** ＋ クイックウィン一括削除（E-4/E-6/E-7/E-9/E-13、E-10のCSRFのみ「削除でなく適用」を検討）＋ D-5リフレッシュ実装 ＋ D-11 ユーザー一覧API
+1. **D-2 YouTube取り込み**（中規模・製品名の約束を果たす）
+2. **D-3 メール送信 ＋ D-14 自動バックアップ起動**（小・どちらも「実装済みだが呼ばれていない」系）
+3. **D-4 保留キューUI ＋ D-12 登録UI**（小〜中）
+4. **E-3 テナント意思決定** ＋ クイックウィン一括削除（E-4/E-6/E-7/E-9/E-13、E-10のCSRFのみ「削除でなく適用」を検討）＋ D-5リフレッシュ実装 ＋ D-11 ユーザー一覧API
+5. **D-9 残存テスト失敗の解消**（スキーマ不一致・レスポンス形状不一致から着手）— 今回`analyzeLinks`修正で一部テストの失敗理由が「500クラッシュ」から「別の形状不一致」に変わったことが判明したため、テストごとに現在の実際の失敗理由を再確認してから着手すること

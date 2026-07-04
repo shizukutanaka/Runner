@@ -623,6 +623,81 @@ async function processAutoTranslation(content, targetLanguages = ['en'], quality
 // Import OpenAI service
 const openaiService = require('./openaiService');
 
+// コメント本文からURLを抽出し、LINK_BLOCK_CONFIGに基づいてブロック/警告対象を判定する
+function analyzeLinks(content) {
+  const matches = (content || '').match(URL_REGEX) || [];
+  const links = [...new Set(matches)];
+  const flaggedLinks = [];
+  let hasBlockedLinks = false;
+  let hasSuspiciousLinks = false;
+
+  links.forEach((link) => {
+    const lowerLink = link.toLowerCase();
+    const isAllowed = LINK_BLOCK_CONFIG.allowedDomains.some((domain) => lowerLink.includes(domain));
+    if (isAllowed) {
+      return;
+    }
+
+    const isBlocked = LINK_BLOCK_CONFIG.blockedDomains.some((domain) => lowerLink.includes(domain))
+      || LINK_BLOCK_CONFIG.blockedPatterns.some((pattern) => pattern.test(link));
+    const isSuspicious = LINK_BLOCK_CONFIG.suspiciousDomains.some((domain) => lowerLink.includes(domain));
+
+    if (isBlocked) {
+      hasBlockedLinks = true;
+      flaggedLinks.push({ url: link, reason: 'blocked' });
+    } else if (isSuspicious) {
+      hasSuspiciousLinks = true;
+      flaggedLinks.push({ url: link, reason: 'suspicious' });
+    }
+  });
+
+  return {
+    links,
+    flaggedLinks,
+    linkCount: links.length,
+    hasBlockedLinks,
+    hasSuspiciousLinks
+  };
+}
+
+// ルールベースの簡易感情分析（OpenAIが利用できない場合のフォールバック用ベースライン）
+function analyzeSentiment(content) {
+  const text = (content || '').toLowerCase();
+  if (!text) {
+    return { sentiment: 'neutral', score: 0.5, intensity: 'neutral', confidence: 0 };
+  }
+
+  const positivePattern = /すごい|最高|good|great|love|nice|thanks|ありがとう|楽しい|好き|嬉しい|amazing|awesome/i;
+  const negativePattern = /最悪|ひどい|bad|hate|クソ|うざい|死ね|消えろ|バカ|アホ|stupid|terrible|awful/i;
+
+  const hasPositive = positivePattern.test(text);
+  const hasNegative = negativePattern.test(text);
+
+  let sentiment = 'neutral';
+  let score = 0.5;
+  let intensity = 'neutral';
+
+  if (hasPositive && !hasNegative) {
+    sentiment = 'positive';
+    score = 0.75;
+    intensity = 'positive';
+  } else if (hasNegative && !hasPositive) {
+    sentiment = 'negative';
+    score = 0.2;
+    intensity = 'negative';
+  } else if (hasPositive && hasNegative) {
+    sentiment = 'mixed';
+    score = 0.45;
+  }
+
+  return {
+    sentiment,
+    score,
+    intensity,
+    confidence: (hasPositive || hasNegative) ? 0.6 : 0.3
+  };
+}
+
 exports.analyzeComment = async (content, platform, user, timestamp) => {
   const result = {
     isSpam: false,

@@ -255,7 +255,12 @@ function AuthGate() {
     return <Login onLogin={login} />;
   }
 
-  return <AppInner onLogout={logout} />;
+  return (
+    <>
+      <CriticalAlertsBanner />
+      <AppInner onLogout={logout} />
+    </>
+  );
 }
 
 export default function App() {
@@ -266,7 +271,6 @@ export default function App() {
         <I18nextProvider i18n={i18n}>
           <ThemeProvider>
             <div id="app-root" role="application" aria-label="YouTube & Twitchコメント管理アプリケーション">
-              <CriticalAlertsBanner />
               <LanguageSwitcher />
               <AuthGate />
               <ConnectionStatus />

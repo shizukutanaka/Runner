@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { login as apiLogin, logout as apiLogout, fetchCurrentAccount } from '../api/auth';
 import { tokenStorage } from '../utils/tokenStorage';
+import socket from '../ws';
 
 export const useAuth = () => {
   const [account, setAccount] = useState(null);
@@ -35,6 +36,31 @@ export const useAuth = () => {
     checkSession();
     return () => { cancelled = true; };
   }, []);
+
+  // ログイン確定後、WebSocketのroomに参加してリアルタイム更新を受け取れるようにする。
+  // サーバー側は socket.on('authenticate') で user:/platform: room に、
+  // socket.on('joinDashboard') で dashboard room に参加させる仕組みを持つが、
+  // 従来はどちらも一度も送信されず配信が一切届いていなかった。
+  // 再接続時にもroom参加が失われるため、'connect'イベントの度に再送する。
+  useEffect(() => {
+    if (!account?.id) {
+      return undefined;
+    }
+
+    const joinRealtimeRooms = () => {
+      socket.emit('authenticate', { userId: account.id });
+      socket.emit('joinDashboard', 'default');
+    };
+
+    if (socket.connected) {
+      joinRealtimeRooms();
+    }
+    socket.on('connect', joinRealtimeRooms);
+
+    return () => {
+      socket.off('connect', joinRealtimeRooms);
+    };
+  }, [account?.id]);
 
   const login = useCallback(async (username, password) => {
     setError(null);

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import axios from 'axios';
 import { Alert, AlertTitle, Box, Collapse, IconButton, LinearProgress } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import CloseIcon from '@mui/icons-material/Close';
@@ -21,32 +22,32 @@ const CriticalAlertsBanner = () => {
         setLoading(true);
         setError(null);
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-        const response = await fetch('/api/monitoring/alerts?status=active&severity=critical&limit=5', {
-          credentials: 'include',
-          signal: controller.signal
+        // axios経由で呼ぶことで認証トークン(Bearer)がインターセプター経由で自動付与される
+        // (api/comments.jsに登録済み。生fetch()ではヘッダーが付かず本番で常に401していた)
+        const response = await axios.get('/api/monitoring/alerts', {
+          params: { status: 'active', severity: 'critical', limit: 5 },
+          timeout: 15000
         });
 
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch alerts: ${response.status}`);
-        }
-
-        const payload = await response.json();
         if (!isMounted) {
           return;
         }
 
-        const activeAlerts = payload?.data?.alerts ?? [];
+        const activeAlerts = response.data?.data?.alerts ?? [];
         setAlerts(activeAlerts);
         setVisible(true);
       } catch (err) {
-        if (!isMounted || err.name === 'AbortError') {
+        if (!isMounted || err.code === 'ERR_CANCELED') {
           return;
         }
+
+        // 権限不足(moderatorがadmin限定エンドポイントを叩いた場合)は
+        // 想定内の挙動なので、驚かせる赤いエラーバナーは出さず静かに何も表示しない
+        if (err.response?.status === 403 || err.response?.status === 401) {
+          setAlerts([]);
+          return;
+        }
+
         console.error('[CriticalAlertsBanner] Fetch error:', err);
         setError({
           key: err?.message ? 'critical_alerts_fetch_error_with_detail' : 'critical_alerts_fetch_error',
