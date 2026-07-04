@@ -1,6 +1,6 @@
 # 機能過不足監査（Feature Audit）
 
-**最終検証日: 2026-07-04**（D-1/D-3/D-10/D-14実装 + 重大バグ発見・修正済み） / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
+**最終検証日: 2026-07-04**（D-1/D-3/D-10/D-12/D-14実装 + 重大バグ発見・修正済み） / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
 
 ## この文書の目的と使い方
 
@@ -187,11 +187,11 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **推奨アクション**: `GET /api/users`（一覧・検索・ページネーション）をusersControllerに追加し、UserPanelを実データ連動に書き換え
 - **再検証**: `grep -n "router.get('/'" backend/src/routes/users.js` → 空なら一覧エンドポイント無し
 
-### D-12. ★★ 登録UIが存在しない
+### D-12. ✅ 解決済み（2026-07-04） — 登録UIが存在しなかった
 
-- **証拠**: `frontend/src/api/auth.js` の `register()` 関数はどのコンポーネントからも import されていない（grep該当は定義のみ）。`Login.jsx` に登録画面へのリンクが無い。初回管理者（ブートストラップadmin、コミット6820ac2で実装）はcurl等API直叩きでしか作成できない
-- **推奨アクション**: `Login.jsx` に「アカウント作成」タブ/リンクを追加した `Register.jsx` を実装
-- **再検証**: `grep -rn "from '.*api/auth'" frontend/src/components` → `register` の呼び出し元が無ければ未対応
+- **元の証拠**: `api/auth.js` の `register()` はどのコンポーネントからも呼ばれておらず、初回管理者（ブートストラップadmin）以降のアカウントはcurl等API直叩きでしか作成できなかった
+- **実施した修正**: `frontend/src/components/Register.jsx` を新規作成（ユーザー名/メール/パスワード入力、パスワード要件のヒント表示）。`hooks/useAuth.js` に `register()` を追加（登録APIはトークンを返さないため、登録成功後に続けて`login()`を実行し即座に認証済み状態にする）。`App.jsx`の`AuthGate`にログイン⇔登録画面のトグル状態を追加し、`Login.jsx`/`Register.jsx`双方に切り替えリンクを設置
+- **再検証**: `grep -rn "from '\.\./api/auth'" frontend/src/hooks/useAuth.js` → `register`のimportがあれば修正済み。`grep -n "Register" frontend/src/App.jsx` → `AuthGate`内で使われていれば修正済み
 
 ### D-13. ★ 言語スイッチャーの15言語中13言語が張りぼて
 
@@ -223,10 +223,11 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 | OpenAIサービス（キャッシュ/タイムアウト/リトライ/コスト追跡）・sessionStorage移行・AI費用監視API | `7b38090` |
 | **D-1 リアルタイム両側配線**（フロントauthenticate送信 + バックエンドcommentUpdate emit追加）・**D-10 CriticalAlertsBanner認証ヘッダー修正+ログイン後描画化**・**`analyzeLinks`/`analyzeSentiment`未定義によるコメント作成の全面ReferenceError修正（最重要）** | 2026-07-04 |
 | **D-3 メール送信（nodemailer本接続、SMTP未設定時は安全にフォールバック）**・**D-14 自動バックアップ起動配線 + パス誤り修正（`backend/backend/...`という存在しないパスを一度も参照できていなかった）+ sqlite3 CLI無し環境でのフェイルセーフ化** | 2026-07-04 |
+| **D-12 登録UI新規実装**（`Register.jsx`・`useAuth.js`にregister追加・Login⇔Register切り替え） | 2026-07-04 |
 
 ## 推奨着手順
 
 1. **D-2 YouTube取り込み**（中規模・製品名の約束を果たす）
-2. **D-4 保留キューUI ＋ D-12 登録UI**（小〜中）
+2. **D-4 保留キューUI**（小〜中）
 3. **E-3 テナント意思決定** ＋ クイックウィン一括削除（E-4/E-6/E-7/E-9/E-13、E-10のCSRFのみ「削除でなく適用」を検討）＋ D-5リフレッシュ実装 ＋ D-11 ユーザー一覧API
 4. **D-9 残存テスト失敗の解消**（スキーマ不一致・レスポンス形状不一致から着手）— 今回`analyzeLinks`修正で一部テストの失敗理由が「500クラッシュ」から「別の形状不一致」に変わったことが判明したため、テストごとに現在の実際の失敗理由を再確認してから着手すること

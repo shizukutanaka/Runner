@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { login as apiLogin, logout as apiLogout, fetchCurrentAccount } from '../api/auth';
+import { login as apiLogin, logout as apiLogout, register as apiRegister, fetchCurrentAccount } from '../api/auth';
 import { tokenStorage } from '../utils/tokenStorage';
 import socket from '../ws';
 
@@ -79,12 +79,25 @@ export const useAuth = () => {
     setAccount(null);
   }, []);
 
+  // 登録エンドポイントはトークンを返さないため、登録後に続けてログインする
+  const register = useCallback(async (username, email, password) => {
+    setError(null);
+    try {
+      await apiRegister(username, email, password);
+      return await login(username, password);
+    } catch (err) {
+      setError(err);
+      throw err;
+    }
+  }, [login]);
+
   return {
     account,
     isAuthenticated: !!account,
     loading,
     error,
     login,
-    logout
+    logout,
+    register
   };
 };

@@ -4,6 +4,7 @@ import { I18nextProvider, useTranslation } from 'react-i18next';
 import i18n from './i18n';
 import Dashboard from './components/Dashboard';
 import Login from './components/Login';
+import Register from './components/Register';
 import ErrorBoundary from './components/ErrorBoundary';
 import ConnectionStatus from './components/ConnectionStatus';
 import CriticalAlertsBanner from './components/CriticalAlertsBanner';
@@ -241,7 +242,8 @@ function AppInner({ onLogout }) {
 }
 
 function AuthGate() {
-  const { isAuthenticated, loading, login, logout } = useAuth();
+  const { isAuthenticated, loading, login, logout, register } = useAuth();
+  const [authView, setAuthView] = useState('login');
 
   if (loading) {
     return (
@@ -252,7 +254,10 @@ function AuthGate() {
   }
 
   if (!isAuthenticated) {
-    return <Login onLogin={login} />;
+    if (authView === 'register') {
+      return <Register onRegister={register} onSwitchToLogin={() => setAuthView('login')} />;
+    }
+    return <Login onLogin={login} onSwitchToRegister={() => setAuthView('register')} />;
   }
 
   return (
