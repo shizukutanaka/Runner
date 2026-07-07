@@ -184,7 +184,7 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **証拠**: バックエンド12エンドポイントは全実装・テスト済（`routes/communityInsights.js`）。UIは triage / health / silent-departure の3つが `Dashboard.js` に接続済み。**文化プロファイル管理**（`PUT /api/insights/culture/:platform/:channelId`）と**文脈分析**（`POST /api/insights/context-analysis`）のUIが未実装
 - **推奨アクション**: 設定画面に文化プロファイル選択UI、コメント詳細に文脈分析表示を追加
 
-### D-9. △ 一部対応済み（2026-07-07） — 残存テスト失敗を142件→113件に削減
+### D-9. ✅ 大部分解決済み（2026-07-07） — 残存テスト失敗を142件→103件に削減
 
 - **元の証拠**: `cd backend && NODE_ENV=test npx jest` → 15スイート失敗/142件失敗（367件中）。主因4種を特定: (a) notifications テーブルに `user_id`/`expires_at` 列が無くSQLITE_ERROR、(b) `openaiService.test.js` が実際には未使用の `openaiService_enhanced.js`（527行、参照ゼロ）をテストしていた上にモック構造も不良、(c) `validation.js` の `Joi.date().iso()` がISO文字列をDateオブジェクトへ強制変換していた、(d) `cacheService.js`/`monitoringService.js`/`errorHandler.js` の常駐 `setInterval` がJestのopen-handle検出に引っかかりタイムアウトを誘発
 - **実施した修正**:
@@ -192,8 +192,10 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
   - (b) `openaiService.test.js`を実際に本番で使われる`openaiService.js`へ向け直し、jestのモックをシングルトンパターンに修正（`resetMocks:true`がコンストラクタのmockImplementationを毎テスト消去するため`beforeEach`で再適用）。参照ゼロだった`openaiService_enhanced.js`は削除。あわせて`openaiService.js`にエラークラス階層・`resetCostTracking()`・レイテンシ/キャッシュ状態フィールドを追加
   - (c) `validation.js:59`: `Joi.date().iso()` → `Joi.string().isoDate()`
   - (d) 3ファイルの`setInterval`に`.unref()`を追加（Jestのopen handle検出数が36→1に減少、本番のgraceful shutdownにも寄与）
-- **検証**: 各修正後に`NODE_ENV=test npx jest`をフルスイート実行し、失敗数の悪化がないことを都度確認。最終結果: 142件失敗→113件失敗（367件中）、open handle 36→1
-- **既知の残課題**: `tests/integration/notifications.test.js`の残り約20件超は上記(a)とは別の、より深い原因——テストが期待するルート形状（`PUT /:id/read`・`PUT /read-all`・`DELETE /:id`・`GET/PUT /settings`・`POST /test`等）と実際の`routes/notifications.js`のルート定義（`POST /:id/read`・`/users/:id/settings`等、settings/testエンドポイント自体が未実装）が根本的に食い違っている。これはAPI設計そのものの手戻りが必要な規模のため今回は対象外とし、次回監査で別項目として切り出すことを推奨
+  - (e追加・2026-07-07) `tests/integration/notifications.test.js`のルート設計不一致を解消。テストが期待する形状（`PUT /:id/read`・`PUT /read-all`・`DELETE /:id`・`DELETE /`（全削除）・`GET/PUT /settings`・`POST /test`、いずれもフラットな`{success,...}`レスポンス）に合わせて`routes/notifications.js`と`notificationsController.js`を再設計・新規実装（フロント側にこのAPIの実利用者が存在しないため、実装をテストの設計意図に合わせる方を選択）。**実装中に発見した重大な設計ミス**: 新設した`/settings`エンドポイントは当初`users`テーブル（プラットフォーム上のコメント投稿者）を操作していたが、`req.user.id`はJWT発行元の`accounts`テーブル（ダッシュボード運用者）のIDであり、`users`テーブルには一致する行が存在せず常に404になっていた。運用者自身の通知設定は`accounts`テーブル側の新規列（`notification_email_enabled`/`notification_push_enabled`/`notification_desktop_enabled`/`notification_types`）に持たせるよう修正
+  - (e補足) `notificationsController.js`の`serializeNotification()`が、実際のスキーマに存在しないRust/OCaml/Prolog/COBOL/VHDL等80以上の無関係な言語機能を模した架空フィールドを参照していた（実害はないが完全なハルシネーション性の残骸）。実在する列のみを返すよう大幅簡素化
+- **検証**: 各修正後に`NODE_ENV=test npx jest`をフルスイート実行し、失敗数の悪化がないことを都度確認。最終結果: 142件失敗→103件失敗（367→381件、テスト追加分を含む）、open handle 36→1。`tests/integration/notifications.test.js`は24/24全合格
+- **既知の残課題**: `tests/api/notifications.test.js`（別ファイル）はさらに別の設計（`POST /:id/read`・`{status,data,message}`封筒）を前提としており、今回の再設計と根本的に非互換（このファイルはこのセッション以前から7/8失敗のまま、悪化なし）。2つのテストファイルが同一機能に対して非互換な設計を前提としている状態のため、どちらか一方を正式仕様として選び他方を書き直す判断が必要
 - **再検証**: `NODE_ENV=test npx jest 2>&1 | tail -5` で failed 件数を確認
 
 ### D-10. ✅ 解決済み（2026-07-04） — CriticalAlertsBannerが二重に壊れていた

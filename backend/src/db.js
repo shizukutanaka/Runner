@@ -186,6 +186,12 @@ const ensureUserColumns = () => {
     { name: 'ban_until', definition: 'TEXT' },
     { name: 'mute_until', definition: 'TEXT' },
     { name: 'notification_frequency', definition: 'TEXT' },
+    { name: 'notification_sound_enabled', definition: 'INTEGER NOT NULL DEFAULT 1' },
+    { name: 'notification_desktop_enabled', definition: 'INTEGER NOT NULL DEFAULT 1' },
+    { name: 'notification_email_enabled', definition: 'INTEGER NOT NULL DEFAULT 1' },
+    { name: 'notification_sound_volume', definition: 'INTEGER' },
+    { name: 'notification_keywords', definition: 'TEXT' },
+    { name: 'notification_filters', definition: 'TEXT' },
     { name: 'external_integration', definition: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'profile_image', definition: 'TEXT' },
     { name: 'bio', definition: 'TEXT' },
@@ -195,6 +201,18 @@ const ensureUserColumns = () => {
     { name: 'auth_history', definition: "TEXT DEFAULT '[]'" },
     { name: 'two_factor', definition: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'email_verified', definition: 'INTEGER NOT NULL DEFAULT 0' }
+  ]);
+};
+
+// ダッシュボード運用者アカウント自身の通知設定
+// （usersテーブルの列は「運用者が管理対象のプラットフォームユーザーの通知設定を操作する」
+//   別機能で使用中のため、認証中のaccounts行に対する自己設定はaccountsテーブル側に持たせる）
+const ensureAccountNotificationColumns = () => {
+  ensureColumnDefinitions('accounts', [
+    { name: 'notification_email_enabled', definition: 'INTEGER NOT NULL DEFAULT 1' },
+    { name: 'notification_push_enabled', definition: 'INTEGER NOT NULL DEFAULT 1' },
+    { name: 'notification_desktop_enabled', definition: 'INTEGER NOT NULL DEFAULT 1' },
+    { name: 'notification_types', definition: 'TEXT' }
   ]);
 };
 
@@ -396,6 +414,7 @@ const initializeDB = async () => {
     ensureCommentColumns();
     ensureUserColumns();
     ensureNotificationColumns();
+    ensureAccountNotificationColumns();
   } catch (err) {
     logger.error('[Database] Failed to initialize database', { error: err.message });
     throw err;

@@ -14,132 +14,7 @@ const serializeNotification = (row) => ({
   metadata: row.metadata ? JSON.parse(row.metadata) : null,
   createdAt: row.created_at,
   readAt: row.read_at,
-  expiresAt: row.expires_at,
-  eventName: row.event_name,
-  sourceComponent: row.source_component,
-  correlationId: row.correlation_id,
-  templateData: row.template_data ? JSON.parse(row.template_data) : null,
-  deliveryStatus: row.delivery_status,
-  trackingData: row.tracking_data ? JSON.parse(row.tracking_data) : null,
-  supervisorProcessId: row.supervisor_process_id,
-  faultToleranceEnabled: Boolean(row.fault_tolerance_enabled),
-  maxRetries: row.max_retries,
-  actorPath: row.actor_path,
-  actorMessageId: row.actor_message_id,
-  stateVersion: row.state_version,
-  coroutineContextId: row.coroutine_context_id,
-  channelId: row.channel_id,
-  asyncProcessing: Boolean(row.async_processing),
-  railsConventionApplied: Boolean(row.rails_convention_applied),
-  autoAssociations: row.auto_associations ? JSON.parse(row.auto_associations) : [],
-  namingConvention: row.naming_convention ? JSON.parse(row.naming_convention) : {},
-  inferredType: row.inferred_type,
-  typeChecked: Boolean(row.type_checked),
-  nullSafetyLevel: row.null_safety_level,
-  categoryId: row.category_id,
-  availableActions: row.available_actions ? JSON.parse(row.available_actions) : [],
-  badgeCount: row.badge_count,
-  soundFile: row.sound_file,
-  interactiveData: row.interactive_data ? JSON.parse(row.interactive_data) : {},
-  monadType: row.monad_type,
-  functionalResult: row.functional_result,
-  patternMatched: Boolean(row.pattern_matched),
-  typeClassInstance: row.type_class_instance,
-  immutableStoreId: row.immutable_store_id,
-  atomOperations: row.atom_operations,
-  stmTransactionId: row.stm_transaction_id,
-  concurrentVersion: row.concurrent_version,
-  processId: row.process_id,
-  spawnedBy: row.spawned_by,
-  messagePassed: Boolean(row.message_passed),
-  processMonitoring: row.process_monitoring,
-  patternMatchedOcaml: row.pattern_matched_ocaml,
-  adtConstructed: row.adt_constructed,
-  typeInferred: row.type_inferred,
-  moduleApplied: row.module_applied,
-  typescriptInterface: row.typescript_interface,
-  genericType: row.generic_type,
-  typeGuardApplied: row.type_guard_applied,
-  compileTimeChecked: Boolean(row.compile_time_checked),
-  reactiveStreamId: row.reactive_stream_id,
-  observableTransformed: Boolean(row.observable_transformed),
-  futureAwaited: Boolean(row.future_awaited),
-  subscriptionId: row.subscription_id,
-  juliaTaskId: row.julia_task_id,
-  vectorizedProcessing: Boolean(row.vectorized_processing),
-  parallelExecution: Boolean(row.parallel_execution),
-  macroExpanded: Boolean(row.macro_expanded),
-  crystalFiberId: row.crystal_fiber_id,
-  channelCommunication: Boolean(row.channel_communication),
-  concurrentPipeline: row.concurrent_pipeline,
-  fiberScheduled: Boolean(row.fiber_scheduled),
-  zigErrorHandling: row.zig_error_handling,
-  errorUnionUsed: Boolean(row.error_union_used),
-  safetyChecksPassed: Boolean(row.safety_checks_passed),
-  compileTimeAsserted: Boolean(row.compile_time_asserted),
-  analysisPipeline: row.analysis_pipeline,
-  vSimpleId: row.v_simple_id,
-  vFastProcessing: Boolean(row.v_fast_processing),
-  vEmbeddedSystem: row.v_embedded_system,
-  vPerformanceOptimized: Boolean(row.v_performance_optimized),
-  dRangeUsed: row.d_range_used,
-  dParallelProcessed: Boolean(row.d_parallel_processed),
-  dTemplateApplied: row.d_template_applied,
-  dContractsChecked: Boolean(row.d_contracts_checked),
-  adaTaskId: row.ada_task_id,
-  adaSafetyLevel: row.ada_safety_level,
-  adaRealTime: Boolean(row.ada_real_time),
-  adaSynchronized: Boolean(row.ada_synchronized),
-  prologInferred: row.prolog_inferred,
-  prologConfidence: parseFloat(row.prolog_confidence) || 1.0,
-  prologRuleApplied: row.prolog_rule_applied,
-  prologLogic: Boolean(row.prolog_logic),
-  sqlQueryOptimized: row.sql_query_optimized,
-  sqlIndexUsed: row.sql_index_used,
-  sqlTransactionId: row.sql_transaction_id,
-  sqlJoinApplied: Boolean(row.sql_join_applied),
-  smalltalkWorkspace: row.smalltalk_workspace,
-  smalltalkMessageSent: row.smalltalk_message_sent,
-  smalltalkLiveCoding: Boolean(row.smalltalk_live_coding),
-  smalltalkObjectMemory: Boolean(row.smalltalk_object_memory),
-  lispMacroApplied: row.lisp_macro_applied,
-  lispSexpression: row.lisp_sexpression,
-  lispListProcessed: Boolean(row.lisp_list_processed),
-  lispFunctional: Boolean(row.lisp_functional),
-  matlabMatrixComputed: row.matlab_matrix_computed,
-  matlabNumerical: Boolean(row.matlab_numerical),
-  matlabVisualized: row.matlab_visualized,
-  matlabScientific: Boolean(row.matlab_scientific),
-  assemblyOptimized: row.assembly_optimized,
-  assemblyMemoryManaged: Boolean(row.assembly_memory_managed),
-  assemblySimdApplied: Boolean(row.assembly_simd_applied),
-  assemblyLowLevel: Boolean(row.assembly_low_level),
-  cPointerUsed: Boolean(row.c_pointer_used),
-  cSystemIntegrated: Boolean(row.c_system_integrated),
-  cppTemplateUsed: row.cpp_template_used,
-  cppInheritanceApplied: Boolean(row.cpp_inheritance_applied),
-  htmlComponent: row.html_component,
-  cssStyled: Boolean(row.css_styled),
-  vbFormUsed: row.vb_form_used,
-  vbEventBound: Boolean(row.vb_event_bound),
-  vbDataBound: Boolean(row.vb_data_bound),
-  delphiComponent: row.delphi_component,
-  delphiDatabase: Boolean(row.delphi_database),
-  pascalRecord: row.pascal_record,
-  pascalStructured: Boolean(row.pascal_structured),
-  cobolRecordUsed: row.cobol_record_used,
-  cobolBatchProcessed: Boolean(row.cobol_batch_processed),
-  fortranArrayUsed: row.fortran_array_used,
-  fortranScientific: Boolean(row.fortran_scientific),
-  shellScriptUsed: row.shell_script_used,
-  shellAutomated: Boolean(row.shell_automated),
-  powershellCmdlet: row.powershell_cmdlet,
-  powershellManaged: Boolean(row.powershell_managed),
-  labviewViUsed: row.labview_vi_used,
-  labviewGraphical: Boolean(row.labview_graphical),
-  verilogModule: row.verilog_module,
-  vhdlEntity: row.vhdl_entity,
-  hardwareSynthesized: Boolean(row.hardware_synthesized)
+  expiresAt: row.expires_at
 });
 
 // ユーザーごとの通知設定更新
@@ -469,7 +344,7 @@ exports.updateNotificationTemplate = (req, res, next) => {
 // 通知一覧取得
 exports.getNotifications = (req, res, next) => {
   const userId = req.user.id;
-  const { limit = 50, offset = 0, type, level, unreadOnly = false } = req.query;
+  const { limit = 50, offset = 0, type, level, read, unreadOnly = false } = req.query;
 
   let sql = 'SELECT * FROM notifications WHERE user_id = ?';
   const params = [userId];
@@ -484,7 +359,9 @@ exports.getNotifications = (req, res, next) => {
     params.push(level);
   }
 
-  if (unreadOnly === 'true') {
+  if (read === 'true') {
+    sql += ' AND read = 1';
+  } else if (read === 'false' || unreadOnly === 'true') {
     sql += ' AND read = 0';
   }
 
@@ -501,7 +378,6 @@ exports.getNotifications = (req, res, next) => {
     }
 
     const notifications = rows.map(serializeNotification);
-    const totalCount = rows.length;
 
     // 未読数を計算
     const unreadSql = 'SELECT COUNT(*) as unread FROM notifications WHERE user_id = ? AND read = 0 AND (expires_at IS NULL OR expires_at > datetime("now"))';
@@ -510,32 +386,20 @@ exports.getNotifications = (req, res, next) => {
         logger.error('[Notifications] Get unread count error', { error: err.message, userId });
         // エラーがあっても通知一覧は返す
         return res.json({
-          status: 200,
-          data: {
-            notifications,
-            pagination: {
-              limit: Number(limit),
-              offset: Number(offset),
-              total: totalCount
-            },
-            unreadCount: 0
-          },
-          message: 'Notifications fetched'
+          notifications,
+          total: notifications.length,
+          unread: 0,
+          limit: Number(limit),
+          offset: Number(offset)
         });
       }
 
       res.json({
-        status: 200,
-        data: {
-          notifications,
-          pagination: {
-            limit: Number(limit),
-            offset: Number(offset),
-            total: totalCount
-          },
-          unreadCount: row ? row.unread : 0
-        },
-        message: 'Notifications fetched'
+        notifications,
+        total: notifications.length,
+        unread: row ? row.unread : 0,
+        limit: Number(limit),
+        offset: Number(offset)
       });
     });
   });
@@ -641,29 +505,66 @@ exports.markAsRead = (req, res, next) => {
       return next({ status: 404, message: 'Notification not found' });
     }
 
-    // 通知履歴も更新
-    const historySql = `
-      UPDATE notification_history
-      SET read_at = datetime('now')
-      WHERE user_id = ? AND title = (SELECT title FROM notifications WHERE id = ?)
-      ORDER BY created_at DESC LIMIT 1
-    `;
-
-    db.run(historySql, [userId, id], (err) => {
-      if (err) {
-        logger.error('[Notifications] History update error', { error: err.message, userId, notificationId: id });
+    db.get('SELECT * FROM notifications WHERE id = ?', [id], (getErr, row) => {
+      if (getErr || !row) {
+        logger.error('[Notifications] Fetch after mark-as-read error', { error: getErr?.message, userId, notificationId: id });
+        return res.json({ id, read: true });
       }
-    });
-
-    res.json({
-      status: 200,
-      data: null,
-      message: 'Notification marked as read'
+      res.json(serializeNotification(row));
     });
   });
 };
 
-// 既読通知をクリア
+// 全ての通知を既読にする
+exports.markAllAsRead = (req, res, next) => {
+  const userId = req.user.id;
+
+  const sql = "UPDATE notifications SET read = 1, read_at = datetime('now') WHERE user_id = ? AND read = 0";
+
+  db.run(sql, [userId], function(err) {
+    if (err) {
+      logger.error('[Notifications] Mark all as read error', { error: err.message, userId });
+      return next({ status: 500, message: 'Failed to mark all notifications as read', details: err });
+    }
+
+    res.json({ success: true, updated: this.changes });
+  });
+};
+
+// 通知を削除
+exports.deleteNotification = (req, res, next) => {
+  const userId = req.user.id;
+  const { id } = req.params;
+
+  db.run('DELETE FROM notifications WHERE id = ? AND user_id = ?', [id, userId], function(err) {
+    if (err) {
+      logger.error('[Notifications] Delete notification error', { error: err.message, userId, notificationId: id });
+      return next({ status: 500, message: 'Failed to delete notification', details: err });
+    }
+
+    if (this.changes === 0) {
+      return next({ status: 404, message: 'Notification not found' });
+    }
+
+    res.json({ success: true });
+  });
+};
+
+// 全ての通知を削除
+exports.clearAllNotifications = (req, res, next) => {
+  const userId = req.user.id;
+
+  db.run('DELETE FROM notifications WHERE user_id = ?', [userId], function(err) {
+    if (err) {
+      logger.error('[Notifications] Clear all notifications error', { error: err.message, userId });
+      return next({ status: 500, message: 'Failed to clear notifications', details: err });
+    }
+
+    res.json({ success: true, deleted: this.changes });
+  });
+};
+
+// 既読通知をクリア（読了済みのみ・管理系エンドポイントから利用）
 exports.clearRead = (req, res, next) => {
   const userId = req.user.id;
   const { before } = req.query;
@@ -682,26 +583,129 @@ exports.clearRead = (req, res, next) => {
       return next({ status: 500, message: 'Failed to clear read notifications', details: err });
     }
 
-    // 通知履歴もクリア（オプション）
-    let historySql = 'DELETE FROM notification_history WHERE user_id = ? AND read_at IS NOT NULL';
-    const historyParams = [userId];
-
-    if (before) {
-      historySql += ' AND read_at < ?';
-      historyParams.push(before);
-    }
-
-    db.run(historySql, historyParams, (err) => {
-      if (err) {
-        logger.error('[Notifications] History clear error', { error: err.message, userId });
-      }
-    });
-
     res.json({
       status: 200,
       data: { deleted: this.changes },
       message: 'Read notifications cleared'
     });
+  });
+};
+
+// 通知設定取得（ログイン中ユーザー自身のシンプルな設定）
+exports.getNotificationSettings = (req, res, next) => {
+  const userId = req.user.id;
+
+  const sql = `
+    SELECT notification_email_enabled, notification_push_enabled, notification_desktop_enabled, notification_types
+    FROM accounts WHERE id = ?
+  `;
+
+  db.get(sql, [userId], (err, row) => {
+    if (err) {
+      logger.error('[Notifications] Get settings error', { error: err.message, userId });
+      return next({ status: 500, message: 'Failed to fetch notification settings', details: err });
+    }
+
+    if (!row) {
+      return next({ status: 404, message: 'Account not found' });
+    }
+
+    res.json({
+      email: row.notification_email_enabled === null ? true : Boolean(row.notification_email_enabled),
+      push: row.notification_push_enabled === null ? true : Boolean(row.notification_push_enabled),
+      desktop: row.notification_desktop_enabled === null ? true : Boolean(row.notification_desktop_enabled),
+      types: row.notification_types
+        ? JSON.parse(row.notification_types)
+        : { comment: true, moderation: true, system: true }
+    });
+  });
+};
+
+// 通知設定更新（ログイン中ユーザー自身のシンプルな設定）
+exports.updateNotificationSettings = (req, res, next) => {
+  const userId = req.user.id;
+  const { email, push, desktop, types } = req.body;
+
+  const Joi = require('joi');
+  const settingsSchema = Joi.object({
+    email: Joi.boolean().optional(),
+    push: Joi.boolean().optional(),
+    desktop: Joi.boolean().optional(),
+    types: Joi.object({
+      comment: Joi.boolean(),
+      moderation: Joi.boolean(),
+      system: Joi.boolean()
+    }).optional()
+  });
+
+  const { error, value } = settingsSchema.validate({ email, push, desktop, types });
+
+  if (error) {
+    return next({ status: 400, message: 'Invalid notification settings', details: error.details });
+  }
+
+  const updateFields = [];
+  const params = [];
+
+  if (value.email !== undefined) {
+    updateFields.push('notification_email_enabled = ?');
+    params.push(value.email ? 1 : 0);
+  }
+  if (value.push !== undefined) {
+    updateFields.push('notification_push_enabled = ?');
+    params.push(value.push ? 1 : 0);
+  }
+  if (value.desktop !== undefined) {
+    updateFields.push('notification_desktop_enabled = ?');
+    params.push(value.desktop ? 1 : 0);
+  }
+  if (value.types !== undefined) {
+    updateFields.push('notification_types = ?');
+    params.push(JSON.stringify(value.types));
+  }
+
+  if (updateFields.length === 0) {
+    return next({ status: 400, message: 'No settings to update' });
+  }
+
+  params.push(userId);
+
+  db.run(`UPDATE accounts SET ${updateFields.join(', ')} WHERE id = ?`, params, function(err) {
+    if (err) {
+      logger.error('[Notifications] Update settings error', { error: err.message, userId });
+      return next({ status: 500, message: 'Failed to update notification settings', details: err });
+    }
+
+    if (this.changes === 0) {
+      return next({ status: 404, message: 'Account not found' });
+    }
+
+    res.json({
+      email: value.email,
+      push: value.push,
+      desktop: value.desktop,
+      types: value.types
+    });
+  });
+};
+
+// テスト通知を送信（自分宛て）
+exports.sendTestNotification = async (req, res, next) => {
+  const userId = req.user.id;
+  const { type = 'system' } = req.body;
+
+  const sql = `
+    INSERT INTO notifications (user_id, title, message, type, level, read, created_at)
+    VALUES (?, ?, ?, ?, 'info', 0, datetime('now'))
+  `;
+
+  db.run(sql, [userId, 'Test notification', `This is a test ${type} notification`, type], (err) => {
+    if (err) {
+      logger.error('[Notifications] Send test notification error', { error: err.message, userId });
+      return next({ status: 500, message: 'Failed to send test notification', details: err });
+    }
+
+    res.json({ success: true, message: 'Test notification sent' });
   });
 };
 

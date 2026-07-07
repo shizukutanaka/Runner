@@ -6,10 +6,18 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 router.use(authenticateToken);
 
 // 基本的な通知機能
+// 注意: リテラルパス（/read-all, /settings, /test, /read）は
+// パラメータ化されたパス（/:id, /:id/read）より前に登録すること
 router.get('/', requireRole('user'), ctrl.getNotifications);
 router.post('/', requireRole('moderator'), ctrl.createNotification);
-router.post('/:id/read', requireRole('user'), ctrl.markAsRead);
+router.put('/read-all', requireRole('user'), ctrl.markAllAsRead);
 router.delete('/read', requireRole('user'), ctrl.clearRead);
+router.get('/settings', requireRole('user'), ctrl.getNotificationSettings);
+router.put('/settings', requireRole('user'), ctrl.updateNotificationSettings);
+router.post('/test', requireRole('user'), ctrl.sendTestNotification);
+router.delete('/', requireRole('user'), ctrl.clearAllNotifications);
+router.put('/:id/read', requireRole('user'), ctrl.markAsRead);
+router.delete('/:id', requireRole('user'), ctrl.deleteNotification);
 
 // Event-Driven通知機能
 router.post('/events', requireRole('moderator'), ctrl.createNotificationEvent);
