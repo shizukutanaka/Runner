@@ -1,6 +1,5 @@
 import React, { createContext, useMemo, useState, useContext, useEffect, useCallback } from 'react';
 import { createTheme, ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
-import { setAutoDarkMode, setColorPattern } from './themeApi';
 
 const ThemeContext = createContext();
 

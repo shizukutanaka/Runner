@@ -2,24 +2,12 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
-// サポートする言語の定義（PRIORITY_LANGUAGESを使用）
+// 実在するロケールファイル（frontend/src/locales/）に対応する言語のみを列挙する。
+// 以前は13言語分の未実装エントリがあり、選択すると動的importが失敗して
+// 無言で英語にフォールバックしていた（D-13）
 export const SUPPORTED_LANGUAGES = {
-  // 主要言語（完全対応）
   'en': { name: 'English', nativeName: 'English', flag: '🇺🇸', rtl: false },
   'ja': { name: 'Japanese', nativeName: '日本語', flag: '🇯🇵', rtl: false },
-  'zh-CN': { name: 'Chinese (Simplified)', nativeName: '中文（简体）', flag: '🇨🇳', rtl: false },
-  'ko': { name: 'Korean', nativeName: '한국어', flag: '🇰🇷', rtl: false },
-  'es': { name: 'Spanish', nativeName: 'Español', flag: '🇪🇸', rtl: false },
-  'fr': { name: 'French', nativeName: 'Français', flag: '🇫🇷', rtl: false },
-  'de': { name: 'German', nativeName: 'Deutsch', flag: '🇩🇪', rtl: false },
-  'pt-BR': { name: 'Portuguese (Brazil)', nativeName: 'Português (Brasil)', flag: '🇧🇷', rtl: false },
-  'ru': { name: 'Russian', nativeName: 'Русский', flag: '🇷🇺', rtl: false },
-  'ar': { name: 'Arabic', nativeName: 'العربية', flag: '🇸🇦', rtl: true },
-  'hi': { name: 'Hindi', nativeName: 'हिन्दी', flag: '🇮🇳', rtl: false },
-  'th': { name: 'Thai', nativeName: 'ไทย', flag: '🇹🇭', rtl: false },
-  'vi': { name: 'Vietnamese', nativeName: 'Tiếng Việt', flag: '🇻🇳', rtl: false },
-  'id': { name: 'Indonesian', nativeName: 'Bahasa Indonesia', flag: '🇮🇩', rtl: false },
-  'tr': { name: 'Turkish', nativeName: 'Türkçe', flag: '🇹🇷', rtl: false },
 };
 
 // 言語リソースの動的インポート（最適化版）

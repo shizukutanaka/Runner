@@ -79,19 +79,18 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **証拠**: 「configure YOUTUBE_API_KEY to enable」等と明記して空データを返す誠実なスタブ。認証は追加済み
 - **推奨アクション**: 現状維持可。youtube.js は不足D-2の実装時に本実装へ置換
 
-### E-9. uiController.js — 自認するダミーAPI群
+### E-9. ✅ 解決済み（2026-07-07） — uiController.js自認ダミーAPI群を全削除（フロントも含め二重に無効だった）
 
-- **ファイル**: `backend/src/controllers/uiController.js`（41行）, `routes/ui.js`
-- **証拠**: ファイル先頭コメントが「UIテーマ・レイアウト・アクセシビリティ・フォント・拡大縮小・通知バッジ・ヘルプ・言語・カスタムCSS用ダミーAPI群」と自認。全ハンドラがリクエストボディをそのままエコーバックするだけで何も永続化しない。ルート自体は認証・レート制限・バリデーション付きで `/api/ui` にマウント済み
-- **推奨アクション**: UIカスタマイズ設定は既に `settingsController.js`（D-8と表裏）にも一部重複した機能があるため、統合するか本実装する
-- **再検証**: `head -3 backend/src/controllers/uiController.js` → 「ダミーAPI群」の文言が残っていれば未対応
+- **元の証拠**: ファイル先頭コメントが「UIテーマ・レイアウト・アクセシビリティ・フォント・拡大縮小・通知バッジ・ヘルプ・言語・カスタムCSS用ダミーAPI群」と自認。全ハンドラがリクエストボディをそのままエコーバックするだけで何も永続化しない
+- **調査で判明した追加事実**: フロント側 `ThemeContext.js` はこのAPIを呼ぶために `themeApi.js` から `setAutoDarkMode`/`setColorPattern` をimportしていたが、(a) `setAutoDarkMode` は同ファイル内の `useState` 分割代入で**同名のローカル変数に完全にシャドーイングされ**呼び出し不能、(b) `setColorPattern` は一度も呼ばれない未使用import、(c) 実際の永続化ロジック `syncToServer()` はAPIを呼ばず `console.log` するだけのスタブだった。さらにバックエンド側 `routes/ui.js` は `requireRole('admin')` 必須で、そもそも一般ユーザーは自分のテーマ設定すら変更できない設計だった。フロント⇔バックエンドの両側で完全に死んでいた（実際の設定保存は`localStorage`のみで機能しており、ユーザー体験自体は壊れていなかった）
+- **実施した修正**: `backend/src/controllers/uiController.js`・`routes/ui.js`・`validation/ui.js`・`frontend/src/themeApi.js` を削除、`app.js`のマウント配線を除去、`ThemeContext.js`の未使用importを削除（`localStorage`ベースの実際の設定保存ロジックは変更なし・引き続き正常動作）
+- **再検証**: `ls backend/src/controllers/uiController.js` → 存在すれば未対応
 
-### E-10. デッドミドルウェア3件（実装済みだが一度も適用されていない）
+### E-10. ✅ 解決済み（2026-07-07） — デッドミドルウェア3件を削除
 
-- **ファイル**: `backend/src/middleware/csrf.js`, `middleware/tokenRotation.js`, `middleware/inputSanitizer.js`
-- **証拠**: 3ファイルとも `app.js` や `routes/` から一切importされていない（grep 0件）。CSRF保護一式（csrfProtection/csrfVerifier/csrfTokenGenerator）が実装されているのに`app.use`されておらず、実質CSRF防御が無い。`inputSanitizer.js` は本セッション序盤で正規表現バグを修正したが、そもそも一度も呼ばれないため**その修正は無意味だった**（正直な記録として残す）。app.js は代わりに `middleware/security.js` の `sanitizeInput` を使用している
-- **推奨アクション**: CSRF保護は本番運用前に必須級 → `app.js` に `csrfProtection` を適用するか、`security.js` 側で同等の対策が既にあるか確認して不要なら削除。tokenRotation/inputSanitizer は重複なら削除
-- **再検証**: `grep -rln "middleware/csrf\|middleware/tokenRotation\|middleware/inputSanitizer" backend/src | grep -v "middleware/csrf.js\|middleware/tokenRotation.js\|middleware/inputSanitizer.js"` → 空なら未対応
+- **元の証拠**: `middleware/csrf.js`/`tokenRotation.js`/`inputSanitizer.js` の3ファイルとも `app.js` や `routes/` から一切importされていない（grep 0件）。Bearerトークン認証（ブラウザの暗黙的資格情報が存在しない）が現行の唯一の認証方式であり、CSRFはセッションCookie前提の攻撃であるため実質的な脅威ではない。Origin検証は`security.js`の`validateOrigin`が既に`app.js`に配線済み（`app.js:184`で確認）であることを再確認した
+- **実施した修正**: 3ファイルを削除（元々一度も適用されたことがなくgit履歴に実装は残る）。CSRF対策としては引き続き`validateOrigin`が有効
+- **再検証**: `ls backend/src/middleware/csrf.js` → 存在すれば未対応
 
 ### E-11. デッドサービス9件（importer 0件）
 
@@ -100,12 +99,12 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **推奨アクション**: 各ファイルごとに「配線して活かす」か「削除」かを判断。特に `backupService.js` は D-14 で不足側からも指摘（自動バックアップが機能していない一次原因）
 - **再検証**: 各ファイル名で `grep -rln "<ファイル名の拡張子抜き>" backend/src --include="*.js" | grep -v "services/<ファイル名>"` → 空なら未対応
 
-### E-12. routes/health.js — 実装は本物だがマウントされていない
+### E-12. ✅ 解決済み（2026-07-07） — routes/health.jsは完全な重複と判明、削除
 
-- **ファイル**: `backend/src/routes/health.js`（272行）
-- **証拠**: `scripts/healthCheck` の `HealthChecker` を使う本物の実装だが、`app.js` はこのファイルを一切 `require` しない。実際に `/health` を提供しているのは `middleware/monitoring` 経由の別実装
-- **推奨アクション**: 重複なら削除、より詳細なヘルスチェックとして活かすなら `/api/health/detailed` 等でマウント
-- **再検証**: `grep -n "routes/health" backend/src/app.js` → 空ならマウントされていない
+- **元の証拠**: `scripts/healthCheck` の `HealthChecker` を使う本物の実装だが、`app.js` はこのファイルを一切 `require` しない
+- **調査で判明**: マウントするか検討した際、`app.js`が既に`middleware/monitoring.js`の`detailedHealthCheckHandler`を`/health/detailed`として稼働中であることを確認。中身を比較したところ`monitoringService`のメトリクス（リクエスト数・エラー率・メモリ使用量等）まで含む上位互換であり、`routes/health.js`側は完全な重複だった。またこのファイルのコントローラー`healthController.js`（41行）も、`routes/health.js`からすら参照されておらず二重に死んでいた（どのルートからも一度も呼ばれたことがない）
+- **実施した修正**: `routes/health.js`・`controllers/healthController.js`を削除（既存の`/health`・`/health/detailed`はそのまま稼働継続、機能欠落なし）
+- **再検証**: `ls backend/src/routes/health.js` → 存在すれば未対応
 
 ### E-13. MSWモックの経路不一致（実害小・開発時の誤診断リスク）
 
@@ -217,11 +216,12 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **実施した修正**: `frontend/src/components/Register.jsx` を新規作成（ユーザー名/メール/パスワード入力、パスワード要件のヒント表示）。`hooks/useAuth.js` に `register()` を追加（登録APIはトークンを返さないため、登録成功後に続けて`login()`を実行し即座に認証済み状態にする）。`App.jsx`の`AuthGate`にログイン⇔登録画面のトグル状態を追加し、`Login.jsx`/`Register.jsx`双方に切り替えリンクを設置
 - **再検証**: `grep -rn "from '\.\./api/auth'" frontend/src/hooks/useAuth.js` → `register`のimportがあれば修正済み。`grep -n "Register" frontend/src/App.jsx` → `AuthGate`内で使われていれば修正済み
 
-### D-13. ★ 言語スイッチャーの15言語中13言語が張りぼて
+### D-13. ✅ 解決済み（2026-07-07） — 言語スイッチャーを実在2言語に縮小
 
-- **証拠**: `frontend/src/i18n.js` の `SUPPORTED_LANGUAGES` は15言語を定義しUIに全表示するが、実在するロケールファイルは `locales/en.json` と `locales/ja.json` のみ。残り13言語（zh-CN, ko, es, fr, de, pt-BR, ru, ar, hi, th, vi, id, tr）を選択すると動的importが失敗し英語へ無言フォールバック。`ar` はRTL反転だけ発生し表示は英語のまま
-- **推奨アクション**: (a) 主要言語から順にロケールファイルを追加、または (b) `SUPPORTED_LANGUAGES` を実在するロケールのみに絞る
-- **再検証**: `ls frontend/src/locales/` → en.json/ja.jsonの2つのみなら未対応
+- **元の証拠**: `frontend/src/i18n.js` の `SUPPORTED_LANGUAGES` は15言語を定義しUIに全表示するが、実在するロケールファイルは `locales/en.json` と `locales/ja.json` のみ。残り13言語を選択すると動的importが失敗し英語へ無言フォールバック
+- **実施した修正**: `SUPPORTED_LANGUAGES` を実在する en/ja の2言語のみに縮小（翻訳品質を担保できないロケール追加より縮小方向を選択）。`changeLanguage()`は既存ロジックのまま`SUPPORTED_LANGUAGES`に無い言語コードを渡されると明示的にエラーを返す（従来の「無言で英語にフォールバック」から「サポート外である旨を明示」に変化）。`getLanguageGroups()`内のアジア/欧州言語振り分けリストなど、削除した言語コードを参照する箇所は実質無害なデッドデータとして残置（クラッシュ要因ではないため）
+- **検証**: `npx vite build`で en/ja の2ロケールチャンクのみが生成されることを確認（従来存在した使われない13言語分のチャンクは生成されなくなった）
+- **再検証**: `grep -c "rtl:" frontend/src/i18n.js` → 2（en/jaのみ）なら縮小済み
 
 ### D-14. ✅ 解決済み（2026-07-04） — 自動バックアップが一度も起動していなかった
 
