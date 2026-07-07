@@ -11,8 +11,7 @@ const { asyncHandler } = require('../middleware/errorHandler');
 // 従来はsocket.io側のinboundイベント(newComment等)からのみ配信されており、
 // POST/PUT /api/comments 経由の変更はリアルタイムに反映されなかった。
 // server.js経由で起動していないテスト環境では io が未設定のため何もしない。
-const broadcastCommentUpdate = (req, type, comment) => {
-  const io = req.app.get('io');
+const broadcastCommentToIo = (io, type, comment) => {
   if (!io || !comment) {
     return;
   }
@@ -21,6 +20,10 @@ const broadcastCommentUpdate = (req, type, comment) => {
     io.to(`platform:${comment.platform}`).emit('commentUpdate', payload);
   }
   io.to('dashboard').emit('commentUpdate', payload);
+};
+
+const broadcastCommentUpdate = (req, type, comment) => {
+  broadcastCommentToIo(req.app.get('io'), type, comment);
 };
 
 /**
@@ -324,91 +327,126 @@ const getComments = asyncHandler(async (req, res) => {
   });
 });
 
-const createComment = asyncHandler(async (req, res, next) => {
-  const { content, user, platform } = req.body;
-  const timestamp = new Date().toISOString();
+/**
+ * Runs a comment through the full moderation/hold/insert/broadcast pipeline.
+ * Shared by the HTTP POST /api/comments handler and platform ingestion
+ * services (e.g. YouTube) so both paths get identical moderation behavior.
+ * @param {{content: string, user: string, platform: string, timestamp?: string}} commentData
+ * @param {{io?: object}} [options]
+ * @returns {Promise<object>} outcome descriptor: 'rate_limited' | 'rejected' | 'held' | 'created'
+ */
+const ingestComment = async ({ content, user, platform, timestamp }, { io } = {}) => {
+  const ts = timestamp || new Date().toISOString();
   const commentId = uuidv4();
   const normalizedContent = sanitizeForStorage(normalizeText(content ?? ''));
   const normalizedUser = sanitizeForStorage(normalizeText(user ?? ''));
 
-  try {
-    // スローモードチェック
-    const slowModeCheck = await checkSlowMode(normalizedUser, platform);
-    if (!slowModeCheck.allowed) {
-      return res.status(429).json({
-        status: 429,
-        data: {
-          remainingTime: slowModeCheck.remainingTime,
-          nextAllowedTime: slowModeCheck.nextAllowedTime
-        },
-        message: `スローモードが有効です。${slowModeCheck.remainingTime}秒後にコメントできます。`
-      });
-    }
+  // スローモードチェック
+  const slowModeCheck = await checkSlowMode(normalizedUser, platform);
+  if (!slowModeCheck.allowed) {
+    return {
+      outcome: 'rate_limited',
+      remainingTime: slowModeCheck.remainingTime,
+      nextAllowedTime: slowModeCheck.nextAllowedTime
+    };
+  }
 
-    const moderation = await moderationService.analyzeComment(normalizedContent, platform, normalizedUser, timestamp);
-    const rejectionScore = getRejectionScore();
-    const shouldReject = moderation.isSpam || moderation.isOffensive || (moderation.score ?? 0) >= rejectionScore;
+  const moderation = await moderationService.analyzeComment(normalizedContent, platform, normalizedUser, ts);
+  const rejectionScore = getRejectionScore();
+  const shouldReject = moderation.isSpam || moderation.isOffensive || (moderation.score ?? 0) >= rejectionScore;
 
-    if (shouldReject) {
-      logger.warn('[Comments] Comment rejected by moderation', {
-        user,
-        platform,
-        score: moderation.score,
-        flaggedWords: moderation.flaggedWords
-      });
-      return res.status(422).json({
-        status: 422,
-        data: { moderation },
-        message: 'Comment rejected by moderation policies'
-      });
-    }
-
-    // メッセージ保留チェック（保留判定）
-    const shouldHold = await checkMessageHold(normalizedContent, moderation, platform);
-    if (shouldHold.hold) {
-      // 保留メッセージとして保存
-      const holdResult = await holdMessage({
-        content: normalizedContent,
-        user: normalizedUser,
-        platform,
-        moderationResult: moderation,
-        holdReason: shouldHold.primaryReason,
-        holdLevel: shouldHold.holdLevel,
-        reasons: shouldHold.reasons
-      });
-
-      return res.status(202).json({
-        status: 202,
-        data: {
-          holdId: holdResult.holdId,
-          holdUntil: holdResult.holdUntil,
-          holdLevel: shouldHold.holdLevel,
-          reasons: shouldHold.reasons
-        },
-        message: 'メッセージが保留されました。モデレーターの確認をお待ちください。'
-      });
-    }
-
-    await dbRun(
-      'INSERT INTO comments (id, content, user, platform, status, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
-      [commentId, normalizedContent, normalizedUser, platform, 'visible', timestamp]
-    );
-
-    // ユーザーの最終コメント時刻を更新
-    await dbRun(
-      'UPDATE users SET last_comment_at = ? WHERE id = ?',
-      [timestamp, normalizedUser]
-    );
-
-    const created = await dbGet('SELECT * FROM comments WHERE id = ?', [commentId]);
-    await commentService.invalidateCommentCache(commentId);
-    await commentService.invalidateCommentListCache();
-    broadcastCommentUpdate(req, 'new', mapCommentRow(created));
-    res.status(201).json({
-      status: 201,
-      data: mapCommentRow(created),
-      message: 'Comment created'
+  if (shouldReject) {
+    logger.warn('[Comments] Comment rejected by moderation', {
+      user,
+      platform,
+      score: moderation.score,
+      flaggedWords: moderation.flaggedWords
     });
+    return { outcome: 'rejected', moderation };
+  }
+
+  // メッセージ保留チェック（保留判定）
+  const shouldHold = await checkMessageHold(normalizedContent, moderation, platform);
+  if (shouldHold.hold) {
+    // 保留メッセージとして保存
+    const holdResult = await holdMessage({
+      content: normalizedContent,
+      user: normalizedUser,
+      platform,
+      moderationResult: moderation,
+      holdReason: shouldHold.primaryReason,
+      holdLevel: shouldHold.holdLevel,
+      reasons: shouldHold.reasons
+    });
+
+    return {
+      outcome: 'held',
+      holdId: holdResult.holdId,
+      holdUntil: holdResult.holdUntil,
+      holdLevel: shouldHold.holdLevel,
+      reasons: shouldHold.reasons
+    };
+  }
+
+  await dbRun(
+    'INSERT INTO comments (id, content, user, platform, status, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
+    [commentId, normalizedContent, normalizedUser, platform, 'visible', ts]
+  );
+
+  // ユーザーの最終コメント時刻を更新
+  await dbRun(
+    'UPDATE users SET last_comment_at = ? WHERE id = ?',
+    [ts, normalizedUser]
+  );
+
+  const created = await dbGet('SELECT * FROM comments WHERE id = ?', [commentId]);
+  await commentService.invalidateCommentCache(commentId);
+  await commentService.invalidateCommentListCache();
+  const mapped = mapCommentRow(created);
+  broadcastCommentToIo(io, 'new', mapped);
+  return { outcome: 'created', comment: mapped };
+};
+
+const createComment = asyncHandler(async (req, res, next) => {
+  const { content, user, platform } = req.body;
+
+  try {
+    const result = await ingestComment({ content, user, platform }, { io: req.app.get('io') });
+
+    switch (result.outcome) {
+      case 'rate_limited':
+        return res.status(429).json({
+          status: 429,
+          data: {
+            remainingTime: result.remainingTime,
+            nextAllowedTime: result.nextAllowedTime
+          },
+          message: `スローモードが有効です。${result.remainingTime}秒後にコメントできます。`
+        });
+      case 'rejected':
+        return res.status(422).json({
+          status: 422,
+          data: { moderation: result.moderation },
+          message: 'Comment rejected by moderation policies'
+        });
+      case 'held':
+        return res.status(202).json({
+          status: 202,
+          data: {
+            holdId: result.holdId,
+            holdUntil: result.holdUntil,
+            holdLevel: result.holdLevel,
+            reasons: result.reasons
+          },
+          message: 'メッセージが保留されました。モデレーターの確認をお待ちください。'
+        });
+      default:
+        return res.status(201).json({
+          status: 201,
+          data: result.comment,
+          message: 'Comment created'
+        });
+    }
   } catch (err) {
     next({ status: 500, message: 'Failed to create comment', details: err });
   }
@@ -2662,6 +2700,7 @@ const cleanupExpiredPinningDisplay = asyncHandler(async (req, res) => {
 module.exports = {
   getComments,
   createComment,
+  ingestComment,
   updateComment,
   setAvatar,
   setBackgroundColor,

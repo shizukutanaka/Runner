@@ -129,11 +129,18 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **再検証**: `grep -rn "emit('authenticate'" frontend/src` → `hooks/useAuth.js` にヒットすれば修正済み。`grep -n "broadcastCommentUpdate" backend/src/controllers/commentsController.js` → 3箇所ヒットすれば修正済み
 - **既知の残課題**: `moderationAction`/`sendNotification` 等、socket側にしか存在しないイベントに対応するHTTP操作（モデレーションアクション等）は今回未対応。必要になった時点で同じ `broadcastCommentUpdate` パターンを横展開すること
 
-### D-2. ★★★ 実プラットフォーム連携（YouTube/Twitch API取り込み）が存在しない
+### D-2. △ 一部対応済み（2026-07-07） — YouTube実データ取り込みを新規実装（Twitchは未対応）
 
-- **証拠**: バックエンドのどのサービスも実際のYouTube/Twitch APIを呼んでいない。`googleapis` パッケージ不使用、`TWITCH_CLIENT_ID` をコードで使用している箇所ゼロ（`moderationService.js:912` のヒットはPerspective APIのURL文字列定数であり別物）。コメントがシステムに入る経路は `POST /api/comments` のみ。config骨格（`config.services.youtube` / `config.services.twitch`、pollingInterval等）は既に存在
-- **推奨アクション**: YouTube Data API v3 (`liveChatMessages.list`) ポーリングサービスを新規実装（`backend/src/services/youtubeIngestionService.js`）。取得コメントを既存の `commentService.createComment` 経由で投入すればモデレーションパイプラインに自動的に乗る。Twitchは後続（IRC/EventSub）
-- **再検証**: `grep -rln "googleapis\|liveChatMessages" backend/src/services/` → 実装ファイルが無ければ未対応
+- **元の証拠**: バックエンドのどのサービスも実際のYouTube/Twitch APIを呼んでいない。`googleapis` パッケージ不使用、`TWITCH_CLIENT_ID` をコードで使用している箇所ゼロ。コメントがシステムに入る経路は `POST /api/comments` のみだった
+- **実施した修正**:
+  - `commentsController.js`: `createComment` のインラインパイプライン（スローモード判定→モデレーション→保留判定→DB挿入→WebSocketブロードキャスト）を `ingestComment(commentData, {io})` として抽出・export。HTTP経由の投稿と自動取り込みの両方が同一のモデレーション経路を通るようにした（挙動は完全に不変であることを既存テストのビフォーア/アフター比較で確認）
+  - `backend/src/services/youtubeIngestionService.js`（新規）: `YOUTUBE_API_KEY` 未設定時はログ警告のみで無効化（クラス定数として保持、要求時にAPI呼び出しをスキップ）。`startWatching(videoId)`/`stopWatching(videoId)` で明示的に監視対象を登録する方式（`search.list`等の高コストAPIは不使用）。`videos.list` で `liveStreamingDetails.activeLiveChatId` を取得後、`liveChatMessages.list` を `setTimeout` ベースで再帰ポーリング（APIレスポンスの `pollingIntervalMillis` を尊重、無ければ設定値の5秒にフォールバック）。取得メッセージは `ingestComment` へ `platform: 'youtube'` で投入
+  - クォータ追跡: `videos.list`=1単位、`liveChatMessages.list`=5単位（公式コスト）で日次10,000単位を追跡し、超過時は新規監視開始を拒否・実行中の監視も自動停止。エラー時は指数バックオフ（最大60秒）、5回連続失敗で監視を自動停止
+  - `routes/youtube.js`: `POST /watch`（監視開始）・`DELETE /watch/:videoId`（監視停止）・`GET /watch`（一覧+クォータ状況）を追加。既存スタブの `GET /channels/:channelId/comments` は取り込み済みDBコメントの照会に置換（ただしコメント単位でvideoId/channelIdを保持しない現行スキーマの制約上、channelIdでの絞り込みは未対応で全件返却）
+  - `server.js`: graceful shutdown時に `youtubeIngestionService.stopAll()` を呼びポーリングを停止
+- **検証**: 実APIキーが無い環境のため実際のYouTube API通信は不可。`tests/services/youtubeIngestionService.test.js`（14テスト）で `googleapis` をモックし、監視開始/重複防止/ライブ配信でない場合の拒否/APIエラー処理/メッセージ取り込み/不正メッセージのスキップ/クォータ超過時の開始拒否・実行中停止/監視停止、を検証。`tests/services/youtubeIngestionService.disabled.test.js`（2テスト）でAPIキー未設定時に無効化されAPIを一切呼ばないことを別ファイルで検証（サービスがconfigを読み込む時点でのモジュールスコープ初期化のため、テストファイル単位で分離）。全16件合格、既存テストへの回帰なし（`tests/integration/comments.test.js`と`tests/api/comments.test.js`はリファクタ前後で失敗数・成功数が完全一致することを`git stash`比較で確認）
+- **既知の残課題**: Twitch連携（IRC/EventSub）は未着手。channelId単位でのコメント絞り込みには`comments`テーブルへの`video_id`/`channel_id`列追加が必要（今回は見送り、スキーマ変更は製品判断を要するため）
+- **再検証**: `grep -rln "googleapis\|liveChatMessages" backend/src/services/` → `youtubeIngestionService.js`にヒットすれば実装済み。`grep -n "ingestComment" backend/src/controllers/commentsController.js` → export含め複数ヒットすれば共通パイプライン化済み
 
 ### D-3. ✅ 解決済み（2026-07-04） — メール送信が偽装実装だった
 
@@ -178,10 +185,17 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **証拠**: バックエンド12エンドポイントは全実装・テスト済（`routes/communityInsights.js`）。UIは triage / health / silent-departure の3つが `Dashboard.js` に接続済み。**文化プロファイル管理**（`PUT /api/insights/culture/:platform/:channelId`）と**文脈分析**（`POST /api/insights/context-analysis`）のUIが未実装
 - **推奨アクション**: 設定画面に文化プロファイル選択UI、コメント詳細に文脈分析表示を追加
 
-### D-9. ★ 残存テスト失敗 約124件
+### D-9. △ 一部対応済み（2026-07-07） — 残存テスト失敗を142件→113件に削減
 
-- **証拠**: `cd backend && NODE_ENV=test npx jest` → 13スイート失敗/124件失敗（2026-07-02時点）。主因: (a) notifications テーブルに `user_id` 列が無い等のスキーマ不一致、(b) openaiService テストのモック構造不良、(c) レスポンス形状不一致（`success` vs `status`）、(d) E-7の存在しないサービス
-- **推奨アクション**: スキーマ整合（ALTER TABLE で不足列追加）から着手すると最も多く直る
+- **元の証拠**: `cd backend && NODE_ENV=test npx jest` → 15スイート失敗/142件失敗（367件中）。主因4種を特定: (a) notifications テーブルに `user_id`/`expires_at` 列が無くSQLITE_ERROR、(b) `openaiService.test.js` が実際には未使用の `openaiService_enhanced.js`（527行、参照ゼロ）をテストしていた上にモック構造も不良、(c) `validation.js` の `Joi.date().iso()` がISO文字列をDateオブジェクトへ強制変換していた、(d) `cacheService.js`/`monitoringService.js`/`errorHandler.js` の常駐 `setInterval` がJestのopen-handle検出に引っかかりタイムアウトを誘発
+- **実施した修正**:
+  - (a) `db.js`: `notifications`テーブルに`user_id TEXT`/`expires_at DATETIME`列を既存の`ensureColumnDefinitions`パターンで追加。`notificationsController.js`の`createNotification`のINSERTに`user_id`を追加
+  - (b) `openaiService.test.js`を実際に本番で使われる`openaiService.js`へ向け直し、jestのモックをシングルトンパターンに修正（`resetMocks:true`がコンストラクタのmockImplementationを毎テスト消去するため`beforeEach`で再適用）。参照ゼロだった`openaiService_enhanced.js`は削除。あわせて`openaiService.js`にエラークラス階層・`resetCostTracking()`・レイテンシ/キャッシュ状態フィールドを追加
+  - (c) `validation.js:59`: `Joi.date().iso()` → `Joi.string().isoDate()`
+  - (d) 3ファイルの`setInterval`に`.unref()`を追加（Jestのopen handle検出数が36→1に減少、本番のgraceful shutdownにも寄与）
+- **検証**: 各修正後に`NODE_ENV=test npx jest`をフルスイート実行し、失敗数の悪化がないことを都度確認。最終結果: 142件失敗→113件失敗（367件中）、open handle 36→1
+- **既知の残課題**: `tests/integration/notifications.test.js`の残り約20件超は上記(a)とは別の、より深い原因——テストが期待するルート形状（`PUT /:id/read`・`PUT /read-all`・`DELETE /:id`・`GET/PUT /settings`・`POST /test`等）と実際の`routes/notifications.js`のルート定義（`POST /:id/read`・`/users/:id/settings`等、settings/testエンドポイント自体が未実装）が根本的に食い違っている。これはAPI設計そのものの手戻りが必要な規模のため今回は対象外とし、次回監査で別項目として切り出すことを推奨
+- **再検証**: `NODE_ENV=test npx jest 2>&1 | tail -5` で failed 件数を確認
 
 ### D-10. ✅ 解決済み（2026-07-04） — CriticalAlertsBannerが二重に壊れていた
 

@@ -4,6 +4,7 @@ const setupWebSocket = require('./ws');
 const config = require('./config');
 const logger = require('./logger');
 const backupService = require('./services/backupService');
+const youtubeIngestionService = require('./services/youtubeIngestionService');
 
 const PORT = config.server.port;
 const server = http.createServer(app);
@@ -55,6 +56,9 @@ const shutdown = async (signal) => {
     try {
       // 定期バックアップを停止
       backupService.stopScheduledBackups();
+
+      // YouTube取り込みのポーリングを停止
+      youtubeIngestionService.stopAll();
 
       // WebSocketの接続を閉じる
       const io = app.get('io');
