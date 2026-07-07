@@ -328,79 +328,18 @@ exports.updateTenant = async (req, res, next) => {
 };
 
 // テナント削除
+//
+// 安全ガード: tenant_id によるデータ分離は comments/users 等の実データパスに
+// 一切配線されていない（docs/FEATURE_AUDIT.md の E-3 参照）。この状態で削除を
+// 実行すると、分離されていない実データを巻き込んで削除しうる。マルチテナント化
+// を本実装する（全クエリに tenant_id フィルタを配線する）か、この機能自体を
+// 廃止するかの製品判断が下るまで、この操作を無効化する。
+// 元の実装（tenant_id で11テーブルを削除するトランザクション）は git 履歴を参照。
 exports.deleteTenant = async (req, res, next) => {
-  try {
-    const { tenantId } = req.params;
-
-    // テナントの存在確認
-    const tenant = await new Promise((resolve, reject) => {
-      db.get('SELECT id, status FROM tenants WHERE id = ?', [tenantId], (err, row) => {
-        if (err) reject(err);
-        else if (!row) reject(new Error('Tenant not found'));
-        else resolve(row);
-      });
-    });
-
-    if (tenant.status === 'active') {
-      return next({
-        status: 400,
-        message: 'アクティブなテナントは削除できません。まず無効化してください。'
-      });
-    }
-
-    // トランザクションで削除
-    await new Promise((resolve, reject) => {
-      db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
-
-        // テナントに関連するデータを削除
-        const tables = [
-          'users', 'comments', 'moderation_logs', 'comment_reactions',
-          'comment_tags', 'comment_edit_history', 'ai_moderation_logs',
-          'analytics', 'sessions', 'user_settings', 'settings'
-        ];
-
-        let completed = 0;
-        const total = tables.length + 1; // +1 for tenant deletion
-
-        const checkComplete = () => {
-          completed++;
-          if (completed === total) {
-            db.run('COMMIT', (err) => {
-              if (err) reject(err);
-              else resolve();
-            });
-          }
-        };
-
-        // 各テーブルからテナントデータを削除
-        tables.forEach(table => {
-          db.run(`DELETE FROM ${table} WHERE tenant_id = ?`, [tenantId], checkComplete);
-        });
-
-        // テナントを削除
-        db.run('DELETE FROM tenants WHERE id = ?', [tenantId], checkComplete);
-      });
-    });
-
-    logger.info(`Tenant deleted: ${tenantId}`);
-    res.json({
-      status: 200,
-      message: 'テナントが削除されました'
-    });
-
-  } catch (error) {
-    if (error.message === 'Tenant not found') {
-      next({ status: 404, message: 'テナントが見つかりません' });
-    } else {
-      logger.error('Error deleting tenant:', error);
-      next({
-        status: 500,
-        message: 'テナントの削除に失敗しました',
-        details: error.message
-      });
-    }
-  }
+  next({
+    status: 501,
+    message: 'テナント削除は現在無効化されています（マルチテナント分離が未実装のため）。詳細は docs/FEATURE_AUDIT.md の E-3 を参照してください。'
+  });
 };
 
 // テナントAPIキー再生成

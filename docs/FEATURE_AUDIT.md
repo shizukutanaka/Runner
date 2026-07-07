@@ -38,12 +38,14 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **推奨アクション**: 実DB集計への置換、またはルート削除（`routes/analytics.js` の該当行も併せて削除）
 - **再検証**: `grep -c "ダミー" backend/src/controllers/analyticsController.js` → 9前後なら未対応（"ダミー"文言なしの固定値関数も含め計13）
 
-### E-3. tenantController — 配線されていないマルチテナント機構 【危険】
+### E-3. △ 一部対応済み（2026-07-04） — tenantController危険機能の即時ガード + 追加発見
 
-- **ファイル**: `backend/src/controllers/tenantController.js`（616行）, `routes/tenants.js`
-- **証拠**: `comments`/`users` の実データパス（`commentsController.js`, `commentService.js`）に `tenant_id` フィルタが**一切存在しない**（grep 0件）。テナント分離が機能していないのに、`deleteTenant` は11テーブルに対して `DELETE FROM <table> WHERE tenant_id = ?` を実行する——分離されていないデータに対する削除機能は時限爆弾
-- **推奨アクション**: 製品方針の意思決定が必要。(a) SaaS化するなら全クエリに tenant_id を配線する大工事、(b) しないなら tenantController/routes/tenants.js を削除。**短期対応: 少なくとも delete系エンドポイントを無効化**
-- **再検証**: `grep -c "tenant_id" backend/src/controllers/commentsController.js backend/src/services/commentService.js` → 両方0なら未配線のまま
+- **元の証拠**: `comments`/`users` の実データパス（`commentsController.js`, `commentService.js`）に `tenant_id` フィルタが**一切存在しない**（grep 0件）。テナント分離が機能していないのに、`deleteTenant` は11テーブルに対して `DELETE FROM <table> WHERE tenant_id = ?` を実行していた
+- **実装中に発見した事実（重要）**: `routes/tenants.js` は **`app.js` に一度もマウントされていない**——テナント管理API（作成/一覧/取得/更新/削除/APIキー再生成/使用状況）は本番でも全て404で、そもそも到達不能だった。加えて、ルート自体は `requireRole('admin')` のみで `authenticateToken` が欠落しており、`req.user` が一度も設定されないため**マウントしたとしても正規のadminトークンで常に401**になる状態だった（`/tenant`サブパスは外部API-key認証用の別系統のため、この修正では`authenticateToken`を各管理系ルートに個別適用し、`/tenant`系統には影響しないよう配慮）
+- **実施した対応**: (1) `tenantController.deleteTenant`を、実データ削除ロジックを完全に取り除いた501応答のみの関数に置換（元のトランザクション削除ロジックはgit履歴に残る）。(2) `routes/tenants.js`の管理系7ルートに`authenticateToken`を適用（`/tenant`外部API-key認証系統は変更なし）
+- **未対応（製品判断待ち）**: `routes/tenants.js`は引き続き`app.js`にマウントしていない。マルチテナント化を本実装する（`tenant_id`を全クエリに配線）か、この機能自体を削除するかの判断が必要。マウントした場合、create/list/get/update/regenerate-key/usageは動作するが「テナントを作っても実データは分離されない」という誤解を招く半端な状態になるため、判断が下るまでマウントしないことを推奨
+- **検証**: `tests/integration/tenants.test.js`（新規）で`deleteTenant`が501を返しDBに一切触れないことを確認済み
+- **再検証**: `grep -n "routes/tenants" backend/src/app.js` → ヒットしなければ未マウントのまま（意図的）。`grep -A3 "exports.deleteTenant" backend/src/controllers/tenantController.js` → 501応答のみならガード済み
 
 ### E-4. ✅ 解決済み（2026-07-04） — utils/websocket.jsを削除
 
@@ -148,11 +150,17 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **検証**: `tests/integration/heldMessages.test.js`（新規、6テスト）で認証拒否・一覧取得・統計取得・承認時の実コメント作成・却下時のコメント非作成・不正holdId/actionの拒否を確認済み。全6件合格
 - **再検証**: `grep -n "held-messages" backend/src/routes/moderation.js` → 4件ヒットすればルート修正済み。`grep -rln "HeldMessagesQueue" frontend/src` → `ModeratorDashboard.js`にヒットすればUI統合済み
 
-### D-5. ★★ リフレッシュトークンがスタブ — セッションが黙って切れる
+### D-5. ✅ 解決済み（2026-07-04） — リフレッシュトークンがスタブだった
 
-- **証拠**: `backend/src/controllers/authController.js:180-182` の `exports.refresh` は無条件で401を返す。リフレッシュトークンの発行機構自体が無い。`JWT_EXPIRY`（既定15m〜24h）経過後、ユーザーは作業中に黙って401→強制ログアウトされる
-- **推奨アクション**: ログイン時にリフレッシュトークン（長寿命・DB保存・ハッシュ化）を発行し、`/refresh` で検証→新アクセストークン発行。フロント側は401時に自動リフレッシュを試みるaxiosインターセプター追加
-- **再検証**: `grep -A2 "exports.refresh" backend/src/controllers/authController.js` → 即401ならスタブのまま
+- **元の証拠**: `exports.refresh`は無条件で401を返すスタブ。`JWT_EXPIRY`（既定24h）経過後、ユーザーは作業中に黙って強制ログアウトされていた
+- **実施した修正**:
+  - `accounts`テーブルに`refresh_token_hash`/`refresh_token_expires`列を追加（既存の`reset_token_hash`パターン踏襲）
+  - `login`: アクセストークンに加え、64byteのリフレッシュトークンを発行しSHA-256ハッシュをDB保存（TTL 30日）
+  - `refresh`: ハッシュ照合+期限確認→新アクセストークンと**ローテーションした**新リフレッシュトークンを発行（使用済みの旧トークンは即座に無効化）
+  - `logout`/`resetPassword`/`changePassword`: リフレッシュトークンも合わせて無効化（他端末のセッション終了）
+  - フロント: `refreshTokenStorage`（`tokenStorage`と同様のsessionStorage実装）を追加。`api/comments.js`のaxiosレスポンスインターセプターで、401受信時に一度だけ`/refresh`を試行→成功時は元リクエストを新トークンで再実行、失敗時のみログイン画面へ遷移
+- **検証**: `tests/integration/auth.test.js`の既存リフレッシュテストが実際に意味のある検証になった（従来は`refreshToken`が発行されないため`if (!refreshToken) return`で常にスキップされる空振りテストだった）。ローテーション（使用済みトークンの即時無効化）の検証も追加。全36件合格
+- **再検証**: `grep -n "issueRefreshToken" backend/src/controllers/authController.js` → 複数ヒットすれば実装済み。`grep -n "refreshAccessToken" frontend/src/api/comments.js` → ヒットすればインターセプター配線済み
 
 ### D-6. ★ アカウント⇔チャンネルの担当範囲が存在しない
 

@@ -240,6 +240,8 @@ const initializeDB = async () => {
       reset_token_expires DATETIME,
       totp_secret TEXT,
       totp_enabled INTEGER NOT NULL DEFAULT 0,
+      refresh_token_hash TEXT,
+      refresh_token_expires DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       last_login_at DATETIME
     );

@@ -26,6 +26,10 @@ exports.changePassword = Joi.object({
   newPassword: passwordSchema.required()
 });
 
+exports.refresh = Joi.object({
+  refreshToken: Joi.string().required()
+});
+
 exports.verify2FA = Joi.object({
   code: Joi.string().length(6).pattern(/^\d+$/).required()
 });

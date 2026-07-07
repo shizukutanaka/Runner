@@ -136,6 +136,10 @@ describe('Authentication Integration Tests', () => {
         .expect(200);
 
       expect(res.headers['set-cookie']).toBeDefined();
+
+      // ログインのたびにリフレッシュトークンはローテーションされ、古いものは無効化される。
+      // 以降のテストでは直近のログインで発行された最新のトークンを使う必要がある
+      refreshToken = res.body.refreshToken;
     });
   });
 
@@ -184,6 +188,16 @@ describe('Authentication Integration Tests', () => {
 
       expect(res.body).toHaveProperty('token');
       expect(res.body).toHaveProperty('refreshToken');
+
+      // ローテーション: 使用済みの古いリフレッシュトークンは無効化され、新しいものに置き換わる
+      const oldRefreshToken = refreshToken;
+      refreshToken = res.body.refreshToken;
+      expect(refreshToken).not.toBe(oldRefreshToken);
+
+      await request(app)
+        .post('/api/users/refresh')
+        .send({ refreshToken: oldRefreshToken })
+        .expect(401);
     });
 
     test('should reject invalid refresh token', async () => {

@@ -7,3 +7,10 @@ export const tokenStorage = {
   set: (t) => { sessionStorage.setItem('authToken', t); localStorage.removeItem('authToken'); },
   remove: () => { sessionStorage.removeItem('authToken'); localStorage.removeItem('authToken'); }
 };
+
+// リフレッシュトークン専用ストレージ（アクセストークンとは別に保持し、401時の自動更新に使う）
+export const refreshTokenStorage = {
+  get: () => sessionStorage.getItem('refreshToken') ?? localStorage.getItem('refreshToken'),
+  set: (t) => { sessionStorage.setItem('refreshToken', t); localStorage.removeItem('refreshToken'); },
+  remove: () => { sessionStorage.removeItem('refreshToken'); localStorage.removeItem('refreshToken'); }
+};

@@ -65,11 +65,33 @@ axios.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// レスポンスインターセプター
+// レスポンスインターセプター:
+// 401受信時、まだ再試行していないリクエストに限り一度だけリフレッシュを試み、
+// 成功すれば元のリクエストを新しいトークンで再実行する。失敗時のみログイン画面へ。
 axios.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
+  async (error) => {
+    const { config, response } = error;
+    const isAuthEndpoint = config?.url?.includes('/users/login') || config?.url?.includes('/users/refresh');
+
+    if (response?.status === 401 && config && !config._retriedAfterRefresh && !isAuthEndpoint) {
+      config._retriedAfterRefresh = true;
+      // 循環import回避のため動的import（auth.jsはcomments.jsのAPIErrorを参照するため）
+      const { refreshAccessToken } = await import('./auth');
+      const newToken = await refreshAccessToken();
+
+      if (newToken) {
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${newToken}`;
+        return axios(config);
+      }
+
+      tokenStorage.remove();
+      window.location.href = '/login';
+      return Promise.reject(error);
+    }
+
+    if (response?.status === 401) {
       tokenStorage.remove();
       window.location.href = '/login';
     }

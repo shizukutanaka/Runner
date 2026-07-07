@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { APIError } from './comments';
-import { tokenStorage } from '../utils/tokenStorage';
+import { tokenStorage, refreshTokenStorage } from '../utils/tokenStorage';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -22,9 +22,37 @@ export const login = async (username, password) => {
     if (res.data.token) {
       tokenStorage.set(res.data.token);
     }
+    if (res.data.refreshToken) {
+      refreshTokenStorage.set(res.data.refreshToken);
+    }
     return res.data;
   } catch (error) {
     handleAuthAPIError(error, 'ログインに失敗しました');
+  }
+};
+
+// アクセストークンの期限切れ時にリフレッシュトークンで再取得する。
+// axiosのレスポンスインターセプター（comments.js）から401時に呼ばれる。
+// 循環import回避のため、生のaxiosインスタンス（インターセプター未適用）を都度使う
+export const refreshAccessToken = async () => {
+  const currentRefreshToken = refreshTokenStorage.get();
+  if (!currentRefreshToken) {
+    return null;
+  }
+
+  try {
+    const res = await axios.post(`${API_BASE_URL}/users/refresh`, { refreshToken: currentRefreshToken });
+    if (res.data.token) {
+      tokenStorage.set(res.data.token);
+    }
+    if (res.data.refreshToken) {
+      refreshTokenStorage.set(res.data.refreshToken);
+    }
+    return res.data.token || null;
+  } catch {
+    tokenStorage.remove();
+    refreshTokenStorage.remove();
+    return null;
   }
 };
 
@@ -53,5 +81,6 @@ export const logout = async () => {
     // ログアウトはベストエフォート: サーバー側エラーがあってもクライアント側トークンは破棄する
   } finally {
     tokenStorage.remove();
+    refreshTokenStorage.remove();
   }
 };

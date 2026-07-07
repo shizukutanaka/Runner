@@ -10,6 +10,7 @@ const { generateToken } = require('../middleware/auth');
 
 const BCRYPT_ROUNDS = 12;
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1時間
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30日
 
 const dbGet = (sql, params = []) => new Promise((resolve, reject) => {
   db.get(sql, params, (err, row) => { if (err) reject(err); else resolve(row); });
@@ -20,6 +21,20 @@ const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
 const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
   db.all(sql, params, (err, rows) => { if (err) reject(err); else resolve(rows || []); });
 });
+
+// リフレッシュトークンを発行してDBにハッシュ保存し、平文を返す（ローテーション時にも使用）
+const issueRefreshToken = async (accountId) => {
+  const rawToken = crypto.randomBytes(64).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  const expires = new Date(Date.now() + REFRESH_TOKEN_TTL_MS).toISOString();
+
+  await dbRun(
+    'UPDATE accounts SET refresh_token_hash = ?, refresh_token_expires = ? WHERE id = ?',
+    [tokenHash, expires, accountId]
+  );
+
+  return rawToken;
+};
 
 const sanitizeAccount = (account) => ({
   id: account.id,
@@ -97,6 +112,7 @@ exports.login = async (req, res, next) => {
     await dbRun('UPDATE accounts SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?', [account.id]);
 
     const token = generateToken({ id: account.id, username: account.username, role: account.role });
+    const refreshToken = await issueRefreshToken(account.id);
 
     // セッションCookieも発行（既存の express-session ミドルウェアを利用）
     if (req.session) {
@@ -108,6 +124,7 @@ exports.login = async (req, res, next) => {
     res.json({
       success: true,
       token,
+      refreshToken,
       user: sanitizeAccount(account),
       message: 'ログインしました'
     });
@@ -167,18 +184,60 @@ exports.me = async (req, res, next) => {
   }
 };
 
-// ログアウト（JWTはステートレスなためクライアント側でのトークン破棄が主。セッションも破棄する）
+// ログアウト（JWTはステートレスなためクライアント側でのトークン破棄が主。リフレッシュトークンとセッションを破棄する）
 exports.logout = async (req, res) => {
   logger.info('[Auth] Logout', { id: req.user?.id });
+  if (req.user?.id) {
+    await dbRun(
+      'UPDATE accounts SET refresh_token_hash = NULL, refresh_token_expires = NULL WHERE id = ?',
+      [req.user.id]
+    );
+  }
   if (req.session) {
     req.session.destroy(() => {});
   }
   res.json({ success: true, message: 'ログアウトしました' });
 };
 
-// リフレッシュトークン（現状は未発行のため常に無効として扱う）
+// リフレッシュトークンを検証し、新しいアクセストークン+ローテーションしたリフレッシュトークンを発行
 exports.refresh = async (req, res, next) => {
-  return next({ status: 401, message: '無効なリフレッシュトークンです' });
+  const { refreshToken } = req.body;
+
+  if (!refreshToken || typeof refreshToken !== 'string') {
+    return next({ status: 401, message: '無効なリフレッシュトークンです' });
+  }
+
+  try {
+    const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    const account = await dbGet(
+      'SELECT * FROM accounts WHERE refresh_token_hash = ? AND refresh_token_expires > CURRENT_TIMESTAMP',
+      [tokenHash]
+    );
+
+    if (!account) {
+      return next({ status: 401, message: '無効なリフレッシュトークンです' });
+    }
+
+    if (account.status !== 'active') {
+      return next({ status: 403, message: 'このアカウントは無効化されています' });
+    }
+
+    const token = generateToken({ id: account.id, username: account.username, role: account.role });
+    // ローテーション: 使用済みのリフレッシュトークンは即座に無効化し、新しいものを発行する
+    const newRefreshToken = await issueRefreshToken(account.id);
+
+    logger.info('[Auth] Token refreshed', { id: account.id });
+
+    res.json({
+      success: true,
+      token,
+      refreshToken: newRefreshToken,
+      user: sanitizeAccount(account)
+    });
+  } catch (err) {
+    logger.error('[Auth] Refresh failed', { error: err.message });
+    next({ status: 500, message: 'トークンの更新中にエラーが発生しました', details: err });
+  }
 };
 
 // パスワードリセット要求（メール送信は未設定のため、トークン発行のみ実施）
@@ -226,8 +285,9 @@ exports.resetPassword = async (req, res, next) => {
     }
 
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    // パスワード変更時は既存のリフレッシュトークンも無効化し、他端末のセッションを終了させる
     await dbRun(
-      'UPDATE accounts SET password_hash = ?, reset_token_hash = NULL, reset_token_expires = NULL WHERE id = ?',
+      'UPDATE accounts SET password_hash = ?, reset_token_hash = NULL, reset_token_expires = NULL, refresh_token_hash = NULL, refresh_token_expires = NULL WHERE id = ?',
       [passwordHash, account.id]
     );
 
@@ -255,7 +315,11 @@ exports.changePassword = async (req, res, next) => {
     }
 
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await dbRun('UPDATE accounts SET password_hash = ? WHERE id = ?', [passwordHash, account.id]);
+    // 他端末のリフレッシュトークンも無効化する（現在のアクセストークンはそのまま有効）
+    await dbRun(
+      'UPDATE accounts SET password_hash = ?, refresh_token_hash = NULL, refresh_token_expires = NULL WHERE id = ?',
+      [passwordHash, account.id]
+    );
 
     logger.info('[Auth] Password changed', { id: account.id });
     res.json({ success: true, message: 'パスワードを変更しました' });
