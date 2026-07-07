@@ -92,12 +92,15 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **実施した修正**: 3ファイルを削除（元々一度も適用されたことがなくgit履歴に実装は残る）。CSRF対策としては引き続き`validateOrigin`が有効
 - **再検証**: `ls backend/src/middleware/csrf.js` → 存在すれば未対応
 
-### E-11. デッドサービス9件（importer 0件）
+### E-11. ✅ 解決済み（2026-07-07） — デッドサービス9件を個別判断（1件は既にD-14で配線済み、1件は実配線、残り7件は削除）
 
-- **ファイル**: `backend/src/services/backupService.js`, `coroutineService.js`, `databaseService.js`, `interactiveNotificationService.js`, `pureFunctionalNotificationService.js`, `notificationBuilder.js`, `notificationJobQueue.js`, `services/i18nService.js`, `utils/dbAnalyzer.js`
-- **証拠**: いずれも他のどのファイルからも `require` されていない。特に `services/i18nService.js` は本セッション序盤で `addLanguage()` を実装したが、実際にアプリが使っているのは別ファイル `backend/src/i18n.js` であり、**その修正も無意味だった**（正直な記録として残す）。`monitoringService.js` は `global.databaseService`/`global.cacheService` を参照するが、どこにも代入されないため常に未定義（該当の分岐は常にデッド）
-- **推奨アクション**: 各ファイルごとに「配線して活かす」か「削除」かを判断。特に `backupService.js` は D-14 で不足側からも指摘（自動バックアップが機能していない一次原因）
-- **再検証**: 各ファイル名で `grep -rln "<ファイル名の拡張子抜き>" backend/src --include="*.js" | grep -v "services/<ファイル名>"` → 空なら未対応
+- **元の証拠**: `backupService.js`, `coroutineService.js`, `databaseService.js`, `interactiveNotificationService.js`, `pureFunctionalNotificationService.js`, `notificationBuilder.js`, `notificationJobQueue.js`, `services/i18nService.js`, `utils/dbAnalyzer.js` の9ファイルがいずれも他のどこからも`require`されていなかった
+- **個別判断の結果**:
+  - `backupService.js`: D-14（本ブランチ既存の修正）で`server.js`に配線済みだったため対応不要（本項目のリスト自体が古かった）
+  - `monitoringService.js`の`global.databaseService`/`global.cacheService`参照: 前者はテーブル行数などを実際に集計する`collectDatabaseMetrics()`（同ファイル内、`db`モジュールを直接使用）が既に同じ`this.metrics.application.database`を実データで埋めており、デッドな`global.databaseService`分岐は完全な重複だったため削除。後者は実在する`cacheService.js`（シングルトン、既に`getStatistics()`を持つ）を`require`して直接呼ぶよう配線し直し、**実際にキャッシュヒット率等がモニタリングに反映されるよう修正**（`databaseService.js`自体はdb.jsと重複する未使用の別実装だったため削除、活かす価値なし）
+  - 残り7ファイル（`coroutineService.js`, `interactiveNotificationService.js`, `pureFunctionalNotificationService.js`, `notificationBuilder.js`, `notificationJobQueue.js`, `services/i18nService.js`, `utils/dbAnalyzer.js`）: テスト含め全ファイルからの参照ゼロを再確認の上、削除
+- **検証**: 削除・配線変更後に`NODE_ENV=test npx jest`をフルスイート実行し、失敗数103件（367→381件、変化なし）を確認。回帰なし
+- **再検証**: `ls backend/src/services/coroutineService.js` 等 → 存在すれば未対応。`grep -n "cacheService.getStatistics" backend/src/services/monitoringService.js` → ヒットすれば実配線済み
 
 ### E-12. ✅ 解決済み（2026-07-07） — routes/health.jsは完全な重複と判明、削除
 
@@ -255,10 +258,10 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 
 ## 推奨着手順
 
-**2026-07-07時点で上記1〜3は全て着手・一定水準まで解決済み**（D-2/D-5/E-3/D-9/E-9/E-10/E-12/D-13）。次に着手すべき項目は以下（優先度順）:
+**2026-07-07時点で下記のほぼ全項目が着手・一定水準まで解決済み**（D-2/D-5/E-3/D-9/E-9/E-10/E-11/E-12/D-13、notifications.test.jsのルート不一致含む）。残るのは製品判断が必要な大型項目のみ:
 
-1. **`tests/integration/notifications.test.js`のルート設計不一致の解消**（D-9の残課題）— テストが期待するルート形状（`PUT /:id/read`・`PUT /read-all`・`DELETE /:id`・`GET/PUT /settings`・`POST /test`）と実装（`routes/notifications.js`）が根本的に食い違っている。settings/testエンドポイント自体が未実装のため、API設計の手戻りを伴う中規模タスク
-2. **D-6 アカウント⇔チャンネル担当制 + E-3残課題（マルチテナント本実装）**: 両方ともスキーマ設計の製品判断が必要なため意思決定が先
-3. **D-7 httpOnly Cookie移行**: D-5（リフレッシュトークン）確立後の次段として着手可能
-4. **Twitch連携**（D-2で見送ったIRC/EventSub部分）
-5. **E-11 デッドサービス9件の個別判断**（配線して活かすか削除するか）
+1. **D-6 アカウント⇔チャンネル担当制 + E-3残課題（マルチテナント本実装）**: 両方ともスキーマ設計の製品判断が必要なため意思決定が先
+2. **D-7 httpOnly Cookie移行**: D-5（リフレッシュトークン）確立後の次段として着手可能だが、CORS設定・フロントのトークン管理全体に影響する規模のため計画的に着手すること
+3. **Twitch連携**（D-2で見送ったIRC/EventSub部分）
+4. **`tests/api/notifications.test.js`の設計統一**: 同一機能に対し`tests/integration/notifications.test.js`と非互換な設計（`POST /:id/read`・`{status,data,message}`封筒）を前提としている。どちらを正式仕様とするか判断した上でテストか実装のどちらかを書き直す
+5. **D-9残り103件**: 個別原因の精査が必要（`tests/api/comments.test.js`など、認証まわりのテスト実行順序依存の疑いがある大型失敗クラスタが残っている）

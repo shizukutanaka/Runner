@@ -3,6 +3,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const logger = require('../logger');
 const config = require('../config');
+const cacheService = require('./cacheService');
 const EventEmitter = require('events');
 
 /**
@@ -228,24 +229,19 @@ class MonitoringService extends EventEmitter {
 
   // Collect application metrics
   async collectApplicationMetrics() {
-    // Database metrics
-    if (global.databaseService) {
-      const dbMetrics = global.databaseService.getMetrics();
-      this.metrics.application.database = {
-        connections: dbMetrics.activeConnections || 0,
-        queries: dbMetrics.totalQueries || 0,
-        errors: dbMetrics.failedQueries || 0
-      };
-    }
+    // Database metrics are populated separately by collectDatabaseMetrics(),
+    // which queries the real db module directly (table row counts etc.)
 
-    // Cache metrics
-    if (global.cacheService) {
-      const cacheStats = global.cacheService.getStatistics();
+    // Cache metrics (real cacheService singleton, not a global)
+    try {
+      const cacheStats = cacheService.getStatistics();
       this.metrics.application.cache = {
         hits: cacheStats.hits || 0,
         misses: cacheStats.misses || 0,
         hitRate: parseFloat(cacheStats.hitRate) || 0
       };
+    } catch (error) {
+      logger.warn('[Monitoring] Failed to get cache statistics', { error: error.message });
     }
 
     // Response time metrics
