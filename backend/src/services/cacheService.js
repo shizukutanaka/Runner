@@ -66,7 +66,8 @@ class CacheService {
     }
 
     // Clean up memory cache periodically
-    setInterval(() => this.cleanupMemoryCache(), 60000); // Every minute
+    this.cleanupTimer = setInterval(() => this.cleanupMemoryCache(), 60000); // Every minute
+    this.cleanupTimer.unref(); // Don't keep the process (or Jest) alive just for this
   }
 
   // Get value from cache

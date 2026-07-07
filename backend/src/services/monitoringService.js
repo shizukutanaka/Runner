@@ -65,6 +65,7 @@ class MonitoringService extends EventEmitter {
     this.collectionTimer = setInterval(() => {
       this.collectMetrics();
     }, this.collectionInterval);
+    this.collectionTimer.unref(); // Don't keep the process (or Jest) alive just for this
 
     logger.info('[MonitoringService] Metric collection started', {
       interval: this.collectionInterval

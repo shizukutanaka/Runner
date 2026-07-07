@@ -1,18 +1,36 @@
 // OpenAI Service Unit Tests
 // Mocks the OpenAI client to avoid real API calls
 
+// openaiService.js はモジュール読み込み時に一度だけ `new OpenAI(...)` を呼び、
+// そのインスタンスをモジュールスコープに保持し続ける。テスト側の `new OpenAI()`
+// が別オブジェクトを返すと、テストが設定した mockResolvedValue がサービス内部の
+// 呼び出しに反映されない。そのためモックはシングルトンを返すようにする
+// （global.jest.config.js の resetMocks:true は個々の jest.fn() の実装をテスト毎に
+// クリアするだけで、このオブジェクト構造自体は破棄しないため両立できる）
+let mockSingletonOpenAI = null;
 jest.mock('openai', () => {
-  return jest.fn().mockImplementation(() => ({
-    chat: {
-      completions: {
-        create: jest.fn()
-      }
-    },
-    moderations: {
-      create: jest.fn()
+  return jest.fn().mockImplementation(() => {
+    if (!mockSingletonOpenAI) {
+      mockSingletonOpenAI = {
+        chat: {
+          completions: {
+            create: jest.fn()
+          }
+        },
+        moderations: {
+          create: jest.fn()
+        }
+      };
     }
-  }));
+    return mockSingletonOpenAI;
+  });
 });
+
+// openaiService.js は config.services.openai.apiKey が未設定だと即座に
+// フォールバック応答を返しOpenAI APIを一切呼ばない（tests/setup.jsが
+// OPENAI_API_KEY='' を設定しているため）。このテストではモック呼び出しの
+// 経路を実際に通す必要があるため、モジュール読み込み前にダミーのキーを設定する
+process.env.OPENAI_API_KEY = 'test-api-key-for-mocking-only';
 
 jest.mock('redis', () => ({
   createClient: jest.fn(() => ({
@@ -27,7 +45,7 @@ jest.mock('redis', () => ({
   }))
 }));
 
-const openaiService = require('../../src/services/openaiService_enhanced');
+const openaiService = require('../../src/services/openaiService');
 
 // Helpers
 function mockCompletionResponse(content, usage = { prompt_tokens: 50, completion_tokens: 40, total_tokens: 90 }) {
@@ -51,10 +69,19 @@ describe('OpenAI Service (Enhanced)', () => {
   let mockOpenAI;
 
   beforeEach(() => {
-    // OpenAIモジュールからモックインスタンスを取得
+    // jest.config.js の resetMocks:true が毎テスト前にコンストラクタの
+    // mockImplementation 自体を消去するため、ここで都度再設定する
     const OpenAI = require('openai');
+    OpenAI.mockImplementation(() => {
+      if (!mockSingletonOpenAI) {
+        mockSingletonOpenAI = {
+          chat: { completions: { create: jest.fn() } },
+          moderations: { create: jest.fn() }
+        };
+      }
+      return mockSingletonOpenAI;
+    });
     mockOpenAI = new OpenAI();
-    jest.clearAllMocks();
   });
 
   // ============================================================
@@ -122,7 +149,9 @@ describe('OpenAI Service (Enhanced)', () => {
     it('異常系: OpenAI APIエラー時にエラーオブジェクトを返す', async () => {
       mockOpenAI.chat.completions.create.mockRejectedValue(new Error('API Error'));
 
-      const result = await openaiService.analyzeSentiment('テスト');
+      // 他のテストと同じ入力文字列を使うとキャッシュがヒットしてAPI呼び出しを
+      // スキップしてしまうため、このテスト専用の一意な入力を使う
+      const result = await openaiService.analyzeSentiment('エラーテスト用の一意な入力テキスト');
 
       expect(result.error).toBeDefined();
       expect(result.sentiment).toBe('neutral'); // フォールバック

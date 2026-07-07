@@ -56,7 +56,7 @@ const commonSchemas = {
   id: Joi.string().trim().min(1).max(255),
   email: Joi.string().email().lowercase().trim(),
   url: Joi.string().uri(),
-  timestamp: Joi.date().iso(),
+  timestamp: Joi.string().isoDate(),
   pagination: {
     limit: Joi.number().integer().min(1).max(100).default(20),
     offset: Joi.number().integer().min(0).default(0),

@@ -173,6 +173,13 @@ const ensureCommentColumns = () => {
   ]);
 };
 
+const ensureNotificationColumns = () => {
+  ensureColumnDefinitions('notifications', [
+    { name: 'user_id', definition: 'TEXT' },
+    { name: 'expires_at', definition: 'DATETIME' }
+  ]);
+};
+
 const ensureUserColumns = () => {
   ensureColumnDefinitions('users', [
     { name: 'history', definition: "TEXT DEFAULT '[]'" },
@@ -388,6 +395,7 @@ const initializeDB = async () => {
 
     ensureCommentColumns();
     ensureUserColumns();
+    ensureNotificationColumns();
   } catch (err) {
     logger.error('[Database] Failed to initialize database', { error: err.message });
     throw err;

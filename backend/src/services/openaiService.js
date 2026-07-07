@@ -39,16 +39,55 @@ function _cacheSet(key, value, ttlMs) {
   }
 }
 
+// ─── カスタムエラークラス ─────────────────────────────────────────────────
+class OpenAIError extends Error {
+  constructor(message, code = 'OPENAI_ERROR', retryable = false) {
+    super(message);
+    this.name = 'OpenAIError';
+    this.code = code;
+    this.retryable = retryable;
+  }
+}
+
+class RateLimitError extends OpenAIError {
+  constructor(message, retryAfter = null) {
+    super(message, 'RATE_LIMIT_EXCEEDED', true);
+    this.name = 'RateLimitError';
+    this.retryAfter = retryAfter;
+  }
+}
+
+class TimeoutError extends OpenAIError {
+  constructor(message) {
+    super(message, 'TIMEOUT', true);
+    this.name = 'TimeoutError';
+  }
+}
+
+class QuotaExceededError extends OpenAIError {
+  constructor(message) {
+    super(message, 'QUOTA_EXCEEDED', false);
+    this.name = 'QuotaExceededError';
+  }
+}
+
 // ─── コスト追跡 ──────────────────────────────────────────────────────────
-const _costTracker = {
+const _initialCostTracker = () => ({
   totalCalls: 0,
   cachedHits: 0,
+  errorCount: 0,
   totalInputTokens: 0,
   totalOutputTokens: 0,
   // GPT-4o 料金 (2025年: $2.5/1M input, $10/1M output)
   estimatedCostUSD: 0,
   byType: {}
-};
+});
+
+let _costTracker = _initialCostTracker();
+
+function resetCostTracking() {
+  _costTracker = _initialCostTracker();
+}
 
 function _trackUsage(type, usage, fromCache = false) {
   _costTracker.totalCalls++;
@@ -59,6 +98,12 @@ function _trackUsage(type, usage, fromCache = false) {
   _costTracker.totalInputTokens  += inputTokens;
   _costTracker.totalOutputTokens += outputTokens;
   _costTracker.estimatedCostUSD  += (inputTokens / 1e6) * 2.5 + (outputTokens / 1e6) * 10;
+  _costTracker.byType[type] = (_costTracker.byType[type] || 0) + 1;
+}
+
+function _trackError(type) {
+  _costTracker.totalCalls++;
+  _costTracker.errorCount++;
   _costTracker.byType[type] = (_costTracker.byType[type] || 0) + 1;
 }
 
@@ -119,10 +164,12 @@ function initializeOpenAI() {
 
 // Analyze comment sentiment using GPT-4o
 async function analyzeSentiment(text, language = 'auto') {
+  const startTime = Date.now();
+
   if (!isAvailable) {
     initializeOpenAI();
     if (!isAvailable) {
-      return { sentiment: 'neutral', score: 0.5, confidence: 0, error: 'OpenAI not available' };
+      return { sentiment: 'neutral', score: 0.5, confidence: 0, cached: false, error: 'OpenAI not available' };
     }
   }
 
@@ -131,7 +178,7 @@ async function analyzeSentiment(text, language = 'auto') {
   const cached = _cacheGet(cacheKey);
   if (cached) {
     _trackUsage('sentiment', null, true);
-    return { ...cached, fromCache: true };
+    return { ...cached, fromCache: true, cached: true, latency: Date.now() - startTime };
   }
 
   try {
@@ -179,20 +226,23 @@ Respond with ONLY valid JSON in this exact format:
 
     _cacheSet(cacheKey, output, CACHE_TTL_MS.sentiment);
     _trackUsage('sentiment', completion.usage);
-    return output;
+    return { ...output, cached: false, latency: Date.now() - startTime };
 
   } catch (error) {
     logger.error('[OpenAI] Sentiment analysis failed:', error.message);
-    return { sentiment: 'neutral', score: 0.5, confidence: 0, error: error.message };
+    _trackError('sentiment');
+    return { sentiment: 'neutral', score: 0.5, confidence: 0, cached: false, error: error.message };
   }
 }
 
 // Detect toxic content using GPT-4o
 async function detectToxicContent(text) {
+  const startTime = Date.now();
+
   if (!isAvailable) {
     initializeOpenAI();
     if (!isAvailable) {
-      return { isToxic: false, score: 0, categories: {}, error: 'OpenAI not available' };
+      return { isToxic: false, score: 0, categories: {}, cached: false, error: 'OpenAI not available' };
     }
   }
 
@@ -200,7 +250,7 @@ async function detectToxicContent(text) {
   const cached = _cacheGet(cacheKey);
   if (cached) {
     _trackUsage('toxicity', null, true);
-    return { ...cached, fromCache: true };
+    return { ...cached, fromCache: true, cached: true, latency: Date.now() - startTime };
   }
 
   try {
@@ -219,11 +269,12 @@ async function detectToxicContent(text) {
 
     _cacheSet(cacheKey, output, CACHE_TTL_MS.toxicity);
     _trackUsage('toxicity', null);
-    return output;
+    return { ...output, cached: false, latency: Date.now() - startTime };
 
   } catch (error) {
     logger.error('[OpenAI] Toxicity detection failed:', error.message);
-    return { isToxic: false, score: 0, categories: {}, error: error.message };
+    _trackError('toxicity');
+    return { isToxic: false, score: 0, categories: {}, cached: false, error: error.message };
   }
 }
 
@@ -281,6 +332,7 @@ async function generateChatbotResponse(userMessage, context = {}) {
 
   } catch (error) {
     logger.error('[OpenAI] Chatbot response generation failed:', error.message);
+    _trackError('chatbot');
     return { response: 'Sorry, I couldn\'t process your message right now.', confidence: 0, error: error.message };
   }
 }
@@ -340,6 +392,7 @@ ${commentsText}`;
 
   } catch (error) {
     logger.error('[OpenAI] Comment summarization failed:', error.message);
+    _trackError('summarize');
     return { summary: 'Failed to generate summary.', error: error.message };
   }
 }
@@ -395,20 +448,26 @@ Respond with ONLY the translation, no explanations.`;
 
   } catch (error) {
     logger.error('[OpenAI] Translation failed:', error.message);
+    _trackError('translate');
     return { translatedText: text, error: error.message };
   }
 }
 
 // コスト統計を取得（監視・モニタリング用）
 function getCostStats() {
-  const cacheHitRate = _costTracker.totalCalls > 0
-    ? ((_costTracker.cachedHits / _costTracker.totalCalls) * 100).toFixed(1)
-    : '0.0';
+  const { totalCalls, cachedHits, errorCount, totalInputTokens, totalOutputTokens, estimatedCostUSD } = _costTracker;
+
   return {
     ..._costTracker,
-    cacheHitRate: `${cacheHitRate}%`,
-    cacheSize: _cache.size,
-    estimatedCostUSD: _costTracker.estimatedCostUSD.toFixed(4)
+    cacheHits: cachedHits,
+    totalTokens: totalInputTokens + totalOutputTokens,
+    totalCost: estimatedCostUSD,
+    requestCount: totalCalls,
+    cacheMisses: Math.max(totalCalls - cachedHits, 0),
+    averageCostPerRequest: totalCalls > 0 ? estimatedCostUSD / totalCalls : 0,
+    cacheHitRate: totalCalls > 0 ? (cachedHits / totalCalls) * 100 : 0,
+    errorRate: totalCalls > 0 ? (errorCount / totalCalls) * 100 : 0,
+    cacheSize: _cache.size
   };
 }
 
@@ -423,5 +482,10 @@ module.exports = {
   summarizeComments,
   translateText,
   getCostStats,
-  initializeOpenAI
+  resetCostTracking,
+  initializeOpenAI,
+  OpenAIError,
+  RateLimitError,
+  TimeoutError,
+  QuotaExceededError
 };

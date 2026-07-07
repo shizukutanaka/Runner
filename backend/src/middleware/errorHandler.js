@@ -609,7 +609,7 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Memory usage monitoring
-setInterval(() => {
+const memoryMonitorTimer = setInterval(() => {
   const usage = process.memoryUsage();
   const threshold = 500 * 1024 * 1024; // 500MB
 
@@ -621,6 +621,7 @@ setInterval(() => {
     });
   }
 }, 60000); // Check every minute
+memoryMonitorTimer.unref(); // Don't keep the process (or Jest) alive just for this
 
 // Request timeout handler
 const requestTimeout = (timeout = 30000) => {

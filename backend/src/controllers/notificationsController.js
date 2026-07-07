@@ -551,10 +551,11 @@ exports.createNotification = async (req, res, next) => {
 
   try {
     const sql = `
-      INSERT INTO notifications (title, message, type, level, read, metadata, created_at)
-      VALUES (?, ?, ?, ?, 0, ?, datetime('now'))
+      INSERT INTO notifications (user_id, title, message, type, level, read, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, 0, ?, datetime('now'))
     `;
     const params = [
+      userId,
       title,
       message,
       type,
