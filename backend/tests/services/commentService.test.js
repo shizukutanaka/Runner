@@ -1,5 +1,6 @@
 // コメントサービス自動テスト
 const commentService = require('../../src/services/commentService');
+const db = require('../../src/db');
 
 describe('CommentService', () => {
   let testCommentId;
@@ -10,6 +11,20 @@ describe('CommentService', () => {
     content: 'テストコメント本文',
     status: 'active'
   };
+
+  beforeAll(async () => {
+    // データベーススキーマ初期化完了を待つ（他のテストファイルと同じ規約）。
+    // このファイルはapp.jsを経由せずdb.jsを直接requireするため、この待機が無いと
+    // ALTER TABLE等の非同期スキーマ初期化が完了する前にテストが実行され
+    // "no such table"/"no such column" エラーになることがある
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  });
+
+  afterAll(async () => {
+    if (db && db.closeDatabase) {
+      await db.closeDatabase();
+    }
+  });
 
   describe('createComment', () => {
     it('正常系: コメント作成成功', async () => {

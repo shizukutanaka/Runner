@@ -174,7 +174,8 @@ const ensureCommentColumns = () => {
     { name: 'deletion_reason_category', definition: 'TEXT' },
     { name: 'deletion_moderator_id', definition: 'TEXT' },
     { name: 'deletion_timestamp', definition: 'DATETIME' },
-    { name: 'deletion_evidence', definition: 'TEXT' }
+    { name: 'deletion_evidence', definition: 'TEXT' },
+    { name: 'updated_at', definition: 'DATETIME' }
   ]);
 };
 

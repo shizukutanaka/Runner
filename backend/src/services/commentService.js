@@ -42,6 +42,23 @@ const notFoundError = (message = 'Comment not found') => {
 const toBoolean = (value) => value === 1 || value === true || value === '1';
 const toIntegerBoolean = (value) => (value ? 1 : 0);
 
+// updateComment()に渡されるキャメルケースのフィールド名をDBのスネークケース列名へ変換する
+const FIELD_TO_COLUMN = {
+  content: 'content',
+  status: 'status',
+  moderationReason: 'moderation_reason',
+  moderationTimestamp: 'moderation_timestamp',
+  moderator: 'moderator',
+  moderationScore: 'moderation_score',
+  avatarUrl: 'avatar_url',
+  backgroundColor: 'background_color',
+  highlight: 'highlight',
+  pinned: 'pinned',
+  autoArchive: 'auto_archive',
+  externalShared: 'external_shared',
+  notificationFrequency: 'notification_frequency'
+};
+
 const mapCommentRow = (row) => {
   if (!row) {
     return null;
@@ -216,7 +233,7 @@ const createComment = async (commentData) => {
   try {
     const errors = validateCommentData(commentData);
     if (errors.length > 0) {
-      const error = new Error('Validation failed');
+      const error = new Error(`Validation failed: ${errors.join('; ')}`);
       error.status = 400;
       error.details = errors;
       throw error;
@@ -270,19 +287,13 @@ const updateComment = async (id, updateData) => {
   try {
     const existingComment = await getCommentById(id);
 
-    const allowedFields = [
-      'content', 'status', 'moderationReason', 'moderationTimestamp',
-      'moderator', 'moderationScore', 'avatarUrl', 'backgroundColor',
-      'highlight', 'pinned', 'autoArchive', 'externalShared',
-      'notificationFrequency'
-    ];
-
     const updates = [];
     const params = [];
 
     Object.keys(updateData).forEach((key) => {
-      if (allowedFields.includes(key) && updateData[key] !== undefined) {
-        updates.push(`${key} = ?`);
+      const column = FIELD_TO_COLUMN[key];
+      if (column && updateData[key] !== undefined) {
+        updates.push(`${column} = ?`);
         params.push(updateData[key]);
       }
     });
@@ -421,7 +432,9 @@ const setCommentProperty = async (id, property, value) => {
 
 const getCommentEditHistory = async (id) => {
   try {
-    const sql = 'SELECT * FROM comment_edit_history WHERE comment_id = ? ORDER BY edited_at DESC';
+    // edited_atは秒単位の精度(CURRENT_TIMESTAMP)のため同一秒内の複数編集が同順位になりうる。
+    // idは挿入順に単調増加するため、タイブレークとして併用し「最新が先頭」を保証する
+    const sql = 'SELECT * FROM comment_edit_history WHERE comment_id = ? ORDER BY edited_at DESC, id DESC';
     const rows = await dbAll(sql, [id]);
     return rows;
   } catch (error) {
@@ -763,19 +776,13 @@ const updateBatch = async (updates) => {
 
         updates.forEach(async ({ id, updateData }, index) => {
           try {
-            const allowedFields = [
-              'content', 'status', 'moderationReason', 'moderationTimestamp',
-              'moderator', 'moderationScore', 'avatarUrl', 'backgroundColor',
-              'highlight', 'pinned', 'autoArchive', 'externalShared',
-              'notificationFrequency'
-            ];
-
             const updateFields = [];
             const params = [];
 
             Object.keys(updateData).forEach((key) => {
-              if (allowedFields.includes(key) && updateData[key] !== undefined) {
-                updateFields.push(`${key} = ?`);
+              const column = FIELD_TO_COLUMN[key];
+              if (column && updateData[key] !== undefined) {
+                updateFields.push(`${column} = ?`);
                 params.push(updateData[key]);
               }
             });
