@@ -169,7 +169,12 @@ const ensureCommentColumns = () => {
     { name: 'pinned', definition: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'auto_archive', definition: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'external_shared', definition: 'INTEGER NOT NULL DEFAULT 0' },
-    { name: 'notification_frequency', definition: 'TEXT' }
+    { name: 'notification_frequency', definition: 'TEXT' },
+    { name: 'deletion_reason', definition: 'TEXT' },
+    { name: 'deletion_reason_category', definition: 'TEXT' },
+    { name: 'deletion_moderator_id', definition: 'TEXT' },
+    { name: 'deletion_timestamp', definition: 'DATETIME' },
+    { name: 'deletion_evidence', definition: 'TEXT' }
   ]);
 };
 
@@ -185,6 +190,7 @@ const ensureUserColumns = () => {
     { name: 'history', definition: "TEXT DEFAULT '[]'" },
     { name: 'ban_until', definition: 'TEXT' },
     { name: 'mute_until', definition: 'TEXT' },
+    { name: 'last_comment_at', definition: 'DATETIME' },
     { name: 'notification_frequency', definition: 'TEXT' },
     { name: 'notification_sound_enabled', definition: 'INTEGER NOT NULL DEFAULT 1' },
     { name: 'notification_desktop_enabled', definition: 'INTEGER NOT NULL DEFAULT 1' },
@@ -393,6 +399,22 @@ const initializeDB = async () => {
 
     CREATE INDEX IF NOT EXISTS idx_held_messages_status ON held_messages(status);
     CREATE INDEX IF NOT EXISTS idx_held_messages_created_at ON held_messages(created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS comment_deletion_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comment_id TEXT NOT NULL,
+      moderator_id TEXT,
+      action TEXT NOT NULL,
+      reason TEXT,
+      reason_category TEXT,
+      evidence TEXT,
+      previous_reason TEXT,
+      previous_reason_category TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (comment_id) REFERENCES comments(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_comment_deletion_history_comment_id ON comment_deletion_history(comment_id);
 
     CREATE INDEX IF NOT EXISTS idx_analytics_captured_at ON analytics_snapshots(captured_at DESC);
   `;

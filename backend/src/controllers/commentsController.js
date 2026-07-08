@@ -154,6 +154,16 @@ const sanitizeForStorage = (value) => {
   return validator.stripLow(trimmed, true);
 };
 
+const sanitizeForResponse = (value) => {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    return value;
+  }
+  return validator.escape(value);
+};
+
 /**
  * Maps database row to comment object
  * @param {Object} row - Database row
@@ -324,6 +334,21 @@ const getComments = asyncHandler(async (req, res) => {
       }
     },
     message: 'Comments fetched'
+  });
+});
+
+const getComment = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+
+  const row = await dbGet('SELECT * FROM comments WHERE id = ?', [id]);
+  if (!row) {
+    return next(notFoundError());
+  }
+
+  res.json({
+    status: 200,
+    data: mapCommentRow(row),
+    message: 'Comment fetched'
   });
 });
 
@@ -2699,6 +2724,7 @@ const cleanupExpiredPinningDisplay = asyncHandler(async (req, res) => {
 
 module.exports = {
   getComments,
+  getComment,
   createComment,
   ingestComment,
   updateComment,

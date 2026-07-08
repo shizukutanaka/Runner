@@ -49,9 +49,10 @@ function validate(schema) {
 
     if (validationErrors.length > 0) {
       logger.warn('[ValidationError] Payload failed schema validation', { errors: validationErrors });
+      const firstDetail = validationErrors[0]?.details?.[0]?.message;
       return res.status(400).json({
         status: 400,
-        message: 'Validation error',
+        message: firstDetail || 'Validation error',
         details: validationErrors
       });
     }

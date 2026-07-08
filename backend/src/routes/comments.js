@@ -22,6 +22,20 @@ router.post(
   commentsController.createComment
 );
 
+router.get(
+  '/:id',
+  requireRole('moderator'),
+  validate({ params: commentActionSchema.commentIdParam }),
+  commentsController.getComment
+);
+
+router.delete(
+  '/:id',
+  requireRole('moderator'),
+  validate({ params: commentActionSchema.commentIdParam }),
+  commentsController.deleteComment
+);
+
 router.put(
   '/:id',
   requireRole('moderator'),

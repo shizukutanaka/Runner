@@ -20,6 +20,19 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **実施した修正**: `moderationService.js` に `analyzeLinks()`（既存の`LINK_BLOCK_CONFIG`/`URL_REGEX`を使ったURL抽出・ブロック判定）と `analyzeSentiment()`（ルールベースの簡易感情分析）を実装
 - **再検証**: `grep -n "^function analyzeLinks\|^function analyzeSentiment" backend/src/services/moderationService.js` → 両方ヒットすれば修正済み。念のため直接呼び出しでの動作確認: `node --check` だけでは検出できない類のバグ（構文的には正しいReferenceError）なので、必ず実際にコメント作成を実行して確認すること
 
+## ⚠️ 追記2: 同系統の重大バグを再発見（2026-07-08発見・修正済み）
+
+上記と全く同じ「テストが認証不備で401になり中核ロジックまで到達していなかったため隠れていたバグ」パターンが、`tests/api/comments.test.js`にBearerトークン認証を追加して初めて到達可能になったことで**3件同時に**発覚した。いずれも修正済みだが、同種のバグが他にも潜んでいる可能性を示す重要な前例として記録する。
+
+1. **`mapCommentRow()`が未定義関数`sanitizeForResponse`を呼んでいた（ReferenceError、2025-11以来存在）**: `commentsController.js`内の`content`/`user`/`moderation.reason`等6箇所で`sanitizeForResponse(...)`を呼んでいたが、この関数はこのファイル内のどこにも定義・importされていなかった（`usersController.js`内に同名の別モジュールスコープ関数が存在するのみで、Node.jsのモジュールスコープ上アクセス不可能）。**`getComments`/`createComment`/`updateComment`など、コメントを1件でも返す全パス（実質ほぼ全機能）が確実にクラッシュしていた**。`git blame`でコミット`df3b75e`（2025-11-04）まで遡れる、9ヶ月以上未発覚だった欠陥。修正: `validator.escape()`を使う同等の関数を`commentsController.js`内にローカル定義（`usersController.js`の実装を踏襲）
+2. **`last_comment_at`列が`users`テーブルに存在しなかった**: `checkSlowMode()`（読み取り、エラーを握りつぶすため無症状）と`ingestComment()`のコメント作成成功パス末尾（書き込み、**エラーを握りつぶさない**）の両方がこの列を参照していたが、スキーマに列定義が無く`SQLITE_ERROR: no such column: last_comment_at`で例外を投げていた。**実質的に本番相当のコメント作成パス（`ingestComment`経由、HTTP APIとYouTube取り込みサービス双方が使用）は一度も最後まで成功したことがなかった**。修正: `ensureUserColumns()`に`last_comment_at DATETIME`を追加
+3. **`deleteComment()`が存在しない列・テーブルを参照**: `comments`テーブルに`deletion_reason`/`deletion_reason_category`/`deletion_moderator_id`/`deletion_timestamp`/`deletion_evidence`列が無く、`comment_deletion_history`テーブル自体も存在しなかった。加えて`routes/comments.js`には`DELETE /:id`ルート自体が一度もマウントされていなかった（実装済みコントローラーが孤立していた、本書のD-4/tenants.js等と同型のバグ）。修正: 列とテーブルを追加、ルートを新規マウント
+
+- **なぜ今まで見つからなかったか**: `tests/api/comments.test.js`は認証ヘッダーを一切送らず全リクエストが401で弾かれていた（そのため本書のE-?候補にすら挙がらず、単なる「古いテスト」として放置されていた）。到達できていた`tests/integration/comments.test.js`は47/57合格していたが、その合格していた作成系テストは`checkSlowMode`のエラー握り潰しパスと`sanitizeForResponse`を通らない一部の応答形状に偶然乗っていた可能性が高い（詳細未追跡）
+- **実施した修正**: 上記3件に加え、`tests/api/comments.test.js`に認証セットアップを追加し、実装の実際の挙動（レスポンス封筒の形状・エラーメッセージの実際の文言等）に合わせてテストの期待値を補正。あわせて`middleware/validation.js`が返す`message`をJoiの最初の詳細メッセージに差し替え（従来は常に汎用文字列`'Validation error'`で、フィールド固有のエラー内容が伝わらなかった）。`GET /api/comments/:id`（単体取得、従来は存在しなかった）を新規追加。コメントIDパラメータのバリデーションをUUID形式チェックに強化（`commentActionSchema.commentIdParam`）
+- **検証**: `tests/api/comments.test.js`は1/35 → 37/38合格（1件は下記E-14参照でskip）。フルスイートで142→70件失敗まで改善（367→384件、悪化ゼロを都度確認）
+- **再検証**: `grep -n "sanitizeForResponse = " backend/src/controllers/commentsController.js` → ヒットすれば修正済み。`grep -n "last_comment_at" backend/src/db.js` → ヒットすれば修正済み。`grep -n "router.delete('/:id'" backend/src/routes/comments.js` → ヒットすれば修正済み
+
 ---
 
 ## 第1部: 過剰（作られたが機能していない・重複・偽装）
@@ -116,6 +129,13 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **推奨アクション**: 低優先。有効化して使うならパスをそろえる、使わないなら削除
 - **再検証**: `grep -n "auth/login" frontend/src/mocks/handlers.js`
 
+### E-14. ★★ レート制限機能がアプリ全体で無効化されている（2026-07-08発見）
+
+- **証拠**: `middleware/security.js`の`buildLimiter(configNode, extra)`は`if (!config.rateLimit.enabled) return noopLimiter;`で始まるが、`config.js`の`rateLimit`オブジェクトには`windowMs`/`maxRequests`しか無く、**`enabled`キーも、`strict`/`general`/`api`のネストされた設定オブジェクトも一切定義されていない**。そのため`config.rateLimit.enabled`は常に`undefined`（falsy）となり、`strictRateLimit`/`generalRateLimit`/`apiRateLimit`の3つ全てが常に`noopLimiter`（何もしない通過ミドルウェア）になる。本番・開発・テストの全環境で発生する設計上の欠落であり、環境変数の設定漏れではない
+- **影響**: 認証エンドポイント（ログイン試行のブルートフォース）、コメント投稿API、その他全APIがレート制限による保護を一切受けていない
+- **推奨アクション**: `config.js`に`rateLimit.enabled`（既定`true`、`RATE_LIMIT_ENABLED`環境変数等で無効化可能）と、`strict`/`general`/`api`それぞれの`windowMs`/`max`設定を追加する。ただし有効化すると本テストスイート内の連続リクエストを伴うテスト（`tests/api/comments.test.js`のパフォーマンステスト等、認証済みリクエストを100件以上連続送信するもの）が429で失敗し始める可能性が高いため、有効化は既存テストへの影響を検証しながら計画的に行うこと（今回は検出のみに留め、有効化はスコープ外とした）
+- **再検証**: `grep -n "rateLimit:" -A 5 backend/src/config.js` → `enabled`キーが無ければ未対応
+
 ---
 
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
@@ -197,8 +217,9 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
   - (d) 3ファイルの`setInterval`に`.unref()`を追加（Jestのopen handle検出数が36→1に減少、本番のgraceful shutdownにも寄与）
   - (e追加・2026-07-07) `tests/integration/notifications.test.js`のルート設計不一致を解消。テストが期待する形状（`PUT /:id/read`・`PUT /read-all`・`DELETE /:id`・`DELETE /`（全削除）・`GET/PUT /settings`・`POST /test`、いずれもフラットな`{success,...}`レスポンス）に合わせて`routes/notifications.js`と`notificationsController.js`を再設計・新規実装（フロント側にこのAPIの実利用者が存在しないため、実装をテストの設計意図に合わせる方を選択）。**実装中に発見した重大な設計ミス**: 新設した`/settings`エンドポイントは当初`users`テーブル（プラットフォーム上のコメント投稿者）を操作していたが、`req.user.id`はJWT発行元の`accounts`テーブル（ダッシュボード運用者）のIDであり、`users`テーブルには一致する行が存在せず常に404になっていた。運用者自身の通知設定は`accounts`テーブル側の新規列（`notification_email_enabled`/`notification_push_enabled`/`notification_desktop_enabled`/`notification_types`）に持たせるよう修正
   - (e補足) `notificationsController.js`の`serializeNotification()`が、実際のスキーマに存在しないRust/OCaml/Prolog/COBOL/VHDL等80以上の無関係な言語機能を模した架空フィールドを参照していた（実害はないが完全なハルシネーション性の残骸）。実在する列のみを返すよう大幅簡素化
-- **検証**: 各修正後に`NODE_ENV=test npx jest`をフルスイート実行し、失敗数の悪化がないことを都度確認。最終結果: 142件失敗→103件失敗（367→381件、テスト追加分を含む）、open handle 36→1。`tests/integration/notifications.test.js`は24/24全合格
-- **既知の残課題**: `tests/api/notifications.test.js`（別ファイル）はさらに別の設計（`POST /:id/read`・`{status,data,message}`封筒）を前提としており、今回の再設計と根本的に非互換（このファイルはこのセッション以前から7/8失敗のまま、悪化なし）。2つのテストファイルが同一機能に対して非互換な設計を前提としている状態のため、どちらか一方を正式仕様として選び他方を書き直す判断が必要
+  - (f追加・2026-07-08) `tests/api/comments.test.js`に認証を追加した結果発覚した3件の重大バグ（`sanitizeForResponse`未定義・`last_comment_at`列欠落・`deleteComment`の列/テーブル欠落+ルート未マウント）を修正。詳細は本書冒頭の「追記2」参照
+- **検証**: 各修正後に`NODE_ENV=test npx jest`をフルスイート実行し、失敗数の悪化がないことを都度確認。最終結果: 142件失敗→**70件失敗**（367→384件）、open handle 36→1。`tests/integration/notifications.test.js`は24/24、`tests/api/comments.test.js`は37/38（1件skip）全合格
+- **既知の残課題**: `tests/api/notifications.test.js`（別ファイル）はさらに別の設計（`POST /:id/read`・`{status,data,message}`封筒）を前提としており、今回の再設計と根本的に非互換（このファイルはこのセッション以前から7/8失敗のまま、悪化なし）。2つのテストファイルが同一機能に対して非互換な設計を前提としている状態のため、どちらか一方を正式仕様として選び他方を書き直す判断が必要。残り70件のうち`tests/integration/api.test.js`（health/comments/users/analytics/settings/validation/rate-limitと広範囲）が大きな塊として残っており、次の着手候補
 - **再検証**: `NODE_ENV=test npx jest 2>&1 | tail -5` で failed 件数を確認
 
 ### D-10. ✅ 解決済み（2026-07-04） — CriticalAlertsBannerが二重に壊れていた

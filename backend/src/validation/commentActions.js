@@ -60,6 +60,8 @@ exports.pagination = Joi.object({
   offset: Joi.number().integer().min(0).default(0)
 });
 
+// コメントIDはingestComment()がuuidv4()で発行するため、UUID形式を強制する
+// （不正な形式のIDは無駄なDB照会をせず即座に400を返す）
 exports.commentIdParam = Joi.object({
-  id: Joi.string().required()
+  id: Joi.string().guid({ version: 'uuidv4' }).required()
 });
