@@ -439,7 +439,7 @@ exports.createNotification = async (req, res, next) => {
           return next({ status: 500, message: 'Failed to fetch created notification', details: getErr.message });
         }
 
-        res.json({
+        res.status(201).json({
           status: 201,
           data: serializeNotification(row),
           message: 'Notification created successfully'
