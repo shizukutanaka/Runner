@@ -2,6 +2,7 @@ const request = require('supertest');
 const app = require('../../src/app');
 const stripeService = require('../../src/services/stripeService');
 const db = require('../../src/db');
+const { generateToken } = require('../../src/middleware/auth');
 
 jest.mock('../../src/services/stripeService');
 jest.mock('../../src/db');
@@ -13,7 +14,10 @@ describe('Billing API', () => {
     role: 'user'
   };
 
-  const mockAuthToken = 'mock-jwt-token';
+  // authenticateToken()はJWT検証のみでDB参照は無いため（jest.mock('../../src/db')とも無関係に）
+  // 実際に検証可能な署名済みトークンが必要。以前はリテラル文字列'mock-jwt-token'で
+  // 常にInvalid tokenとして401になっていた
+  const mockAuthToken = generateToken(mockUser);
 
   beforeEach(() => {
     jest.clearAllMocks();
