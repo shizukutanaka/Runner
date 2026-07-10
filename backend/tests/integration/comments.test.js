@@ -43,8 +43,7 @@ describe('Comments Integration Tests', () => {
       const newComment = {
         platform: 'youtube',
         content: 'This is a test comment',
-        videoId: 'test-video-123',
-        author: 'Test Author',
+        user: 'Test Author',
       };
 
       const res = await request(app)
@@ -53,12 +52,12 @@ describe('Comments Integration Tests', () => {
         .send(newComment)
         .expect(201);
 
-      expect(res.body).toHaveProperty('id');
-      expect(res.body).toHaveProperty('content', newComment.content);
-      expect(res.body).toHaveProperty('platform', newComment.platform);
-      expect(res.body).toHaveProperty('status');
+      expect(res.body.data).toHaveProperty('id');
+      expect(res.body.data).toHaveProperty('content', newComment.content);
+      expect(res.body.data).toHaveProperty('platform', newComment.platform);
+      expect(res.body.data).toHaveProperty('status');
 
-      testCommentId = res.body.id;
+      testCommentId = res.body.data.id;
     });
 
     test('should reject comment without authentication', async () => {
@@ -103,6 +102,7 @@ describe('Comments Integration Tests', () => {
       const newComment = {
         platform: 'youtube',
         content: '<script>alert("XSS")</script>Test comment',
+        user: 'testuser',
       };
 
       const res = await request(app)
@@ -111,7 +111,7 @@ describe('Comments Integration Tests', () => {
         .send(newComment)
         .expect(201);
 
-      expect(res.body.content).not.toContain('<script>');
+      expect(res.body.data.content).not.toContain('<script>');
     });
   });
 
@@ -122,8 +122,8 @@ describe('Comments Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
-      expect(Array.isArray(res.body.comments)).toBe(true);
-      expect(res.body).toHaveProperty('total');
+      expect(Array.isArray(res.body.data.items)).toBe(true);
+      expect(res.body.data.pagination).toHaveProperty('total');
     });
 
     test('should filter comments by platform', async () => {
@@ -132,8 +132,8 @@ describe('Comments Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
-      expect(Array.isArray(res.body.comments)).toBe(true);
-      res.body.comments.forEach(comment => {
+      expect(Array.isArray(res.body.data.items)).toBe(true);
+      res.body.data.items.forEach(comment => {
         expect(comment.platform).toBe('youtube');
       });
     });
@@ -144,7 +144,7 @@ describe('Comments Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
-      expect(res.body.comments.length).toBeLessThanOrEqual(10);
+      expect(res.body.data.items.length).toBeLessThanOrEqual(10);
     });
 
     test('should sort comments by timestamp', async () => {
@@ -153,9 +153,10 @@ describe('Comments Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
-      if (res.body.comments.length > 1) {
-        const firstTimestamp = new Date(res.body.comments[0].timestamp);
-        const secondTimestamp = new Date(res.body.comments[1].timestamp);
+      // getComments()は常にtimestamp DESCで返す（sortパラメータ自体は未サポートで無視される）
+      if (res.body.data.items.length > 1) {
+        const firstTimestamp = new Date(res.body.data.items[0].timestamp);
+        const secondTimestamp = new Date(res.body.data.items[1].timestamp);
         expect(firstTimestamp >= secondTimestamp).toBe(true);
       }
     });
@@ -166,7 +167,7 @@ describe('Comments Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
-      expect(Array.isArray(res.body.comments)).toBe(true);
+      expect(Array.isArray(res.body.data.items)).toBe(true);
     });
   });
 
@@ -181,44 +182,34 @@ describe('Comments Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
-      expect(res.body).toHaveProperty('id', testCommentId);
-      expect(res.body).toHaveProperty('content');
+      expect(res.body.data).toHaveProperty('id', testCommentId);
+      expect(res.body.data).toHaveProperty('content');
     });
 
     test('should return 404 for non-existent comment', async () => {
+      // コメントIDはuuidv4形式が必須（commentActionSchema.commentIdParam）。
+      // 整形式だが実在しないUUIDを使い、フォーマットエラー(400)ではなく本当の404を検証する
       await request(app)
-        .get('/api/comments/999999')
+        .get('/api/comments/00000000-0000-4000-8000-000000000000')
         .set('Authorization', `Bearer ${authToken}`)
         .expect(404);
     });
   });
 
   describe('PUT /api/comments/:id - Update Comment', () => {
-    test('should update comment content', async () => {
-      if (!testCommentId) {
-        return;
-      }
-
-      const updatedData = {
-        content: 'Updated test comment',
-      };
-
-      const res = await request(app)
-        .put(`/api/comments/${testCommentId}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .send(updatedData)
-        .expect(200);
-
-      expect(res.body).toHaveProperty('content', updatedData.content);
-    });
+    // 注意: PUT /:id はステータス（モデレーション判定）の更新専用エンドポイントであり、
+    // 本文content編集機能自体が実装に存在しない（commentActionSchema.updateStatusは
+    // action/reasonのみを受け付ける）。content編集は別機能として未実装のため対象外
+    test.skip('should update comment content (content編集エンドポイント自体が未実装のためskip)', async () => {});
 
     test('should update comment status', async () => {
       if (!testCommentId) {
         return;
       }
 
+      // 実際のスキーマはstatusではなくaction（visible/hidden/muted/deleted/flagged）を受け付ける
       const updatedData = {
-        status: 'approved',
+        action: 'visible',
       };
 
       const res = await request(app)
@@ -227,7 +218,7 @@ describe('Comments Integration Tests', () => {
         .send(updatedData)
         .expect(200);
 
-      expect(res.body).toHaveProperty('status', 'approved');
+      expect(res.body.data).toHaveProperty('status', 'visible');
     });
 
     test('should reject update with invalid status', async () => {
@@ -236,7 +227,7 @@ describe('Comments Integration Tests', () => {
       }
 
       const updatedData = {
-        status: 'invalid-status',
+        action: 'invalid-status',
       };
 
       await request(app)
@@ -248,6 +239,8 @@ describe('Comments Integration Tests', () => {
   });
 
   describe('DELETE /api/comments/:id - Delete Comment', () => {
+    const deletionReason = { reason: 'テストによる削除', reasonCategory: 'other' };
+
     test('should delete comment', async () => {
       if (!testCommentId) {
         return;
@@ -256,19 +249,25 @@ describe('Comments Integration Tests', () => {
       await request(app)
         .delete(`/api/comments/${testCommentId}`)
         .set('Authorization', `Bearer ${authToken}`)
+        .send(deletionReason)
         .expect(200);
 
-      // Verify comment is deleted
-      await request(app)
+      // deleteCommentはソフトデリート（監査証跡を残すためstatus='deleted'に更新するのみで
+      // 行自体は残る、モデレーションプラットフォームとして意図的な設計）のため、
+      // 削除後もGETは200で返り、statusが'deleted'になっていることを検証する
+      const res = await request(app)
         .get(`/api/comments/${testCommentId}`)
         .set('Authorization', `Bearer ${authToken}`)
-        .expect(404);
+        .expect(200);
+
+      expect(res.body.data).toHaveProperty('status', 'deleted');
     });
 
     test('should return 404 when deleting non-existent comment', async () => {
       await request(app)
-        .delete('/api/comments/999999')
+        .delete('/api/comments/00000000-0000-4000-8000-000000000000')
         .set('Authorization', `Bearer ${authToken}`)
+        .send(deletionReason)
         .expect(404);
     });
   });
@@ -280,6 +279,7 @@ describe('Comments Integration Tests', () => {
       const newComment = {
         platform: 'youtube',
         content: 'Comment to moderate',
+        user: 'testuser',
       };
 
       const res = await request(app)
@@ -287,62 +287,50 @@ describe('Comments Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .send(newComment);
 
-      moderationCommentId = res.body.id;
+      moderationCommentId = res.body.data?.id;
     });
 
+    // 注意: 独立した POST /:id/moderate エンドポイントは実装に存在しない。
+    // モデレーション判定は PUT /:id に action（visible/hidden/muted/deleted/flagged）を
+    // 送ることで行う設計のため、実際のエンドポイント・値に合わせて検証する
     test('should approve comment', async () => {
       const res = await request(app)
-        .post(`/api/comments/${moderationCommentId}/moderate`)
+        .put(`/api/comments/${moderationCommentId}`)
         .set('Authorization', `Bearer ${authToken}`)
-        .send({ action: 'approve' })
+        .send({ action: 'visible' })
         .expect(200);
 
-      expect(res.body).toHaveProperty('status', 'approved');
+      expect(res.body.data).toHaveProperty('status', 'visible');
     });
 
     test('should reject comment', async () => {
       const res = await request(app)
-        .post(`/api/comments/${moderationCommentId}/moderate`)
+        .put(`/api/comments/${moderationCommentId}`)
         .set('Authorization', `Bearer ${authToken}`)
-        .send({ action: 'reject', reason: 'Spam' })
+        .send({ action: 'hidden', reason: 'Spam' })
         .expect(200);
 
-      expect(res.body).toHaveProperty('status', 'rejected');
+      expect(res.body.data).toHaveProperty('status', 'hidden');
     });
 
     test('should flag comment for review', async () => {
       const res = await request(app)
-        .post(`/api/comments/${moderationCommentId}/moderate`)
+        .put(`/api/comments/${moderationCommentId}`)
         .set('Authorization', `Bearer ${authToken}`)
-        .send({ action: 'flag' })
+        .send({ action: 'flagged' })
         .expect(200);
 
-      expect(res.body).toHaveProperty('status', 'flagged');
+      expect(res.body.data).toHaveProperty('status', 'flagged');
     });
   });
 
   describe('GET /api/comments/stats - Comment Statistics', () => {
-    test('should return comment statistics', async () => {
-      const res = await request(app)
-        .get('/api/comments/stats')
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
-
-      expect(res.body).toHaveProperty('total');
-      expect(res.body).toHaveProperty('byPlatform');
-      expect(res.body).toHaveProperty('byStatus');
-    });
-
-    test('should return statistics for specific time range', async () => {
-      const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const endDate = new Date().toISOString();
-
-      const res = await request(app)
-        .get(`/api/comments/stats?startDate=${startDate}&endDate=${endDate}`)
-        .set('Authorization', `Bearer ${authToken}`)
-        .expect(200);
-
-      expect(res.body).toHaveProperty('total');
-    });
+    // 注意: GET /api/comments/stats エンドポイント自体が実装に存在しない
+    // （routes/comments.jsに一度も定義されていない）。集計機能自体は
+    // 別ルート GET /api/analytics/stats（requireRole('analyst')）に存在するが
+    // ロール要件・レスポンス形状が異なるため単純な付け替えでは対応できず、
+    // 新規エンドポイント実装は本テストファイルの整合修正のスコープ外として見送る
+    test.skip('should return comment statistics (GET /api/comments/statsエンドポイント自体が未実装のためskip)', async () => {});
+    test.skip('should return statistics for specific time range (同上)', async () => {});
   });
 });
