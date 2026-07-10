@@ -1,6 +1,25 @@
 // Configuration management with environment variables
 require('dotenv').config();
 
+const crypto = require('crypto');
+
+// SESSION_SECRETが未設定だとexpress-session自体が"secret option required for sessions"で
+// 例外を投げ、全リクエストが500になる（JWT_SECRETには既に開発用フォールバックがあるが、
+// こちらには無かったため、.envを用意していない開発/検証環境でアプリが起動直後から
+// 一切機能しなかった）。本番では引き続きvalidateConfig()が未設定を検出して起動を止める
+const resolveSessionSecret = () => {
+  if (process.env.SESSION_SECRET) {
+    return process.env.SESSION_SECRET;
+  }
+  if ((process.env.NODE_ENV || 'development') === 'production') {
+    return undefined;
+  }
+  console.warn('[Config] SESSION_SECRET is missing. Using a randomly generated secret for development only. Sessions will not persist across restarts.');
+  return crypto.randomBytes(32).toString('hex');
+};
+
+const sessionSecret = resolveSessionSecret();
+
 const config = {
   // Application
   app: {
@@ -15,7 +34,7 @@ const config = {
   security: {
     jwtSecret: process.env.JWT_SECRET,
     jwtExpiry: process.env.JWT_EXPIRY || '15m',
-    sessionSecret: process.env.SESSION_SECRET,
+    sessionSecret,
     encryptionKey: process.env.ENCRYPTION_KEY,
     corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
     // middleware/security.js の validateOrigin と app.js の CORS チェック(isOriginAllowed)が
@@ -38,7 +57,7 @@ const config = {
   // Session (express-session用)
   session: {
     name: process.env.SESSION_NAME || 'runner.sid',
-    secret: process.env.SESSION_SECRET,
+    secret: sessionSecret,
     rolling: process.env.SESSION_ROLLING === 'true',
     cookie: {
       secure: process.env.SESSION_COOKIE_SECURE === 'true',

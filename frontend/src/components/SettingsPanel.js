@@ -31,12 +31,14 @@ import {
   Security as SecurityIcon,
   Translate as TranslateIcon,
   SmartToy as ChatbotIcon,
-  ExpandMore as ExpandMoreIcon
+  ExpandMore as ExpandMoreIcon,
+  Diversity3 as CultureIcon
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
 import { getSettings, updateSettings as persistSettings } from '../api/settings';
+import CultureProfilePanel from './CultureProfilePanel';
 
 export default function SettingsPanel({ platform = 'YouTube' }) {
   const theme = useTheme();
@@ -133,7 +135,8 @@ export default function SettingsPanel({ platform = 'YouTube' }) {
     { id: 'chatbot', label: 'AIチャットボット', icon: <ChatbotIcon /> },
     { id: 'ui', label: t('settings_tab_ui'), icon: <PaletteIcon /> },
     { id: 'notifications', label: t('settings_tab_notifications'), icon: <NotificationsIcon /> },
-    { id: 'translation', label: t('settings_tab_translation'), icon: <TranslateIcon /> }
+    { id: 'translation', label: t('settings_tab_translation'), icon: <TranslateIcon /> },
+    { id: 'culture', label: '文化プロファイル', icon: <CultureIcon /> }
   ];
 
   return (
@@ -822,6 +825,11 @@ export default function SettingsPanel({ platform = 'YouTube' }) {
             </Grid>
           </CardContent>
         </Card>
+      )}
+
+      {/* 文化プロファイル設定（独自のバックエンドAPIを使うため他タブとは別状態管理） */}
+      {activeTab === 'culture' && (
+        <CultureProfilePanel platform={platform?.toLowerCase?.() || 'youtube'} channelId="default" />
       )}
 
       <Snackbar

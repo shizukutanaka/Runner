@@ -2,37 +2,43 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/monitoringController');
 const { healthCheck, metricsCollector } = require('../middleware/monitoring');
-const { requireRole } = require('../middleware/auth');
+const { authenticateToken, requireRole } = require('../middleware/auth');
+
+// requireRoleはreq.userの存在を前提とするが、このルーターにはこれまで
+// authenticateTokenが一切配線されておらず、req.userが常にundefinedのため
+// 全エンドポイントが誰に対しても401 'Authentication required'を返し続けていた
+// （/healthのみ意図的に無認証公開のため、router.use()による一括適用ではなく
+// 各保護対象ルートに個別に追加する）
 
 // システム統計情報取得
-router.get('/system/stats', requireRole('admin'), ctrl.getSystemStats);
+router.get('/system/stats', authenticateToken, requireRole('admin'), ctrl.getSystemStats);
 
 // アプリケーション統計情報取得
-router.get('/app/stats', requireRole('admin'), ctrl.getAppStats);
+router.get('/app/stats', authenticateToken, requireRole('admin'), ctrl.getAppStats);
 
 // ログ情報取得
-router.get('/logs', requireRole('admin'), ctrl.getLogs);
+router.get('/logs', authenticateToken, requireRole('admin'), ctrl.getLogs);
 
 // パフォーマンスメトリクス取得
-router.get('/metrics', requireRole('admin'), ctrl.getPerformanceMetrics);
+router.get('/metrics', authenticateToken, requireRole('admin'), ctrl.getPerformanceMetrics);
 
 // アラート情報取得
-router.get('/alerts', requireRole('admin'), ctrl.getAlerts);
+router.get('/alerts', authenticateToken, requireRole('admin'), ctrl.getAlerts);
 
 // アラートの確認
-router.put('/alerts/:alertId/acknowledge', requireRole('admin'), ctrl.acknowledgeAlert);
+router.put('/alerts/:alertId/acknowledge', authenticateToken, requireRole('admin'), ctrl.acknowledgeAlert);
 
 // システムヘルスチェック
 router.get('/health', ctrl.getHealthStatus);
 
 // 監視設定取得
-router.get('/settings', requireRole('admin'), ctrl.getMonitoringSettings);
+router.get('/settings', authenticateToken, requireRole('admin'), ctrl.getMonitoringSettings);
 
 // 監視設定更新
-router.put('/settings', requireRole('admin'), ctrl.updateMonitoringSettings);
+router.put('/settings', authenticateToken, requireRole('admin'), ctrl.updateMonitoringSettings);
 
 // Detailed health check (admin only)
-router.get('/health/detailed', requireRole('admin'), async (req, res) => {
+router.get('/health/detailed', authenticateToken, requireRole('admin'), async (req, res) => {
   try {
     const results = await healthCheck.runAllChecks();
     const detailed = {
@@ -57,13 +63,13 @@ router.get('/health/detailed', requireRole('admin'), async (req, res) => {
 });
 
 // Reset metrics (admin only)
-router.post('/metrics/reset', requireRole('admin'), (req, res) => {
+router.post('/metrics/reset', authenticateToken, requireRole('admin'), (req, res) => {
   metricsCollector.reset();
   res.json({ message: 'Metrics reset successfully' });
 });
 
 // Get specific health check
-router.get('/health/check/:name', requireRole('moderator'), async (req, res) => {
+router.get('/health/check/:name', authenticateToken, requireRole('moderator'), async (req, res) => {
   const { name } = req.params;
 
   try {
@@ -78,7 +84,7 @@ router.get('/health/check/:name', requireRole('moderator'), async (req, res) => 
 });
 
 // OpenAI コスト統計 (admin only)
-router.get('/ai/costs', requireRole('admin'), (req, res) => {
+router.get('/ai/costs', authenticateToken, requireRole('admin'), (req, res) => {
   try {
     const openaiService = require('../services/openaiService');
     res.json({

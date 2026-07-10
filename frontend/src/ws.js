@@ -1,8 +1,10 @@
 import { io } from 'socket.io-client';
 
+// バックエンドの既定ポートは3000（backend/src/config.js, .env.example）。
+// 以前は4000を指しており、VITE_SOCKET_URL未設定時は常にWebSocket接続に失敗していた
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ||
   (window.location.hostname === 'localhost'
-    ? 'http://localhost:4000'
+    ? 'http://localhost:3000'
     : window.location.origin);
 
 // 接続状態を追跡するためのイベントエミッター

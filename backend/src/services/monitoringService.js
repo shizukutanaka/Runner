@@ -187,7 +187,7 @@ class MonitoringService extends EventEmitter {
 
       // Get table statistics (for SQLite) - optimized version
       try {
-        const { db } = require('../db');
+        const db = require('../db');
         const tables = await new Promise((resolve, reject) => {
           db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, rows) => {
             if (err) reject(err);

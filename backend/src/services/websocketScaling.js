@@ -1,7 +1,6 @@
 // WebSocket Scaling with Redis Pub/Sub
 // Enables horizontal scaling for Socket.io across multiple server instances
 
-const { createAdapter } = require('@socket.io/redis-adapter');
 const { createClient } = require('redis');
 const logger = require('../logger');
 const config = require('../config');
@@ -20,6 +19,20 @@ let isInitialized = false;
 async function initializeRedisAdapter(io) {
   if (!config.redis || !config.redis.url) {
     logger.warn('[WebSocket Scaling] Redis not configured, running in single-instance mode');
+    return false;
+  }
+
+  let createAdapter;
+  try {
+    // @socket.io/redis-adapterは複数インスタンス間スケーリングを使わない環境では
+    // インストールされていないことがある（本パッケージはpackage.jsonにも未宣言）。
+    // トップレベルでrequireすると未設定環境でもサーバー起動自体が確実にクラッシュするため、
+    // 実際にRedisスケーリングが設定されている場合のみ遅延require する
+    ({ createAdapter } = require('@socket.io/redis-adapter'));
+  } catch (requireErr) {
+    logger.error('[WebSocket Scaling] @socket.io/redis-adapter is not installed - running in single-instance mode', {
+      error: requireErr.message
+    });
     return false;
   }
 

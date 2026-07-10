@@ -1,6 +1,6 @@
 # 機能過不足監査（Feature Audit）
 
-**最終検証日: 2026-07-10**（D-1〜D-5/D-9〜D-14・E-3(部分)/E-4/E-6/E-7/E-9〜E-12解決 + 重大バグ計7件発見・修正済み。テスト失敗142件→4件） / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
+**最終検証日: 2026-07-10**（D-1〜D-5/D-8〜D-14・E-3(部分)/E-4/E-6/E-7/E-9〜E-12解決 + 重大バグ計19件発見・修正済み。テスト失敗142件→4件） / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
 
 ## この文書の目的と使い方
 
@@ -52,6 +52,29 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **実施した修正**: `validation/user.js`の`update`スキーマを実装が実際に必要とする`action`（enum: active/ban/mute/warn, 必須）/`duration`（秒数, 任意）/`reason`（任意）に全面差し替え。旧スキーマ（`name`等）はこの1ルート以外どこからも参照されていないことを確認済みのため、他への影響なし
 - **検証**: `PUT /api/users/:id`実行後に`GET /api/users/:id`で`status`/`mute_until`が実際に更新されていることを新規テストで確認。フルスイート実行で悪化ゼロを確認
 - **再検証**: `cat backend/src/validation/user.js` → `action`フィールドが定義されていれば修正済み
+
+## ⚠️ 追記5: D-8のブラウザ実地検証で発覚した12件の重大バグ（2026-07-10発見・修正済み）
+
+D-8（文化プロファイル/文脈分析UI）実装後、指示通り実際にサーバーを起動しブラウザで動作確認したところ、**アプリがdevサーバー上でそもそも起動・動作しない/主要機能が軒並み壊れている**という、この2画面の実装内容とは無関係な既存の深刻な欠陥が連鎖的に見つかった。個別のcurl検証だけでは気づけない類のバグ群であり、「実際にブラウザで触る」ことの重要性を改めて示す事例として記録する。
+
+**起動不能系（アプリが一切動かない）**:
+1. `services/websocketScaling.js`が`@socket.io/redis-adapter`（未インストール、package.jsonにも未宣言）をトップレベルでrequireしており、Redis未設定環境でも**サーバー起動時に確実にクラッシュ**していた。実際にRedisスケーリングを使う場合のみ実行される`initializeRedisAdapter()`内へ遅延require化
+2. `middleware/errorHandler.js`が`logger.critical(...)`を3箇所（DB破損検知・uncaughtException・unhandledRejection）で呼んでいたが、Winstonロガーには`critical`レベルが設定されておらず**クラッシュハンドラ自体がTypeErrorでクラッシュする**状態だった。`logger.error`に統一
+3. `config.js`で`SESSION_SECRET`未設定時のフォールバックが無く、`express-session`が起動時に例外を投げ**全リクエストが500**になっていた（`JWT_SECRET`には既存の開発用フォールバックがあったが`SESSION_SECRET`には無かった）。同パターンの開発用ランダム生成フォールバックを追加（本番では引き続き必須）
+4. `vite.config.js`が`@vitejs/plugin-react-swc`を素の`react()`で使っており、同プラグインの既定`include`（`.ts/.tsx/.mts/.jsx/.mdx`のみ）は素の`.js`拡張子を対象外にする。本プロジェクトは多数のコンポーネントを`.js`のままJSXで書いているため、**devサーバー起動時にJSXを含む`.js`ファイル全てがパースエラー**になっていた（`vite build`のRollup経路は無関係のため本番ビルドは問題なく、長期間発覚しなかった）。`parserConfig(id)`で`.js`/`.jsx`を明示的にJSXとして解釈するよう修正
+5. `vite.config.js`の`server.port`が`3000`だったが、バックエンドの既定ポートも`3000`（`backend/.env.example`, `config.js`）で**自分自身と衝突**していた。バックエンドのCORS既定値（`http://localhost:5173`）に合わせ`5173`に修正
+6. `vite.config.js`の devサーバープロキシ（`/api`→バックエンド）のtargetが実在しない`http://localhost:4000`を指していた。相対パスで`/api`を叩く全コンポーネント（例: `CriticalAlertsBanner.jsx`）が devサーバー経由では常に接続失敗になっていた。`http://localhost:3000`に修正
+7. `frontend/src/ws.js`の`SOCKET_URL`既定値も同様に存在しない`4000`番を指しており、`VITE_SOCKET_URL`未設定時はWebSocket接続が常に失敗していた。`3000`に修正
+
+**データ破損・機能欠落系**:
+8. `accounts`テーブルの`reset_token_hash`/`totp_secret`/`refresh_token_hash`等6列は`CREATE TABLE`本体には書かれていたが、これらの機能追加前から存在する既存DBには実際には無く（`CREATE TABLE IF NOT EXISTS`は既存テーブルに無反応）、パスワードリセット/2FA/リフレッシュトークン関連の全操作が`SQLITE_ERROR`で失敗していた（ログイン自体が500になるケースも含む）。既存の`ensureColumnDefinitions`パターンで安全に追加し、実際に既存の開発用DBに対して列追加が実行されることを確認済み
+9. `services/monitoringService.js`が`const { db } = require('../db')`と分割代入していたが、`db.js`は`module.exports = db`（オブジェクトそのもの）であり`{db}`ではないため、この分割代入は常に`undefined`を生成し、DBテーブル統計収集が30秒おきに`Cannot read properties of undefined`で失敗し続けていた
+10. `routes/monitoring.js`が`authenticateToken`ミドルウェアを一切配線しておらず（他の全ルーターファイルは`router.use(authenticateToken)`または各ルートで明示的に前置している）、`requireRole('admin')`が参照する`req.user`が常にundefined。結果、**監視API全エンドポイント（アラート一覧・システム統計・ログ等）が、有効なadminトークンを持つ真の管理者に対してさえ常に401**を返し続けていた。ダッシュボードで毎ロード時にポーリングされる`CriticalAlertsBanner`がこれを叩くため、axiosの共通401ハンドラ経由でトークン破棄→強制ログアウトまで連鎖しうる深刻な副作用があった。各保護ルートに`authenticateToken`を明示追加（`/health`のみ意図的に無認証公開のため一括適用は避けた）
+11. 上記10の修正で到達可能になったところ、`monitoringController.getAlerts`が参照する`alerts`テーブルが**スキーマにそもそも存在しない**ことが判明（`db.js`に対応する`CREATE TABLE`が一度も書かれていなかった）。カラム構成をコントローラーのSELECT文に合わせて新規追加
+12. `middleware/errorHandler.js`の開発モード詳細情報付与処理が`{...details, requestBody, ...}`と無条件にスプレッドしていたが、`details`は56箇所の呼び出し元で単純な文字列（`error.message`）として渡されるのが大半であり、文字列をスプレッドすると`{"0":"S","1":"Q",...}`という文字ごとのインデックス付きオブジェクトに化けていた。開発モードでのエラーデバッグ情報を実質的に破壊していた（本番では`isDevelopment`ガードにより影響なし）。`details`がオブジェクトの場合のみスプレッドするよう修正
+
+- **検証**: 上記全てをPlaywright + 実Chromiumでの登録→ログイン→ダッシュボード遷移、およびcurlでの直接エンドポイント呼び出し（admin昇格アカウントでの`/api/monitoring/alerts`が200を返すこと、moderatorアカウントでは401ではなく403を返すこと等）で個別に再現・修正確認済み。修正後、`NODE_ENV=test npx jest --runInBand`で**4件失敗/425件合格/439件中**（既存ベースラインを維持、悪化ゼロ）を確認
+- **再検証**: `grep -n "require('@socket.io/redis-adapter')" backend/src/services/websocketScaling.js` → `initializeRedisAdapter`関数内にあれば修正済み。`grep -n "logger.critical" backend/src/middleware/errorHandler.js` → ヒットなしなら修正済み。`grep -n "authenticateToken" backend/src/routes/monitoring.js` → 複数箇所でヒットすれば修正済み。`node -e "require('./backend/src/db.js')"` 実行後 `PRAGMA table_info(alerts)` で列が返れば修正済み
 
 ---
 
@@ -222,10 +245,13 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 - **証拠**: `frontend/src/utils/tokenStorage.js` にTODOコメントあり（httpOnly Cookie移行が理想、サーバー側セッション管理が必要）
 - **推奨アクション**: `/api/users/login` を httpOnly Cookie 発行に変更し、フロントのBearerヘッダー方式から移行
 
-### D-8. ★ コミュニティインサイトUIの残り2画面
+### D-8. ✅ 解決済み（2026-07-10） — コミュニティインサイトUIの残り2画面
 
-- **証拠**: バックエンド12エンドポイントは全実装・テスト済（`routes/communityInsights.js`）。UIは triage / health / silent-departure の3つが `Dashboard.js` に接続済み。**文化プロファイル管理**（`PUT /api/insights/culture/:platform/:channelId`）と**文脈分析**（`POST /api/insights/context-analysis`）のUIが未実装
-- **推奨アクション**: 設定画面に文化プロファイル選択UI、コメント詳細に文脈分析表示を追加
+- **元の証拠**: バックエンド12エンドポイントは全実装・テスト済（`routes/communityInsights.js`）。UIは triage / health / silent-departure の3つが `Dashboard.js` に接続済み。**文化プロファイル管理**（`PUT /api/insights/culture/:platform/:channelId`）と**文脈分析**（`POST /api/insights/context-analysis`）のUIが未実装
+- **実施した修正**: `frontend/src/components/CultureProfilePanel.jsx`（文化プロファイル選択・保存、Settings画面の新規タブ）と`ContextAnalysisPanel.jsx`（対象コメント+前後文脈コメントを送信し判定結果を表示、Moderatorタブに配置）を新規実装
+- **実装検証中に発見・修正した重大バグ群**: 本番相当のブラウザ検証（登録→ログイン→各画面遷移→実際にフォーム送信）を行った結果、この2画面とは無関係な既存の深刻なバグが芋づる式に見つかった。詳細は「追記5」参照
+- **検証**: Playwright + 実Chromiumで登録→ログイン→Settings→文化プロファイルタブ（プリセット取得・選択・保存・現在設定のChips表示を確認）→Moderatorタブ→文脈分析（コメント+文脈2件を送信し「危険」判定・スコア・インサイト文の表示を確認）まで実施
+- **再検証**: `ls frontend/src/components/CultureProfilePanel.jsx frontend/src/components/ContextAnalysisPanel.jsx` → 両方存在すれば実装済み。`grep -n "ContextAnalysisPanel\|CultureProfilePanel" frontend/src/components/Dashboard.js frontend/src/components/SettingsPanel.js` → それぞれ配線されていれば統合済み
 
 ### D-9. ✅ 解決済み（2026-07-10更新） — 残存テスト失敗を142件→4件に削減（残り4件は意図的な機能ギャップ）
 
@@ -307,7 +333,7 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 
 ## 推奨着手順（2026-07-10時点で最新）
 
-**D-1/D-3/D-4/D-5/D-9/D-10〜D-14・E-3(部分)/E-4/E-6/E-7/E-9〜E-12は解決済み。D-9はテスト142件失敗→4件失敗まで到達し実質完了。**
+**D-1/D-3/D-4/D-5/D-8/D-9/D-10〜D-14・E-3(部分)/E-4/E-6/E-7/E-9〜E-12は解決済み。D-9はテスト142件失敗→4件失敗まで到達し実質完了。D-8はUI2画面の実装に加え、実地ブラウザ検証で発覚した12件の重大バグ（追記5参照）も修正済み。**
 残るのは全て**製品判断が必要な大型項目**か、**明確に安全側に倒すために意図的に手を付けていない項目**のみ:
 
 1. **D-6 アカウント⇔チャンネル担当制 + E-3残課題（マルチテナント本実装）**: 両方ともスキーマ設計（`account_channels`/`tenant_id`をどこまで配線するか）の製品判断が必要。`routes/tenants.js`は危険な削除ロジックをガード済みだが意図的に未マウントのまま
@@ -316,5 +342,4 @@ D-1（リアルタイム配線）の実装検証中に、**`POST /api/comments` 
 4. **E-14 レート制限の有効化**: `config.rateLimit.enabled`が未定義で全APIのレート制限が無効化中（本番のブルートフォース対策が機能していない）。有効化自体は数行だが、大量リクエストを送るテスト（`tests/api/comments.test.js`のパフォーマンステスト等）が429で落ち始めるため、テスト側の許容も含め計画的に
 5. **E-1/E-2 の大量スタブ関数のトリアージ**: `moderationController.js`（約35関数）・`analyticsController.js`（13関数）がハードコード値を返す。UI側の利用有無で「本実装」か「削除」かを個別判断
 6. **D-9残り4件（`tests/api/settings.test.js`）**: `存在しないユーザー`404・`不正なユーザーID形式`400・`空の更新データ`400・`不正なテーマ値`400 — いずれもテストが期待する仕様が製品として未確定なため意図的に据え置き。製品として仕様を決めてから着手
-7. **D-8 コミュニティインサイトUI残り2画面**: 文化プロファイル管理・文脈分析のUI未実装（バックエンドは実装・テスト済み）
 8. **E-5 Stripe課金**: バックエンド実装済みだがフロント接続ゼロ。課金機能を製品に含めるかの判断待ち

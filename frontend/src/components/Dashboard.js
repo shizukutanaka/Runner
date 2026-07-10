@@ -24,6 +24,7 @@ import ModeratorDashboard from './ModeratorDashboard';
 import CommunityHealthWidget from './CommunityHealthWidget';
 import SilentDepartureAlert from './SilentDepartureAlert';
 import TriageQueue from './TriageQueue';
+import ContextAnalysisPanel from './ContextAnalysisPanel';
 import MonitoringDashboard from './MonitoringDashboard';
 
 function TabPanel(props) {
@@ -74,7 +75,10 @@ export default function Dashboard() {
         <ModeratorDashboard />
       </Grid>
       <Grid item xs={12} lg={4}>
-        <TriageQueue platform="youtube" channelId="default" pendingComments={[]} />
+        <Stack spacing={2}>
+          <TriageQueue platform="youtube" channelId="default" pendingComments={[]} />
+          <ContextAnalysisPanel />
+        </Stack>
       </Grid>
     </Grid>
   ), []);

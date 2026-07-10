@@ -4,7 +4,22 @@ import viteCompression from 'vite-plugin-compression';
 
 export default defineConfig({
   plugins: [
-    react(),
+    react({
+      // @vitejs/plugin-react-swc の既定includeは .ts/.tsx/.mts/.jsx/.mdx のみで、
+      // 素の .js は対象外。本プロジェクトは多数のコンポーネントを .js 拡張子のまま
+      // JSXで書いているため（下のesbuild.include設定はvite buildのRollup経路にしか効かず、
+      // devサーバーのトランスフォームパイプラインはこのSWCプラグインが専有する）、
+      // parserConfigで明示的に .js/.jsx をJSXとして解釈するよう上書きする。
+      // これが無いとdevサーバーでJSXを含む.jsファイルが軒並みパースエラーになる
+      // （vite buildでは問題が起きないため長らく気づかれていなかった）
+      parserConfig(id) {
+        if (id.includes('node_modules')) return undefined;
+        if (/\.(js|jsx)$/.test(id)) {
+          return { syntax: 'ecmascript', jsx: true };
+        }
+        return undefined;
+      }
+    }),
     // Brotli compression (higher compression ratio, better for modern browsers)
     viteCompression({
       algorithm: 'brotliCompress',
@@ -44,11 +59,16 @@ export default defineConfig({
     }
   },
   server: {
-    port: 3000,
+    // バックエンドは既定でポート3000を使う（backend/src/config.js, .env.example）ため、
+    // devサーバー自身が3000を名乗ると起動時に衝突する。バックエンドのCORS既定値
+    // （config.js の corsOrigin/allowedOrigins）も 5173 を前提にしているため、それに合わせる
+    port: 5173,
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:4000',
+        // 以前は存在しない4000番を指しており、相対パスで/apiを叩く全コンポーネント
+        // （例: CriticalAlertsBanner.jsx）がdevサーバー経由では常に接続失敗になっていた
+        target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false
       }

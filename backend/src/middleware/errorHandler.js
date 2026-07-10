@@ -391,8 +391,12 @@ const errorHandler = (err, req, res, next) => {
   // Add stack trace in development and detailed error info
   if (isDevelopment && status >= 500) {
     response.error.stack = err.stack;
+    // detailsは文字列で渡されることが大半（例: `details: error.message`が56箇所）。
+    // 文字列をそのままスプレッドすると文字ごとのインデックス付きオブジェクトに
+    // 化けてしまう（{"0":"S","1":"Q",...}）ため、オブジェクトの場合のみスプレッドする
+    const detailsObject = details && typeof details === 'object' ? details : { message: details };
     response.error.details = {
-      ...details,
+      ...detailsObject,
       requestBody: req.body,
       queryParams: req.query,
       headers: req.headers
@@ -475,7 +479,7 @@ const errorHandler = (err, req, res, next) => {
         response.error.status = 500;
         response.error.type = 'database_error';
         response.error.message = 'Database corruption detected';
-        logger.critical('[ErrorHandler] Database corruption detected', logContext);
+        logger.error('[ErrorHandler] Database corruption detected', logContext);
         break;
       case 'ENOTFOUND':
       case 'ECONNREFUSED':
@@ -582,7 +586,7 @@ const gracefulShutdown = (signal) => {
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
-  logger.critical('[ErrorHandler] Uncaught exception', {
+  logger.error('[ErrorHandler] Uncaught exception', {
     error: err.message,
     stack: err.stack
   });
@@ -597,7 +601,7 @@ process.on('uncaughtException', (err) => {
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
-  logger.critical('[ErrorHandler] Unhandled promise rejection', {
+  logger.error('[ErrorHandler] Unhandled promise rejection', {
     reason: reason?.message || reason,
     stack: reason?.stack,
     promise: promise.toString()

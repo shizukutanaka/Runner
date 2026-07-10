@@ -214,8 +214,20 @@ const ensureUserColumns = () => {
 // ダッシュボード運用者アカウント自身の通知設定
 // （usersテーブルの列は「運用者が管理対象のプラットフォームユーザーの通知設定を操作する」
 //   別機能で使用中のため、認証中のaccounts行に対する自己設定はaccountsテーブル側に持たせる）
-const ensureAccountNotificationColumns = () => {
+const ensureAccountColumns = () => {
   ensureColumnDefinitions('accounts', [
+    // reset_token_hash〜refresh_token_expiresはCREATE TABLE本体にも書かれているが、
+    // CREATE TABLE IF NOT EXISTSは既存テーブルには何も追加しない（no-op）ため、
+    // これらの機能が追加される前から存在するaccountsテーブルを持つ既存DBでは
+    // 実際には列が無く、パスワードリセット/2FA/リフレッシュトークンが
+    // 軒並みSQLITE_ERRORで機能しなかった（ログイン自体が500になるケースを含む）。
+    // 新規DBではCREATE TABLE側で既に存在するため、ここでの追加は無害なno-op
+    { name: 'reset_token_hash', definition: 'TEXT' },
+    { name: 'reset_token_expires', definition: 'DATETIME' },
+    { name: 'totp_secret', definition: 'TEXT' },
+    { name: 'totp_enabled', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'refresh_token_hash', definition: 'TEXT' },
+    { name: 'refresh_token_expires', definition: 'DATETIME' },
     { name: 'notification_email_enabled', definition: 'INTEGER NOT NULL DEFAULT 1' },
     { name: 'notification_push_enabled', definition: 'INTEGER NOT NULL DEFAULT 1' },
     { name: 'notification_desktop_enabled', definition: 'INTEGER NOT NULL DEFAULT 1' },
@@ -418,6 +430,23 @@ const initializeDB = async () => {
     CREATE INDEX IF NOT EXISTS idx_comment_deletion_history_comment_id ON comment_deletion_history(comment_id);
 
     CREATE INDEX IF NOT EXISTS idx_analytics_captured_at ON analytics_snapshots(captured_at DESC);
+
+    CREATE TABLE IF NOT EXISTS alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'info',
+      title TEXT NOT NULL,
+      message TEXT,
+      data TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      acknowledged_by TEXT,
+      acknowledged_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      resolved_at DATETIME
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
+    CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at DESC);
   `;
 
   try {
@@ -437,7 +466,7 @@ const initializeDB = async () => {
     ensureCommentColumns();
     ensureUserColumns();
     ensureNotificationColumns();
-    ensureAccountNotificationColumns();
+    ensureAccountColumns();
   } catch (err) {
     logger.error('[Database] Failed to initialize database', { error: err.message });
     throw err;
