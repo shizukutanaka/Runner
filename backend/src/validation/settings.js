@@ -31,8 +31,9 @@ exports.setNotifications = Joi.object({
   })
 });
 
+// frontend/src/i18n.jsが実際にサポートする言語のみ許可（D-13で13言語の張りぼてを削除した経緯と対応）
 exports.setDefaultLanguage = Joi.object({
-  language: Joi.string().max(10).required(),
+  language: Joi.string().lowercase().valid('en', 'ja').required(),
 });
 
 exports.setTimezone = Joi.object({

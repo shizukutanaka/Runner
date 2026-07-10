@@ -10,10 +10,16 @@ const createAuthHeader = (payload) => ({
 const adminAuth = () => createAuthHeader({ id: 'admin-tester', role: 'admin' });
 const userAuth = () => createAuthHeader({ id: 'user-tester', role: 'user' });
 const baseUrl = '/api/settings';
+// userRouteはモジュールスコープの関数だがtestUserIdは元々describe内でletされており、
+// 別スコープで参照不能なReferenceErrorになっていた。トップレベルへ移動して修正
+const testUserId = 'test-user-123';
 const userRoute = (suffix = '') => `${baseUrl}/user/${testUserId}${suffix}`;
 
 describe('Settings API', () => {
-  let testUserId = 'test-user-123';
+  beforeAll(async () => {
+    // データベース初期化完了を待つ（他のテストファイルと同じ規約）
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  });
 
   describe('GET /api/settings/user/:userId', () => {
     it('正常系: ユーザー設定取得', async () => {
@@ -230,7 +236,8 @@ describe('Settings API', () => {
         .expect(200);
 
       expect(res.body.status).toBe(200);
-      expect(res.body.data.enabled).toBe(false);
+      // setNotificationsはupdateUserSetting()経由で{notifications:{...}}の形で返す
+      expect(res.body.data.notifications.enabled).toBe(false);
     });
 
     it('異常系: 必須フィールド欠如', async () => {
@@ -263,7 +270,8 @@ describe('Settings API', () => {
         .expect(200);
 
       expect(res.body.status).toBe(200);
-      expect(res.body.data.language).toBe('en');
+      // updateUserSetting(userId, 'default_language', ...) の返却キー名に合わせる
+      expect(res.body.data.default_language).toBe('en');
     });
 
     it('異常系: 言語なし', async () => {
@@ -297,7 +305,6 @@ describe('Settings API', () => {
       expect(res.body.status).toBe(200);
       expect(res.body.data.timezone).toBe('America/New_York');
     });
-{{ ... }}
 
     it('異常系: タイムゾーンなし', async () => {
       const res = await request(app)
@@ -316,7 +323,9 @@ describe('Settings API', () => {
         .set(adminAuth())
         .expect(400);
 
-      expect(res.body.message).toMatch(/timezone|無効|invalid/);
+      // controllerがcatchブロックからnext({status,message})する汎用エラーのため
+      // errorHandler経由の{error:{message}}封筒になる（validate()ミドルウェアの400とは異なる）
+      expect(res.body.error.message).toMatch(/timezone|無効|invalid/i);
     });
   });
 
@@ -336,7 +345,8 @@ describe('Settings API', () => {
         .expect(200);
 
       expect(res.body.status).toBe(200);
-      expect(res.body.data.primaryColor).toBe('#ff0000');
+      // updateNestedSetting(userId, 'uiCustomization', null, {colors:{primary,...},...}) の実際の構造に合わせる
+      expect(res.body.data.uiCustomization.colors.primary).toBe('#ff0000');
     });
 
     it('異常系: 不正なカラーコード', async () => {
@@ -346,7 +356,7 @@ describe('Settings API', () => {
         .set(adminAuth())
         .expect(400);
 
-      expect(res.body.message).toMatch(/color|カラー|format/);
+      expect(res.body.message).toMatch(/color|カラー|format/i);
     });
 
     it('異常系: カスタムCSSが長すぎる', async () => {
@@ -377,7 +387,8 @@ describe('Settings API', () => {
         .expect(200);
 
       expect(res.body.status).toBe(200);
-      expect(res.body.data.enabled).toBe(true);
+      // updateNestedSetting(userId, 'backup', null, backupSettings) の実際の構造に合わせる
+      expect(res.body.data.backup.enabled).toBe(true);
     });
 
     it('異常系: 必須フィールド欠如', async () => {
@@ -468,8 +479,12 @@ describe('Settings API', () => {
         .expect(200);
 
       expect(res.body.status).toBe(200);
-      expect(res.body.data.key).toBeDefined();
-      expect(res.body.data.name).toBe('test-key');
+      // updateNestedSetting(userId, 'apiKeys', <生成されたキー>, keyData) は
+      // 生成された実際のキー値を子キーとして使うため、そのキー名は事前にわからない
+      const generatedKeys = Object.keys(res.body.data.apiKeys || {});
+      expect(generatedKeys.length).toBe(1);
+      expect(res.body.data.apiKeys[generatedKeys[0]].key).toBeDefined();
+      expect(res.body.data.apiKeys[generatedKeys[0]].name).toBe('test-key');
     });
 
     it('正常系: APIキー一覧取得', async () => {
@@ -508,6 +523,7 @@ describe('Settings API', () => {
     it('正常系: 設定エクスポート', async () => {
       const res = await request(app)
         .get('/api/settings/export')
+        .set(adminAuth())
         .expect(200);
 
       expect(res.body.status).toBe(200);
@@ -518,6 +534,7 @@ describe('Settings API', () => {
     it('正常系: 機密情報含むエクスポート', async () => {
       const res = await request(app)
         .get('/api/settings/export?includeSensitive=true')
+        .set(adminAuth())
         .expect(200);
 
       expect(res.body.status).toBe(200);
@@ -526,6 +543,7 @@ describe('Settings API', () => {
     it('異常系: 不正なフォーマット', async () => {
       const res = await request(app)
         .get('/api/settings/export?format=invalid')
+        .set(adminAuth())
         .expect(400);
 
       expect(res.body.message).toMatch(/format|無効|invalid/);
@@ -542,6 +560,7 @@ describe('Settings API', () => {
       const res = await request(app)
         .post('/api/settings/import')
         .send({ settings: importData, merge: true })
+        .set(adminAuth())
         .expect(200);
 
       expect(res.body.status).toBe(200);
@@ -552,6 +571,7 @@ describe('Settings API', () => {
       const res = await request(app)
         .post('/api/settings/import')
         .send({})
+        .set(adminAuth())
         .expect(400);
 
       expect(res.body.message).toMatch(/settings|必須|required/);
@@ -561,17 +581,21 @@ describe('Settings API', () => {
       const res = await request(app)
         .post('/api/settings/import')
         .send({ settings: 'invalid_settings' })
+        .set(adminAuth())
         .expect(400);
 
-      expect(res.body.message).toMatch(/format|形式|invalid/);
+      // Joiのデフォルトメッセージは「型」を指摘する形式（"settings" must be of type object）
+      expect(res.body.message).toMatch(/format|形式|invalid|object|type/i);
     });
   });
 
-  describe('PUT /api/settings/admin-email', () => {
+  describe('PUT /api/settings/user/:userId/admin-email', () => {
+    // 実際のルートは/user/:userIdスコープであり、bareパス/api/settings/admin-emailは存在しない
     it('正常系: 管理者メール設定更新', async () => {
       const res = await request(app)
-        .put('/api/settings/admin-email')
-        .send({ email: 'admin@example.com' })
+        .put(userRoute('/admin-email'))
+        .send({ adminEmail: 'admin@example.com' }) // スキーマのフィールド名はadminEmail
+        .set(adminAuth())
         .expect(200);
 
       expect(res.body.status).toBe(200);
@@ -579,20 +603,22 @@ describe('Settings API', () => {
 
     it('異常系: メールアドレスなし', async () => {
       const res = await request(app)
-        .put('/api/settings/admin-email')
+        .put(userRoute('/admin-email'))
         .send({})
+        .set(adminAuth())
         .expect(400);
 
-      expect(res.body.message).toMatch(/email|必須|required/);
+      expect(res.body.message).toMatch(/email|必須|required/i);
     });
 
     it('異常系: 不正なメール形式', async () => {
       const res = await request(app)
-        .put('/api/settings/admin-email')
-        .send({ email: 'invalid-email' })
+        .put(userRoute('/admin-email'))
+        .send({ adminEmail: 'invalid-email' })
+        .set(adminAuth())
         .expect(400);
 
-      expect(res.body.message).toMatch(/email|形式|format/);
+      expect(res.body.message).toMatch(/email|形式|format/i);
     });
   });
 
@@ -616,7 +642,8 @@ describe('Settings API', () => {
 
       expect(res.body.status).toBe(200);
       expect(res.body.data.title).toBeDefined();
-      expect(res.body.data.content).toBeDefined();
+      // getTermsの実際の構造は content ではなく sections 配列
+      expect(res.body.data.sections).toBeDefined();
     });
   });
 
@@ -627,18 +654,22 @@ describe('Settings API', () => {
         .expect(200);
 
       expect(res.body.status).toBe(200);
-      expect(res.body.data.categories).toBeDefined();
+      // getHelpの実際の構造は categories ではなく content 配列（routes/settings.jsに未マウントだったため新規マウント）
+      expect(res.body.data.content).toBeDefined();
     });
   });
 
   describe('セキュリティテスト', () => {
     it('不正な権限での設定更新', async () => {
       const res = await request(app)
-        .put('/api/settings/admin-email')
-        .send({ email: 'hacker@example.com' })
+        .put(userRoute('/admin-email'))
+        .send({ adminEmail: 'hacker@example.com' })
+        .set(userAuth()) // admin未満のロールでは403になるべき
         .expect(403);
 
-      expect(res.body.message).toMatch(/権限|permission|unauthorized/);
+      // requireRole()は{error: '<string>'}という第三の封筒形式で応答する
+      // （generic next({status,message})の{error:{message}}とも、validate()の{message}とも異なる）
+      expect(res.body.error).toMatch(/権限|permission|unauthorized|role/i);
     });
 
     it('XSS攻撃対策: スクリプトを含む設定', async () => {
@@ -648,12 +679,13 @@ describe('Settings API', () => {
       };
 
       const res = await request(app)
-        .put('/api/settings/ui-custom')
-        .send(xssSettings);
+        .put(userRoute('/ui-custom'))
+        .send(xssSettings)
+        .set(adminAuth());
 
       if (res.statusCode === 200) {
         // 設定が保存された場合、レスポンスでスクリプトがサニタイズされていることを確認
-        expect(res.body.data.customCSS).not.toMatch(/<script>/i);
+        expect(res.body.data.uiCustomization.customCSS).not.toMatch(/<script>/i);
       } else {
         // ブロックされた場合も正常
         expect([400, 403, 422]).toContain(res.statusCode);
@@ -666,11 +698,14 @@ describe('Settings API', () => {
       };
 
       const res = await request(app)
-        .put('/api/settings/timezone')
-        .send(sqlInjectionSettings);
+        .put(userRoute('/timezone'))
+        .send(sqlInjectionSettings)
+        .set(adminAuth());
 
-      // レスポンスが正常であることを確認
-      expect(res.statusCode).toBe(200);
+      // SQLインジェクション文字列は有効なタイムゾーンでもないため、
+      // パラメータ化クエリで無害化された上でタイムゾーン形式エラーとして400が正しい挙動
+      // （DBが破壊されず、かつ不正な値として正しく拒否されることを確認）
+      expect(res.statusCode).toBe(400);
     });
   });
 
@@ -691,8 +726,9 @@ describe('Settings API', () => {
       // バッチで設定を更新
       const updatePromises = settings.map(setting =>
         request(app)
-          .put(`/api/settings/${testUserId}`)
+          .put(userRoute())
           .send(setting)
+          .set(adminAuth())
       );
 
       const results = await Promise.all(updatePromises);

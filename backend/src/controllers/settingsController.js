@@ -183,13 +183,13 @@ exports.getSettings = (req, res, next) => {
     if (err) {
       return next({ status: 500, message: '設定の取得中にエラーが発生しました', details: err });
     }
-    
+
     try {
       const userSettings = row ? JSON.parse(row.settings) : { ...defaultSettings };
-      res.json({ 
-        status: 200, 
-        data: userSettings, 
-        message: '設定を取得しました' 
+      res.json({
+        status: 200,
+        data: userSettings,
+        message: '設定を取得しました'
       });
     } catch (parseErr) {
       next({ status: 500, message: '設定の解析中にエラーが発生しました', details: parseErr });
@@ -565,7 +565,10 @@ function generateApiKey() {
 // 管理者メール設定
 exports.setAdminEmail = (req, res, next) => {
   const { userId } = req.params;
-  const { email } = req.body;
+  // バリデーションスキーマ(validation/settings.js)のフィールド名はadminEmailだが、
+  // このコントローラーは以前emailという別名で読み取っておりreq.bodyのadminEmailを
+  // 一度も参照できていなかった（stripUnknown:trueで無検証のemailは常に取り除かれる）
+  const { adminEmail: email } = req.body;
 
   if (!email) {
     return next({ status: 400, message: 'メールアドレスを指定してください' });

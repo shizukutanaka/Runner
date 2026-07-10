@@ -16,6 +16,7 @@ const validateCommentQuery = (querySchema) =>
 // バージョン/利用規約などの静的リソース
 router.get('/version', ctrl.getVersion);
 router.get('/terms', ctrl.getTerms);
+router.get('/help', ctrl.getHelp);
 
 router.use(authenticateToken);
 
