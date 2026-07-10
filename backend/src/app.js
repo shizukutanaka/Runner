@@ -106,7 +106,7 @@ const buildSessionOptions = () => {
 const sessionOptions = buildSessionOptions();
 
 const isOriginAllowed = (origin = '') => {
-  const allowed = config.security.allowedOrigins;
+  const allowed = config.security.allowedOrigins || [];
 
   return allowed.some((item) => {
     if (!item) {

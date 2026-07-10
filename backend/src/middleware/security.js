@@ -427,11 +427,13 @@ const validateOrigin = (req, res, next) => {
 const sanitizeInput = (req, res, next) => {
   const sanitize = (value) => {
     if (typeof value === 'string') {
-      return xss(value.trim(), {
+      const sanitized = xss(value.trim(), {
         whiteList: {},
         stripIgnoreTag: true,
         stripIgnoreTagBody: ['script', 'iframe', 'style']
       });
+      // タグ除去で生じた連続空白（例: "Hello <script>...</script> world" -> "Hello  world"）を1つに正規化
+      return sanitized.replace(/\s+/g, ' ').trim();
     }
 
     if (Array.isArray(value)) {

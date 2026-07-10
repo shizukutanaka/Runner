@@ -18,6 +18,14 @@ const config = {
     sessionSecret: process.env.SESSION_SECRET,
     encryptionKey: process.env.ENCRYPTION_KEY,
     corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    // middleware/security.js の validateOrigin と app.js の CORS チェック(isOriginAllowed)が
+    // 参照する許可オリジン一覧。以前はこのキー自体が存在せず両者とも常に空配列/undefinedとなり、
+    // Originヘッダーを送る実ブラウザからの正規リクエストが全て403で拒否されていた
+    // （supertestはデフォルトでOriginヘッダーを送らないためテストでは検出されなかった）
+    allowedOrigins: (process.env.ALLOWED_ORIGINS || process.env.CORS_ORIGIN || 'http://localhost:5173')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
     helmetEnabled: process.env.HELMET_ENABLED !== 'false'
   },
 
