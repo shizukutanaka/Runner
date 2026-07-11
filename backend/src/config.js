@@ -93,6 +93,10 @@ const config = {
     openai: {
       apiKey: process.env.OPENAI_API_KEY,
       model: process.env.OPENAI_MODEL || 'gpt-4o',
+      // モデレーションエンドポイントはチャットモデル（gpt-4o等）とは別系統のモデルを取る。
+      // omni-moderation-latest は2024-09公開のGPT-4oベース後継で、旧 text-moderation-latest より
+      // 多言語（日本語含む）精度が高くカテゴリも拡張されている。無料。
+      moderationModel: process.env.OPENAI_MODERATION_MODEL || 'omni-moderation-latest',
       enabled: process.env.ENABLE_AI_MODERATION !== 'false'
     },
     youtube: {

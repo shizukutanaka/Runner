@@ -254,8 +254,9 @@ async function detectToxicContent(text) {
   }
 
   try {
+    const moderationModel = config.services.openai.moderationModel;
     const moderation = await _withRetry(() => _callWithTimeout(() =>
-      openai.moderations.create({ input: text })
+      openai.moderations.create({ model: moderationModel, input: text })
     ));
 
     const result = moderation.results[0];
@@ -264,7 +265,7 @@ async function detectToxicContent(text) {
       score:      Math.max(...Object.values(result.category_scores)),
       categories: result.category_scores,
       details:    result.categories,
-      model:      'text-moderation-latest'
+      model:      moderationModel
     };
 
     _cacheSet(cacheKey, output, CACHE_TTL_MS.toxicity);
