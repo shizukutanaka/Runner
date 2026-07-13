@@ -1017,7 +1017,12 @@ exports.getChatbotStats = (req, res, next) => {
 };
 
 // 翻訳API
-exports.translateText = (req, res, next) => {
+// 従来はハードコードされたEN⇔JA語彙のモック（未収録語は"[from→to] text"という
+// 機械翻訳風の偽装文字列を返すのみ）だった。openaiService.translateText()に
+// 実際に動くLLMベースの翻訳が既に存在していたため、そちらへ配線し直した
+// （docs/RESEARCH_IMPROVEMENTS.md R-10）。OpenAIキー未設定/失敗時は原文を
+// available:false付きで返し、偽の翻訳結果を返さないようにする
+exports.translateText = async (req, res, next) => {
   try {
     const { text, fromLang, toLang, quality = 'balanced' } = req.body;
 
@@ -1029,77 +1034,34 @@ exports.translateText = (req, res, next) => {
       return next({ status: 400, message: 'fromLangとtoLangを指定してください' });
     }
 
-    // 実際の実装ではGoogle Translate APIやDeepLを使用
-    // ここでは簡易的なモック実装
-
-    // 簡易的な翻訳マッピング（デモ用）
-    const simpleTranslations = {
-      'en-ja': {
-        'hello': 'こんにちは',
-        'thank you': 'ありがとう',
-        'good morning': 'おはようございます',
-        'how are you': 'お元気ですか',
-        'schedule': 'スケジュール',
-        'time': '時間',
-        'when': 'いつ',
-        'where': 'どこ',
-        'how': 'どうやって',
-        'what': '何',
-        'why': 'なぜ'
-      },
-      'ja-en': {
-        'こんにちは': 'hello',
-        'ありがとう': 'thank you',
-        'おはようございます': 'good morning',
-        'お元気ですか': 'how are you',
-        'スケジュール': 'schedule',
-        '時間': 'time',
-        'いつ': 'when',
-        'どこ': 'where',
-        'どうやって': 'how',
-        '何': 'what',
-        'なぜ': 'why'
-      }
-    };
-
-    let translatedText = text;
-    let confidence = 0.5;
-
-    const key = `${fromLang}-${toLang}`;
-    const translations = simpleTranslations[key];
-
-    if (translations && translations[text.toLowerCase()]) {
-      translatedText = translations[text.toLowerCase()];
-      confidence = 0.9;
-    } else {
-      // 機械翻訳風の応答（デモ用）
-      translatedText = `[${fromLang}→${toLang}] ${text}`;
-      confidence = 0.7;
-    }
+    const openaiService = require('../services/openaiService');
+    const translation = await openaiService.translateText(text, toLang);
 
     const result = {
       originalText: text,
-      translatedText,
+      translatedText: translation.translatedText,
       fromLanguage: fromLang,
       toLanguage: toLang,
-      confidence,
+      confidence: translation.error ? 0 : 0.9,
       quality,
+      model: translation.model,
+      available: !translation.error,
       timestamp: new Date().toISOString(),
-      note: confidence < 0.9 ? 'This is a demo translation. In production, this would use Google Translate API or DeepL.' : undefined
+      error: translation.error
     };
 
     res.json({
       status: 200,
       data: result,
-      message: 'テキストを翻訳しました'
+      message: translation.error ? '翻訳サービスが利用できないため原文を返しました' : 'テキストを翻訳しました'
     });
   } catch (err) {
     next({ status: 500, message: '翻訳中にエラーが発生しました', details: err });
   }
 };
 
-// 自動翻訳API
-exports.autoTranslate = (req, res, next) => {
+// 自動翻訳API（言語検出は簡易版のまま維持、翻訳本体はopenaiServiceへ配線 — R-10）
+exports.autoTranslate = async (req, res, next) => {
   try {
     const { text, targetLanguages = ['en'], quality = 'balanced' } = req.body;
 
@@ -1107,56 +1069,32 @@ exports.autoTranslate = (req, res, next) => {
       return next({ status: 400, message: '有効なtextを指定してください' });
     }
 
-    // 言語検出（簡易版）
-    let detectedLang = 'en';
-    if (/[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]/.test(text)) {
-      detectedLang = 'ja';
-    } else if (/[\u4e00-\u9fff]/.test(text)) {
-      detectedLang = 'zh';
-    } else if (/[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/.test(text)) {
-      detectedLang = 'ko';
-    }
+    const detectedLang = moderationService.detectLanguage(text).language;
 
-    const translations = [];
+    const openaiService = require('../services/openaiService');
 
-    for (const targetLang of targetLanguages) {
+    const translations = await Promise.all(targetLanguages.map(async (targetLang) => {
       if (detectedLang === targetLang) {
-        translations.push({
+        return {
           targetLanguage: targetLang,
           translatedText: text,
           confidence: 1.0,
           skipped: true,
           reason: 'same_language'
-        });
-        continue;
+        };
       }
 
-      // 簡易翻訳ロジック
-      const simpleTranslations = {
-        'ja-en': { 'こんにちは': 'hello', 'ありがとう': 'thank you', 'スケジュール': 'schedule' },
-        'en-ja': { 'hello': 'こんにちは', 'thank you': 'ありがとう', 'schedule': 'スケジュール' }
-      };
+      const translation = await openaiService.translateText(text, targetLang);
 
-      const key = `${detectedLang}-${targetLang}`;
-      const translationsMap = simpleTranslations[key];
-      let translatedText = text;
-      let confidence = 0.5;
-
-      if (translationsMap && translationsMap[text.toLowerCase()]) {
-        translatedText = translationsMap[text.toLowerCase()];
-        confidence = 0.9;
-      } else {
-        translatedText = `[${detectedLang}→${targetLang}] ${text}`;
-        confidence = 0.7;
-      }
-
-      translations.push({
+      return {
         targetLanguage: targetLang,
-        translatedText,
-        confidence,
-        quality
-      });
-    }
+        translatedText: translation.translatedText,
+        confidence: translation.error ? 0 : 0.9,
+        quality,
+        available: !translation.error,
+        error: translation.error
+      };
+    }));
 
     const result = {
       originalText: text,

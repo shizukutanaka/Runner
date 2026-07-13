@@ -1,10 +1,32 @@
 # 最新研究・API動向にもとづく改善点（Research-Driven Improvements）
 
-**作成日: 2026-07-11** / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
+**作成日: 2026-07-11 / 最終更新: 2026-07-13** / 対象ブランチ: `claude/research-and-improve-011CUhKHj4EELmH43vbvh3BC`
 
 ## この文書の目的
 
 本書は、この製品（YouTube/Twitch コメントモデレーションプラットフォーム）の AI/モデレーション機構を、**2024〜2026年の関連論文・公式API動向・データセット**と突き合わせて洗い出した改善点リストである。`docs/FEATURE_AUDIT.md`（機能過不足）とは別軸で、「実装は動いているが、技術選択が古い・研究的により良い手法がある」項目を扱う。
+
+## プロダクト評価（長所/短所）— 2026-07-13時点・実地検証ベース
+
+本セッションでの実コード読解・全テスト実行・実ブラウザE2E検証にもとづく事実ベースの評価。
+
+### 長所
+
+1. **実動する認証基盤**: 登録/ログイン/2FA/リフレッシュトークンローテーション（旧トークン即無効化）/パスワードリセットまで一通り実装され、curl+実ブラウザでE2E検証済み
+2. **実データのYouTube Live Chat取り込み**: `liveChatMessages.list`のポーリングでAPIの`pollingIntervalMillis`を尊重し、日次クォータ追跡（1万units・超過前ブロック）・指数バックオフ・連続エラー時の自動停止を備える
+3. **フェイルセーフ設計の一貫性**: OpenAI/YouTube/SMTP等のキーが未設定でも警告のみで起動し、ルールベースにフォールバックして全機能が動作する（今回の翻訳配線・NGワード読込も同じ規約で実装）
+4. **テスト基盤と運用規律**: 447テスト・失敗4件（意図的な仕様未確定分のみ）まで削減済み。「ベースライン悪化ゼロ」を毎変更で確認する運用が確立
+5. **差別化になりうるコミュニティインサイト群**: 健全性スコア（6シグナル加重）/常連離脱検知/文化プロファイル/文脈分析という「単なるNGワードフィルタではない」機能群がUI込みで存在
+6. **モデレーション業務のワークフロー対応**: 保留メッセージキュー、ソフトデリート+削除履歴テーブルの監査証跡、モデレータートリアージなど、実務フローを意識した設計
+
+### 短所
+
+1. **Twitch未実装**: 製品名が「YouTube/Twitch」を約束するのに片翼のみ（実装経路はR-7で確定済み）
+2. ~~NGワード実効リストがプレースホルダ~~ → **R-5aで解消済み**（2026-07-13）
+3. **in-memory状態の揮発**: 文化プロファイル・離脱検知の追跡データが再起動で消える（DB永続化が未着手）
+4. **レート制限が全体で無効**（FEATURE_AUDIT.md E-14）・マルチテナント未配線（D-6/E-3）
+5. **大量のスタブAPI**: moderationController約35関数・analyticsController 13関数がハードコード値を返す（E-1/E-2。今回さらに翻訳モック2件とカスタムフィルタの全滅バグを解消したが、残りは個別トリアージ待ち）
+6. **文脈分析が素朴ヒューリスティック**: 感情スコア平均±0.3補正のみ。改善方針はR-4（Policy-as-Prompt）で確定済みだが未実装
 
 - 各項目に **根拠（論文/公式ドキュメントのURL）**・**対象ファイル**・**再検証コマンド** を付す
 - 出典は全て実在を確認済み（arXiv ID・公式ドキュメント）
@@ -60,14 +82,22 @@
 - **対象ファイル**: `services/creatorCultureService.js`（プリセット→ポリシー文変換の追加）, `routes/communityInsights.js`（`_contextAdjustedScore`のLLM版）, `services/openaiService.js`（文脈付きモデレーション関数の追加）
 - **注意**: OpenAI キー未設定環境では既存のルールベースにフォールバックする現行規約を維持すること
 
-### R-5. ★ 日本語有害性の実カバレッジ整備 + NGワードのデータファイル化
+### R-5. 日本語有害性の実カバレッジ整備 — (a) ✅ 実施済み / (b) 未着手
 
 - **根拠**:
   - **AnswerCarefully** (鈴木ら, NLP2025) — 日本語LLM安全性データセット v2.0（評価336件/開発1,464件）。(https://www.anlp.jp/proceedings/annual_meeting/2025/pdf_dir/Q2-3.pdf)
   - リコー等が14カテゴリの日本語ガードレールモデルを2025年に公開するなど、日本語有害性検出のリソースが充実してきた。(https://jp.ricoh.com/release/2025/1225_1)
-- **現状の弱点**: 実効NGリストが `['badword','spamword']` のプレースホルダ。`YOUTUBE_COMMUNITY_FILTERS` は英語約50語。日本語カバレッジがほぼ無い
-- **改善案**: (a) NGワードを `data/ng-words.{ja,en}.json` 等のデータファイルへ外出しし、コード再デプロイなしで更新可能に。(b) 日本語評価セット（AnswerCarefully等）でモデレーションの合格率を測るテストハーネスを追加し、`omni-moderation-latest` 化（R-1）の効果を数値で確認
-- **対象ファイル**: `services/moderationService.js`（`YOUTUBE_COMMUNITY_FILTERS`のデータ化）, `tests/` に評価ハーネス新規
+- **元の弱点**: 実効NGリストが `['badword','spamword']` のプレースホルダで**キーワードモデレーションが実質無効**。日本語カバレッジがほぼ無い
+- **(a) ✅ 実施済み（2026-07-13）**: `src/data/ng-words.json` を新設（ja/en・abuse/threat/spamカテゴリ別、明白に敵対的/スパム的な語句に限定した実用最小リスト）。`analyzeComment()` が起動時に読み込み、英語は小文字化比較で大文字小文字を区別せず検出。読込失敗時は空リスト+警告のフェイルセーフ。`tests/services/moderationService.test.js`（新規8テスト）で検証。文脈依存語（ゲーム実況の「殺す」等）は意図的に収録せず、文化プロファイル/AI分析側に委ねる設計
+- **(b) 未着手**: AnswerCarefully等の日本語評価セットでモデレーション合格率を測るハーネス。R-1（omni-moderation化）の効果測定を兼ねる
+- **再検証**: `NODE_ENV=test npx jest tests/services/moderationService.test.js` → 8件合格なら(a)維持
+
+### R-5補足. ✅ 実装検証中に発見・修正した既存バグ: カスタムフィルタ全滅（2026-07-13）
+
+- **発見の経緯**: R-5a検証のスモークテストで、全コメント分析ごとに `[CustomFilter] Error applying filter` 警告が3件ずつ出ることに気づいた
+- **原因**: `applyCustomFilters()` の regex 処理が、`/.../i` 定義済みパターンに無条件で `'i'` フラグを連結し `'ii'` を生成 → `SyntaxError: Invalid flags` → catch で握りつぶし。デフォルト3フィルタ群（spam-patterns / offensive-language / repeated-chars）は大半のパターンが `i` フラグ付き定義のため、**カスタムフィルタ機能全体が一度も動作していなかった**（offensive-language の +70/block、spam-patterns の +30/flag が常に不発）
+- **修正**: パターンが既に `i` フラグを持つ場合はそのまま使用。回帰テストを `tests/services/moderationService.test.js` に追加
+- **再検証**: `node -e` で `analyzeComment('you are a fucking idiot')` → score≥70・isSpam:true になること
 
 ### R-6. YouTube 取込のクォータ最適化（`streamList` 調査）
 
@@ -100,19 +130,20 @@
 - **判断材料**: 本製品の「配信者ごとの文化プロファイル」はコミュニティ固有モデレーションと親和性が高い。ただし微調整モデルのホスティングにはGPU/推論基盤が必要で、現行のデプロイ想定（Node.js単体 + OpenAI API）とは乖離する。**当面は `gpt-4o-mini` + few-shot（R-4のPolicy-as-Prompt）で代替可能**。ユーザー数・コメント量が API コストを圧迫する規模になった段階で再検討
 - **実施しない理由**: ローカルML基盤の導入は本タスクのスコープ外・実行環境要件が不一致
 
-### R-10. モック翻訳の実装置換 or 削除
+### R-10. ✅ モック翻訳を実翻訳へ配線替え（2026-07-13実施済み）
 
-- **現状**: `moderationService.translateText()` はハードコードEN↔JA語彙のモック。一方 `openaiService` には実際に動く chat ベース翻訳が既にある（未配線）
-- **改善案**: HTTP層（`moderationController.translateText`, `routes/moderation.js:60`）を `openaiService` の実翻訳へ配線替えするか、使われていないなら削除。配線替えのみで解消可能な軽微項目
-- **対象ファイル**: `controllers/moderationController.js`, `services/moderationService.js`
+- **元の問題**: `moderationController.translateText`/`autoTranslate` はハードコードEN↔JA語彙のモックで、未収録語には `[ja→en] テキスト` という**機械翻訳風の偽装文字列**を返していた。一方 `openaiService.translateText()` には実際に動くLLM翻訳が存在していたが未配線。`moderationService.js` 内にも同内容のデッドモック2関数（約130行、export無し）が重複していた
+- **実施した修正**: HTTP層2エンドポイントを `openaiService.translateText()` へ配線替え。**キー未設定/失敗時は原文を `available:false` 付きで返し、偽装翻訳は返さない**。デッドモック2関数は削除。言語検出は `moderationService.detectLanguage()`（20言語対応の文字/単語ベース検出、従来未exportだった実用ロジック）をexport化して `autoTranslate` の簡易3言語判定を置換
+- **検証**: devサーバー起動+curlで `POST /api/moderation/translation/translate`（原文+available:false+明示メッセージ）・`/auto-translate`（ja検出・same_languageスキップ・per-target error）を確認。フルテスト悪化ゼロ
+- **再検証**: `grep -n "openaiService.translateText" backend/src/controllers/moderationController.js` → 2箇所ヒットすれば適用済み
 
 ---
 
-## 検証（本ブランチで実施済みの R-1/R-3）
+## 検証（本ブランチで実施済みの R-1/R-3/R-5a/R-5補足/R-10）
 
-1. `cd backend && rm -f data/test.db && NODE_ENV=test npx jest --runInBand` → **4 failed / 425 passed / 439 total**（既存ベースライン維持・悪化ゼロ）
-2. `node --check backend/src/services/moderationService.js` / `openaiService.js` → 構文OK
-3. OpenAIキー未設定時のフォールバック（`detectToxicContent` が `{isToxic:false, error:'OpenAI not available'}` を返す）は既存のガードで維持
+1. `cd backend && rm -f data/test.db && NODE_ENV=test npx jest --runInBand` → **4 failed / 433 passed / 447 total**（既存の失敗4件のみ・悪化ゼロ。R-5a/R-5補足の新規8テストを含む）
+2. `node --check` 各修正ファイル → 構文OK
+3. OpenAIキー未設定時のフォールバックを devサーバー+curl で実地確認（モデレーション: ルールベース続行 / 翻訳: 原文+available:false / 起動: 警告のみで正常）
 
 ## 出典一覧
 

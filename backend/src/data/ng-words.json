@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "description": "モデレーション用NGワードの既定リスト。moderationService.analyzeComment() が起動時に読み込み、部分一致でスコア+50（=単独でフラグ）を付与する。誤検知を避けるため『文脈によらず明白に敵対的/スパム的な語句』のみを収録する方針。文脈依存の語（例: ゲーム実況での『殺す』等）は文化プロファイル/AI分析側に委ね、ここには入れない。運用時はこのファイルを編集して調整できる（再起動で反映）。英語は小文字で収録すること（比較時に小文字化される）。",
+  "categories": {
+    "abuse": {
+      "ja": [
+        "死ね",
+        "タヒね",
+        "4ね",
+        "殺すぞ",
+        "ぶっ殺す",
+        "消えろ",
+        "失せろ",
+        "カス野郎",
+        "クズ野郎",
+        "ゴミクズ",
+        "きもい",
+        "キモい",
+        "キモすぎ",
+        "ブス",
+        "ドブス",
+        "ガイジ",
+        "池沼",
+        "知恵遅れ"
+      ],
+      "en": [
+        "kill yourself",
+        "kys",
+        "go die",
+        "die in a fire",
+        "retard",
+        "faggot",
+        "nigger",
+        "cunt",
+        "whore",
+        "piece of shit",
+        "waste of oxygen"
+      ]
+    },
+    "threat": {
+      "ja": [
+        "刺すぞ",
+        "燃やすぞ",
+        "住所特定した",
+        "住所晒す",
+        "晒すぞ",
+        "個人情報バラす"
+      ],
+      "en": [
+        "i will kill you",
+        "i'll kill you",
+        "gonna kill you",
+        "i know where you live",
+        "watch your back"
+      ]
+    },
+    "spam": {
+      "ja": [
+        "今すぐクリック",
+        "誰でも簡単に稼げる",
+        "月収100万",
+        "無料でプレゼント中",
+        "LINE追加で",
+        "概要欄のリンクから登録"
+      ],
+      "en": [
+        "free gift card",
+        "click the link in my bio",
+        "check my channel for free",
+        "earn money fast",
+        "crypto giveaway",
+        "dm me to earn"
+      ]
+    }
+  }
+}

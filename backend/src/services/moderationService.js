@@ -6,6 +6,20 @@ const logger = require('../logger');
 
 let openaiWarningIssued = false;
 
+// NGワードリスト（R-5a）: 旧実装は ['badword','spamword'] というプレースホルダで
+// キーワードモデレーションが実質無効だった。src/data/ng-words.json（ja/en・カテゴリ別）
+// から起動時に読み込む。読めない場合は空リストで警告し、他の分析は通常どおり動作させる
+let NG_WORDS = [];
+try {
+  const ngWordData = require('../data/ng-words.json');
+  NG_WORDS = Object.values(ngWordData.categories || {})
+    .flatMap((langs) => [...(langs.ja || []), ...(langs.en || [])])
+    .map((word) => word.toLowerCase());
+  logger.info(`[ModerationService] Loaded ${NG_WORDS.length} NG words from ng-words.json`);
+} catch (err) {
+  logger.warn('[ModerationService] Failed to load ng-words.json - keyword moderation is disabled', { error: err.message });
+}
+
 // リンクブロック関連の設定
 const LINK_BLOCK_CONFIG = {
   // 完全にブロックするドメイン
@@ -164,7 +178,13 @@ function applyCustomFilters(content, customFilters = []) {
       } else if (filter.matchType === 'regex') {
         // 正規表現
         for (const pattern of filter.patterns) {
-          const regex = filter.caseSensitive ? pattern : new RegExp(pattern.source, pattern.flags + 'i');
+          // 既に i フラグ付きのパターンに無条件で 'i' を連結すると 'ii' となり
+          // SyntaxError（Invalid flags）で全フィルタが毎回死んでいた。
+          // デフォルト3フィルタ群は大半のパターンが /.../i 定義のため、
+          // このバグによりカスタムフィルタ機能全体が一度も動作していなかった
+          const regex = (filter.caseSensitive || pattern.flags.includes('i'))
+            ? pattern
+            : new RegExp(pattern.source, pattern.flags + 'i');
           if (regex.test(content)) {
             patternMatched = true;
             matchedText = pattern.toString();
@@ -489,136 +509,13 @@ function detectLanguage(text) {
   }
 }
 
-// 翻訳関数（実際の実装ではGoogle Translate APIやDeepLを使用）
-async function translateText(text, fromLang, toLang, quality = 'balanced') {
-  try {
-    // 実際の実装では外部APIを呼び出す
-    // ここでは簡易的なモック実装
+// 注: かつてここに translateText()/processAutoTranslation()（ハードコード語彙+
+// "[from→to] text" 機械翻訳風の偽装文字列を返すモック）が存在したが、どこからも
+// export/参照されていないデッドコードだった。実際に動く翻訳は openaiService.translateText()
+// にあり、moderationController.translateText/autoTranslate から直接呼ぶよう配線済み
+// （docs/RESEARCH_IMPROVEMENTS.md R-10）。detectLanguage()/TRANSLATION_CONFIG は
+// 20言語対応の実用的な検出ロジックのため残し、下記でexportして再利用する
 
-    if (fromLang === toLang) {
-      return {
-        translatedText: text,
-        detectedLanguage: fromLang,
-        confidence: 1.0,
-        quality: quality,
-        cached: true
-      };
-    }
-
-    // 簡易的な翻訳マッピング（デモ用）
-    const simpleTranslations = {
-      'en-ja': {
-        'hello': 'こんにちは',
-        'thank you': 'ありがとう',
-        'good morning': 'おはようございます',
-        'how are you': 'お元気ですか',
-        'schedule': 'スケジュール',
-        'time': '時間',
-        'when': 'いつ',
-        'where': 'どこ',
-        'how': 'どうやって',
-        'what': '何',
-        'why': 'なぜ'
-      },
-      'ja-en': {
-        'こんにちは': 'hello',
-        'ありがとう': 'thank you',
-        'おはようございます': 'good morning',
-        'お元気ですか': 'how are you',
-        'スケジュール': 'schedule',
-        '時間': 'time',
-        'いつ': 'when',
-        'どこ': 'where',
-        'どうやって': 'how',
-        '何': 'what',
-        'なぜ': 'why'
-      }
-    };
-
-    const key = `${fromLang}-${toLang}`;
-    const translations = simpleTranslations[key];
-
-    if (translations && translations[text.toLowerCase()]) {
-      return {
-        translatedText: translations[text.toLowerCase()],
-        detectedLanguage: fromLang,
-        confidence: 0.9,
-        quality: quality,
-        cached: false
-      };
-    }
-
-    // 機械翻訳風の応答（デモ用）
-    return {
-      translatedText: `[${fromLang}→${toLang}] ${text}`,
-      detectedLanguage: fromLang,
-      confidence: 0.7,
-      quality: quality,
-      cached: false,
-      note: 'This is a demo translation. In production, this would use Google Translate API or DeepL.'
-    };
-
-  } catch (error) {
-    logger.warn('[Translation] Error translating text:', error);
-    return {
-      translatedText: text,
-      detectedLanguage: fromLang,
-      confidence: 0.1,
-      quality: quality,
-      error: error.message,
-      fallback: true
-    };
-  }
-}
-
-// 自動翻訳処理関数
-async function processAutoTranslation(content, targetLanguages = ['en'], quality = 'balanced') {
-  try {
-    const results = [];
-
-    // ソース言語を検出
-    const detection = detectLanguage(content);
-
-    for (const targetLang of targetLanguages) {
-      if (detection.language === targetLang) {
-        // 同じ言語の場合は翻訳不要
-        results.push({
-          targetLanguage: targetLang,
-          translatedText: content,
-          detectedLanguage: detection.language,
-          confidence: 1.0,
-          quality: quality,
-          skipped: true,
-          reason: 'same_language'
-        });
-        continue;
-      }
-
-      // 翻訳を実行
-      const translation = await translateText(content, detection.language, targetLang, quality);
-      results.push({
-        targetLanguage: targetLang,
-        ...translation
-      });
-    }
-
-    return {
-      originalText: content,
-      sourceLanguage: detection,
-      translations: results,
-      timestamp: new Date().toISOString()
-    };
-
-  } catch (error) {
-    logger.warn('[AutoTranslation] Error processing translation:', error);
-    return {
-      originalText: content,
-      error: error.message,
-      translations: [],
-      timestamp: new Date().toISOString()
-    };
-  }
-}
 
 // Import OpenAI service
 const openaiService = require('./openaiService');
@@ -785,9 +682,11 @@ exports.analyzeComment = async (content, platform, user, timestamp) => {
     result.isSpam = true;
   }
 
-  const bannedWords = ['badword', 'spamword'];
-  bannedWords.forEach((word) => {
-    if (content.includes(word)) {
+  // NGワード照合（ja/enリストはng-words.jsonで管理。英語は小文字で収録済みのため
+  // 比較側を小文字化する。日本語はtoLowerCase()の影響を受けない）
+  const contentLower = content.toLowerCase();
+  NG_WORDS.forEach((word) => {
+    if (contentLower.includes(word)) {
       result.flaggedWords.push(word);
       result.isOffensive = true;
       result.score += 50;
@@ -805,6 +704,9 @@ exports.updateSettings = async (platform, thresholds, bannedWords, regexPatterns
   // DBに保存する処理（省略）
   return true;
 };
+
+// 20言語対応の文字/単語ベース言語検出（moderationController.autoTranslateから利用 — R-10）
+exports.detectLanguage = detectLanguage;
 
 // メッセージ保留設定
 const MESSAGE_HOLD_CONFIG = {
