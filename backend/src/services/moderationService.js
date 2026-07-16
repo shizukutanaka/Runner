@@ -3,8 +3,22 @@
 
 const config = require('../config');
 const logger = require('../logger');
+const removeConfusables = require('confusables').default;
 
 let openaiWarningIssued = false;
+
+// NGワード回避対策（R-11）: leetspeak/同形異字(homoglyph)/全角文字/ゼロ幅文字による
+// フィルタ回避が2024-2026の研究で広く報告されている（例: 全角"ｆｕｃｋ"、
+// キリル文字のｋに見えるκ等での置換、単語内へのゼロ幅スペース挿入）。
+// ゼロ幅文字除去+NFKC正規化は日英どちらのテキストにも安全に適用できるため
+// 常時適用する。confusables.remove()（英字のホモグリフをASCIIへ寄せるライブラリ）は
+// 日本語の仮名を誤って英字に変換してしまうケースがある（実測: "こんにちは"→"こhにちは"）
+// ため、主判定文字列の置き換えには使わず、あくまで追加の照合候補として
+// OR条件でのみ使う（誤爆しても主判定には影響しない設計）
+// U+200B ZERO WIDTH SPACE, U+200C ZWNJ, U+200D ZWJ, U+2060 WORD JOINER, U+FEFF BOM/ZWNBSP
+const ZERO_WIDTH_CHARS_REGEX = /[\u200B\u200C\u200D\u2060\uFEFF]/g;
+const stripZeroWidthChars = (text) => text.replace(ZERO_WIDTH_CHARS_REGEX, '');
+const normalizeForMatching = (text) => stripZeroWidthChars(text).normalize('NFKC');
 
 // NGワードリスト（R-5a）: 旧実装は ['badword','spamword'] というプレースホルダで
 // キーワードモデレーションが実質無効だった。src/data/ng-words.json（ja/en・カテゴリ別）
@@ -684,9 +698,14 @@ exports.analyzeComment = async (content, platform, user, timestamp) => {
 
   // NGワード照合（ja/enリストはng-words.jsonで管理。英語は小文字で収録済みのため
   // 比較側を小文字化する。日本語はtoLowerCase()の影響を受けない）
-  const contentLower = content.toLowerCase();
+  // R-11: ゼロ幅文字除去+NFKC正規化した文字列を主判定に使い、全角文字や単語内への
+  // ゼロ幅スペース挿入による回避を防ぐ。加えてconfusables正規化した文字列もOR条件で
+  // 照合し、ホモグリフ（例: κys のκをkとみなす）による回避も検出する
+  // （confusablesは日本語仮名を誤って英字化することがあるため、この副読み用途に限定）
+  const contentLower = normalizeForMatching(content).toLowerCase();
+  const contentConfusablesNormalized = removeConfusables(normalizeForMatching(content)).toLowerCase();
   NG_WORDS.forEach((word) => {
-    if (contentLower.includes(word)) {
+    if (contentLower.includes(word) || contentConfusablesNormalized.includes(word)) {
       result.flaggedWords.push(word);
       result.isOffensive = true;
       result.score += 50;

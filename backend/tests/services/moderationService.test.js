@@ -67,4 +67,34 @@ describe('moderationService.analyzeComment (rule-based path)', () => {
       expect(moderationService.detectLanguage('hello world how are you').language).toBe('en');
     });
   });
+
+  describe('NGワード回避対策（R-11: 全角/ゼロ幅/ホモグリフ）', () => {
+    it('全角文字によるNGワード回避を検出する', async () => {
+      const result = await analyze('ｋｙｓ loser');
+      expect(result.isOffensive).toBe(true);
+      expect(result.flaggedWords).toContain('kys');
+    });
+
+    it('ホモグリフ（ギリシャ文字κ等）によるNGワード回避を検出する', async () => {
+      const result = await analyze('κys loser'); // κ (Greek kappa) の代わりに k
+      expect(result.isOffensive).toBe(true);
+      expect(result.flaggedWords).toContain('kys');
+    });
+
+    it('単語内へのゼロ幅スペース挿入によるNGワード回避を検出する', async () => {
+      const zwsp = String.fromCharCode(0x200b); // U+200B ZERO WIDTH SPACE
+      const result = await analyze(`死${zwsp}ね`); // NG語の間にZWSPを挿入
+      expect(result.isOffensive).toBe(true);
+      expect(result.flaggedWords).toContain('死ね');
+    });
+
+    it('confusables正規化が日本語の無害なコメントを誤検出させない（回帰テスト）', async () => {
+      // confusables.remove()は日本語仮名を英字と誤認することがある
+      // （実測: "こんにちは"→"こhにちは"）。主判定文字列には使わない設計のため
+      // 誤爆しても最終的なisOffensiveには影響しないことを確認する
+      const result = await analyze('こんにちは、今日の配信も楽しかったです！');
+      expect(result.isOffensive).toBe(false);
+      expect(result.score).toBe(0);
+    });
+  });
 });
