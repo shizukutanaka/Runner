@@ -385,7 +385,8 @@ const ingestComment = async ({ content, user, platform, timestamp }, { io } = {}
       user,
       platform,
       score: moderation.score,
-      flaggedWords: moderation.flaggedWords
+      flaggedWords: moderation.flaggedWords,
+      flaggedCategories: moderation.flaggedCategories // R-14: 拒否理由のカテゴリを運用ログにも残す
     });
     return { outcome: 'rejected', moderation };
   }

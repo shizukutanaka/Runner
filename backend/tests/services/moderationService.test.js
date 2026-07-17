@@ -35,6 +35,33 @@ describe('moderationService.analyzeComment (rule-based path)', () => {
     });
   });
 
+  describe('NGカテゴリの提示（R-14: 構造化されたフラグ理由）', () => {
+    it('敵対的コメントは abuse カテゴリを返す', async () => {
+      const result = await analyze('死ね');
+      expect(result.flaggedCategories).toContain('abuse');
+    });
+
+    it('脅迫コメントは threat カテゴリを返す', async () => {
+      const result = await analyze('住所特定した');
+      expect(result.flaggedCategories).toContain('threat');
+    });
+
+    it('スパムコメントは spam カテゴリを返す', async () => {
+      const result = await analyze('誰でも簡単に稼げる方法教えます');
+      expect(result.flaggedCategories).toContain('spam');
+    });
+
+    it('無害なコメントは flaggedCategories が空', async () => {
+      const result = await analyze('今日の配信も楽しかったです！');
+      expect(result.flaggedCategories).toHaveLength(0);
+    });
+
+    it('同一カテゴリの複数ヒットでもカテゴリは重複しない', async () => {
+      const result = await analyze('死ね　消えろ'); // どちらも abuse
+      expect(result.flaggedCategories).toEqual(['abuse']);
+    });
+  });
+
   describe('カスタムフィルタ（regexフラグ重複バグの回帰テスト）', () => {
     // 旧実装は /.../i 定義のパターンに無条件で 'i' を連結し 'ii' で
     // SyntaxError となり、デフォルト3フィルタ群が一度も動作していなかった
