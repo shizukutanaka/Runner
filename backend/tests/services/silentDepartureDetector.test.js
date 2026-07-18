@@ -119,4 +119,36 @@ describe('SilentDepartureDetector', () => {
       expect(r).toHaveProperty('timestamp');
     });
   });
+
+  // R-19: 再起動時にcommentsテーブルから直近アクティビティを復元する
+  describe('commentsテーブルからのウォームアップ', () => {
+    const db = require('../../src/db');
+    const dbRun = (sql, p = []) => new Promise((resolve, reject) => {
+      db.run(sql, p, function cb(e) { e ? reject(e) : resolve(this); });
+    });
+
+    beforeAll(async () => {
+      // DBスキーマ初期化完了を待つ（他テストと同じ規約）
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // 常連ユーザーを作る: 直近5日で4回コメント
+      const now = Date.now();
+      const day = 86400000;
+      const uniq = `warmreg_${now}`;
+      for (let i = 0; i < 4; i++) {
+        await dbRun(
+          'INSERT INTO comments (id, platform, user, content, timestamp, status) VALUES (?,?,?,?,?,?)',
+          [`warm_${now}_${i}`, 'youtube', uniq, 'hi', new Date(now - (i + 1) * day).toISOString(), 'visible']
+        );
+      }
+      global.__warmRegularUser = uniq;
+    });
+
+    it('新インスタンス（再起動相当）はcommentsから常連を復元する', async () => {
+      const fresh = new SilentDepartureDetector();
+      await fresh._warmed;
+      const r = fresh.analyze('youtube', 'default');
+      // 少なくとも直前に投入した常連1名は検出される
+      expect(r.regularUserCount).toBeGreaterThanOrEqual(1);
+    });
+  });
 });

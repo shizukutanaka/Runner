@@ -21,6 +21,11 @@
  */
 
 const logger = require('../logger');
+const db = require('../db');
+
+const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
+  db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
+});
 
 // ─── 設定 ──────────────────────────────────────────────────
 const REGULAR_WINDOW_DAYS  = 7;    // 過去N日間でコメントした人を"常連"とみなす
@@ -33,6 +38,31 @@ class SilentDepartureDetector {
   constructor() {
     // channelKey → [{userId, timestamp: Date}]
     this.records = new Map();
+    // 起動時に既存のcommentsテーブルからウィンドウ分を復元する（R-19）。
+    // in-memory記録は再起動で消えるが、コメント自体はDBに永続化されているため、
+    // 直近ウィンドウ分を読み戻せば再起動をまたいで常連/離脱の判定を継続できる。
+    // 取り込みパイプラインは channelId='default' で記録するため、それに合わせる
+    this._warmed = this._warmFromComments();
+  }
+
+  async _warmFromComments() {
+    try {
+      // ウィンドウ（7日）より少し広めに読み、古すぎるデータは持ち込まない
+      const sinceMs = Date.now() - (REGULAR_WINDOW_DAYS + 1) * MS_PER_DAY;
+      const sinceIso = new Date(sinceMs).toISOString();
+      const rows = await dbAll(
+        'SELECT platform, user, timestamp FROM comments WHERE timestamp >= ? ORDER BY timestamp ASC LIMIT ?',
+        [sinceIso, MAX_HISTORY_ENTRIES]
+      );
+      rows.forEach((row) => {
+        this.record(row.platform, 'default', row.user, row.timestamp);
+      });
+      if (rows.length > 0) {
+        logger.info(`[SilentDeparture] Warmed ${rows.length} activity record(s) from comments table`);
+      }
+    } catch (err) {
+      logger.warn('[SilentDeparture] Could not warm from comments table (starting empty)', { error: err.message });
+    }
   }
 
   // ─────────────────────────────────────────

@@ -5,6 +5,7 @@ const config = require('../config');
 const logger = require('../logger');
 const moderationService = require('../services/moderationService');
 const commentService = require('../services/commentService');
+const departureDetector = require('../services/silentDepartureDetector');
 const { asyncHandler } = require('../middleware/errorHandler');
 
 // HTTP経由のコメント作成/更新をWebSocketクライアントへブロードキャストする。
@@ -424,6 +425,17 @@ const ingestComment = async ({ content, user, platform, timestamp }, { io } = {}
     'UPDATE users SET last_comment_at = ? WHERE id = ?',
     [ts, normalizedUser]
   );
+
+  // サイレント離脱検知へアクティビティを記録する（R-19）。従来この検知器は
+  // 手動の /record-activity エンドポイントからしかデータを受け取れず、通常の
+  // コメント投稿では一切データが供給されていなかった（＝機能が実質的に空回り）。
+  // insightsのUIは channelId='default' で問い合わせるため、それに合わせて記録する。
+  // 検知器はin-memoryのため失敗しても本処理に影響させない
+  try {
+    departureDetector.record(platform, 'default', normalizedUser, ts);
+  } catch (recordErr) {
+    logger.warn('[Comments] Failed to record activity for departure detection', { error: recordErr.message });
+  }
 
   const created = await dbGet('SELECT * FROM comments WHERE id = ?', [commentId]);
   await commentService.invalidateCommentCache(commentId);
