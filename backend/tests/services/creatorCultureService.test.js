@@ -3,6 +3,12 @@ const { CreatorCultureService, CULTURE_PRESETS } = require('../../src/services/c
 describe('CreatorCultureService', () => {
   let svc;
 
+  beforeAll(async () => {
+    // DBスキーマ初期化完了を待つ（他テストファイルと同じ規約）。DB永続化テストは
+    // culture_profilesテーブルが存在してからでないと復元を検証できない
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  });
+
   beforeEach(() => {
     svc = new CreatorCultureService();
   });
@@ -142,6 +148,33 @@ describe('CreatorCultureService', () => {
         expect(p).toHaveProperty('description');
         expect(p).toHaveProperty('strictness');
       }
+    });
+  });
+
+  // DB永続化（短所#3の解消）: 再起動でプロファイルが消えないこと
+  describe('DB永続化', () => {
+    it('setProfileしたプロファイルは新しいインスタンス（=再起動相当）でも復元される', async () => {
+      const channelId = `persist-${Date.now()}`;
+      svc.setProfile('youtube', channelId, 'gaming', { note: 'keep-me' });
+      // fire-and-forgetのDB書き込みが完了するのを待つ
+      await new Promise((r) => setTimeout(r, 300));
+
+      // 別インスタンスを生成し、DBからのロード完了を待つ（再起動をシミュレート）
+      const fresh = new CreatorCultureService();
+      await fresh._loaded;
+
+      const restored = fresh.getProfile('youtube', channelId);
+      expect(restored.cultureType).toBe('gaming');
+      expect(restored.isCustomized).toBe(true);
+      expect(restored.note).toBe('keep-me');
+    });
+
+    it('未設定チャンネルは復元後もデフォルト（entertainment）のまま', async () => {
+      const fresh = new CreatorCultureService();
+      await fresh._loaded;
+      const p = fresh.getProfile('youtube', `never-set-${Date.now()}`);
+      expect(p.cultureType).toBe('entertainment');
+      expect(p.isCustomized).toBe(false);
     });
   });
 });

@@ -447,6 +447,13 @@ const initializeDB = async () => {
 
     CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
     CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS culture_profiles (
+      channel_key TEXT PRIMARY KEY,
+      culture_type TEXT NOT NULL,
+      custom_overrides TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `;
 
   try {

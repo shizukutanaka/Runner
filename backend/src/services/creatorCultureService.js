@@ -17,6 +17,17 @@
  */
 
 const logger = require('../logger');
+const db = require('../db');
+
+// DBアクセスの薄いPromiseラッパー（他サービスと同じ規約）
+const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
+  db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows || [])));
+});
+const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
+  db.run(sql, params, function runCallback(err) {
+    if (err) reject(err); else resolve(this);
+  });
+});
 
 // ─── 文化プリセット定義 ───────────────────────────────────
 // 各値は moderationScore（0-100）に対する調整係数
@@ -85,7 +96,32 @@ const DEFAULT_CULTURE = 'entertainment';
 class CreatorCultureService {
   constructor() {
     // channelKey → { cultureType, customOverrides, updatedAt }
+    // in-memoryのMapは読み取りの高速な真実の源。起動時にDBから復元し、
+    // setProfile時にDBへも永続化する（従来は再起動で全プロファイルが消えていた — R-3'/短所#3）
     this.profiles = new Map();
+    this._loaded = this._loadFromDb();
+  }
+
+  // 起動時にDBから全プロファイルをMapへ復元する（ベストエフォート）。
+  // テスト環境などでテーブルがまだ無い場合も、警告のみで通常動作を継続する
+  async _loadFromDb() {
+    try {
+      const rows = await dbAll('SELECT channel_key, culture_type, custom_overrides, updated_at FROM culture_profiles');
+      rows.forEach((row) => {
+        let overrides = {};
+        try { overrides = row.custom_overrides ? JSON.parse(row.custom_overrides) : {}; } catch { overrides = {}; }
+        this.profiles.set(row.channel_key, {
+          cultureType: row.culture_type,
+          customOverrides: overrides,
+          updatedAt: row.updated_at,
+        });
+      });
+      if (rows.length > 0) {
+        logger.info(`[CreatorCulture] Restored ${rows.length} culture profile(s) from DB`);
+      }
+    } catch (err) {
+      logger.warn('[CreatorCulture] Could not load culture profiles from DB (starting empty)', { error: err.message });
+    }
   }
 
   // ─────────────────────────────────────────
@@ -124,10 +160,25 @@ class CreatorCultureService {
     }
 
     const key = this._key(platform, channelId);
+    const updatedAt = new Date().toISOString();
     this.profiles.set(key, {
       cultureType,
       customOverrides,
-      updatedAt: new Date().toISOString(),
+      updatedAt,
+    });
+
+    // DBへ永続化（UPSERT）。読み取りはin-memory Mapが担うため、書き込みは
+    // ベストエフォート（fire-and-forget）。失敗してもプロセス内の動作は継続する
+    dbRun(
+      `INSERT INTO culture_profiles (channel_key, culture_type, custom_overrides, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(channel_key) DO UPDATE SET
+         culture_type = excluded.culture_type,
+         custom_overrides = excluded.custom_overrides,
+         updated_at = excluded.updated_at`,
+      [key, cultureType, JSON.stringify(customOverrides || {}), updatedAt]
+    ).catch((err) => {
+      logger.warn('[CreatorCulture] Failed to persist culture profile to DB', { key, error: err.message });
     });
 
     logger.info(`[CreatorCulture] Profile set: ${key} → ${cultureType}`, {
