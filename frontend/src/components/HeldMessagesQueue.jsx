@@ -28,6 +28,34 @@ const RISK_LEVEL_COLOR = {
   high: 'error',
 };
 
+// R-14: NGワードカテゴリの表示ラベルと色（構造化された保留理由をモデレーターに提示）
+const NG_CATEGORY_META = {
+  abuse: { label: '暴言', color: 'error' },
+  threat: { label: '脅迫', color: 'error' },
+  spam: { label: 'スパム', color: 'warning' },
+};
+
+// 保留理由(reasons配列)から、モデレーターに見せる価値のあるバッジ情報を抽出する
+const extractReasonBadges = (reasons) => {
+  if (!Array.isArray(reasons)) return [];
+  const badges = [];
+  reasons.forEach((r) => {
+    if (r.type === 'ng_word_category' && Array.isArray(r.categories)) {
+      r.categories.forEach((cat) => {
+        const meta = NG_CATEGORY_META[cat] || { label: cat, color: 'default' };
+        badges.push({ key: `ng-${cat}`, label: meta.label, color: meta.color });
+      });
+    } else if (r.type === 'multiple_links') {
+      badges.push({ key: 'links', label: 'リンク多数', color: 'warning' });
+    } else if (r.type === 'negative_sentiment') {
+      badges.push({ key: 'sentiment', label: 'ネガティブ感情', color: 'warning' });
+    } else if (r.type === 'repeated_chars') {
+      badges.push({ key: 'repeated', label: '連続文字', color: 'info' });
+    }
+  });
+  return badges;
+};
+
 export default function HeldMessagesQueue() {
   const { t } = useTranslation();
   const [statusFilter, setStatusFilter] = useState('pending');
@@ -144,7 +172,7 @@ export default function HeldMessagesQueue() {
                 >
                   <ListItemText
                     primary={
-                      <Stack direction="row" spacing={1} alignItems="center">
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                         <Typography variant="subtitle2">{msg.user}</Typography>
                         <Chip size="small" label={msg.platform} variant="outlined" />
                         <Chip
@@ -153,6 +181,10 @@ export default function HeldMessagesQueue() {
                           color={RISK_LEVEL_COLOR[msg.holdLevel] || 'default'}
                         />
                         <Chip size="small" label={msg.holdReason} variant="outlined" />
+                        {/* R-14: 構造化された保留理由バッジ（なぜ保留されたかを一目で把握） */}
+                        {extractReasonBadges(msg.reasons).map((b) => (
+                          <Chip key={b.key} size="small" label={b.label} color={b.color} />
+                        ))}
                       </Stack>
                     }
                     secondary={msg.content}

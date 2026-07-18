@@ -877,6 +877,17 @@ const checkMessageHold = async (content, moderationResult, platform) => {
       });
     }
 
+    // R-14: NGワードのカテゴリ（abuse/threat/spam）が判明している場合は
+    // 構造化された理由としてキューに残す（モデレーターがなぜ保留されたかを即座に把握できる）
+    if (Array.isArray(moderationResult.flaggedCategories) && moderationResult.flaggedCategories.length > 0) {
+      reasons.push({
+        type: 'ng_word_category',
+        severity: moderationResult.flaggedCategories.includes('threat') ? 'high' : 'medium',
+        categories: moderationResult.flaggedCategories,
+        words: moderationResult.flaggedWords || []
+      });
+    }
+
     const hold = reasons.length > 0;
     const holdLevel = hold ? reasons.reduce((max, reason) => {
       const levels = { low: 1, medium: 2, high: 3 };
