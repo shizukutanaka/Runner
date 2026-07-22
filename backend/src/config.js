@@ -119,9 +119,32 @@ const config = {
   },
 
   // Rate Limiting
+  // E-14修正: 従来は enabled/general/api/strict が未定義だったため、security.js の
+  // buildLimiter() が常に noopLimiter を返し、全APIでレート制限が実質無効だった。
+  // enabled を明示的に定義する。既定は「本番のみ有効」— テスト環境（大量リクエストを
+  // 送るテストが429で落ちる）とdev環境では既定で無効のまま、本番でのみブルートフォース/
+  // DoS対策が働く。RATE_LIMIT_ENABLED で明示的に上書き可能
   rateLimit: {
+    enabled: process.env.RATE_LIMIT_ENABLED !== undefined
+      ? process.env.RATE_LIMIT_ENABLED === 'true'
+      : (process.env.NODE_ENV || 'development') === 'production',
+    store: process.env.RATE_LIMIT_STORE || 'memory', // 'memory' | 'redis'
+    redisPrefix: process.env.RATE_LIMIT_REDIS_PREFIX || 'runner:ratelimit:',
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000,
-    maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100
+    maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+    // 用途別の設定ノード（security.js の buildLimiter が参照）
+    general: {
+      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000,
+      max: parseInt(process.env.RATE_LIMIT_GENERAL_MAX) || 300
+    },
+    api: {
+      windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000,
+      max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100
+    },
+    strict: {
+      windowMs: 15 * 60 * 1000,
+      max: parseInt(process.env.RATE_LIMIT_STRICT_MAX) || 20
+    }
   },
 
   // Features
