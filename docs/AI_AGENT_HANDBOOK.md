@@ -19,7 +19,7 @@
 1. **実動する認証基盤** — 登録/ログイン/2FA/リフレッシュトークンローテーション（旧トークン即無効化）/パスワードリセット。curl+実ブラウザでE2E検証済み
 2. **YouTube Live Chat 実取込** — クォータ追跡（日次1万units・超過前ブロック）・APIの`pollingIntervalMillis`尊重・指数バックオフ・連続エラー自動停止（`services/youtubeIngestionService.js`）
 3. **フェイルセーフ設計の一貫性** — 全APIキー未設定でも警告のみで起動しルールベースにフォールバック。**新機能もこの規約に必ず従うこと**
-4. **テスト運用規律** — 459テスト・失敗4件（意図的据え置き）。「ベースライン悪化ゼロ」を毎変更で確認する文化が確立
+4. **テスト運用規律** — 469テスト・失敗4件（意図的据え置き）。「ベースライン悪化ゼロ」を毎変更で確認する文化が確立
 5. **差別化機能群（UI込み）** — 健全性スコア/離脱検知（取込配線+再起動ウォームアップ済み・R-19）/文化プロファイル（DB永続化済み・R-18）/文脈分析
 6. **モデレーションの近代化済み部分** — omni-moderation化(R-1)・実翻訳配線(R-10)・NGワード+回避対策（全角/ゼロ幅/ホモグリフ・R-5a/R-11）・構造化フラグ理由+UIバッジ(R-14a/b)・カスタムフィルタ復旧(R-5補足)
 7. **業務ワークフロー** — 保留キュー（理由バッジ付き）・ソフトデリート+削除履歴の監査証跡・モデレータートリアージ
@@ -28,6 +28,7 @@
 
 | # | 内容 | 参照 |
 |---|---|---|
+| **0** | 🔴 **モデレーション判断がプラットフォームへ書き戻されない** — ダッシュボードで「削除」してもYouTube上では見えたまま、「BAN」しても発言し続けられる。**製品の中核価値が成立していない**（第一原理分析で発見。識別子の永続化＝土台のみ実施済み） | **R-20 / W-12** |
 | 1 | **Twitch未実装**（製品名の約束に対し片翼。実装経路は確定済み） | R-7 / W-2 |
 | ~~2~~ | ~~レート制限が全体で無効~~ → **W-1で解決済み**（2026-07-18・本番のみ既定有効） | E-14 / W-1 |
 | 3 | **スタブAPI約48関数**がハードコード値を返す | E-1/E-2 / W-4 |
@@ -38,7 +39,7 @@
 
 ## 3. 絶対規約（Non-negotiables）
 
-- **テストベースライン**: `cd backend && rm -f data/test.db && NODE_ENV=test npx jest --runInBand` → **4 failed / 445 passed / 459 total** が基準（本書作成時点）。失敗4件は `tests/api/settings.test.js` の仕様未確定分（意図的据え置き）。**これを1件でも増やす変更は禁止**。並列実行は共有 test.db の競合で偽の失敗（20件超）を出すため、**必ず `--runInBand` + 事前の `rm -f data/test.db`**
+- **テストベースライン**: `cd backend && rm -f data/test.db && NODE_ENV=test npx jest --runInBand` → **4 failed / 455 passed / 469 total** が基準（2026-08-08時点。この数値は増分ごとに更新すること）。失敗4件は `tests/api/settings.test.js` の仕様未確定分（意図的据え置き）。**これを1件でも増やす変更は禁止**。並列実行は共有 test.db の競合で偽の失敗（20件超）を出すため、**必ず `--runInBand` + 事前の `rm -f data/test.db`**
 - **フェイルセーフ**: 外部キー/サービス未設定でもクラッシュせず警告のみで全機能動作させる（例: `openaiService.isAvailable()` チェック→ルールベース続行、`ng-words.json` 読込失敗→空リスト+警告）
 - **UI変更は実ブラウザ検証必須**: frontend/ ディレクトリから `require('playwright-core')`（トップレベルの `playwright` は無い）、実行ファイルは `/opt/pw-browsers/chromium`、スクリプトは **`.cjs` 拡張子**（frontend は `"type":"module"`）。検証不能な場合は成果報告にその旨を明記する
 - **スキーマ変更**: `CREATE TABLE IF NOT EXISTS` は**既存テーブルに対してno-op**（列は追加されない）。既存テーブルへの列追加は `db.js` の `ensureColumnDefinitions()` パターン（`PRAGMA table_info` 照合→`ALTER TABLE ADD COLUMN`）を使用
@@ -83,7 +84,7 @@
 - **コスト設計**: プロンプトキャッシュ前提の「大きな固定ポリシー文+短い可変部」構成（根拠: RESEARCH_IMPROVEMENTS R-4）。Batch APIはリアルタイム用途に不可
 - **完了条件**: キー有無両方でテストが通ること・モックOpenAIクライアントでのプロンプト構築ユニットテスト
 
-### W-4. スタブAPIトリアージ（E-1/E-2）
+### W-4. スタブAPIトリアージ（E-1/E-2）— analyticsController ✅ 完了 / moderationController 残
 - **対象**: `moderationController.js` 約35関数・`analyticsController.js` 13関数
 - **判断基準**: フロントから実際に呼ばれている→本実装 / どこからも呼ばれていない→削除（前例: R-3・R-10のデッドコード削除、E-9〜E-12）
 - **手順**: 関数ごとに `grep -rn "<エンドポイントパス>" frontend/src` で利用有無を確認 → 数関数単位でコミット
@@ -101,6 +102,21 @@
 ### W-8〜W-11. 製品判断待ち（勝手に着手しない）
 - **W-8** マルチテナント本実装（D-6/E-3）・**W-9** httpOnly Cookie移行（D-7）・**W-10** 規制対応（R-13、法的要求事項の整理は RESEARCH_IMPROVEMENTS に済み）・**W-11** Stripe課金UI（E-5）
 - いずれもスキーマ設計/対応市場/法務の判断が必要。**ユーザーの明示指示があった場合のみ着手**し、判断材料は各参照先に整理済み
+
+### W-12. プラットフォーム書き戻しの実装（R-20）★第一原理上の最重要欠落
+- **なぜ最優先か**: 現状、ダッシュボードで「削除」してもYouTube上ではコメントが**見えたまま**、「BAN」してもユーザーは**発言し続けられる**。製品の中核価値（有害コメントの処理）が成立していない。詳細な証拠はRESEARCH_IMPROVEMENTS R-20
+- **✅ 済（土台）**: `comments.platform_message_id` / `author_channel_id` の永続化。取込が捨てていた `item.id` / `item.authorDetails.channelId` を保存するようにした
+- **残タスク（この順序で）**:
+  1. **OAuth2の導入** — `liveChatMessages.delete` / `liveChatBans.insert` には `youtube.force-ssl` スコープのOAuth2が必須（**APIキーでは不可能**）。`YOUTUBE_CLIENT_ID`/`SECRET`/`REFRESH_TOKEN` を config と `.env.example` に追加し、`youtubeIngestionService` の `google.youtube({auth})` を OAuth2 クライアントに切替（読み取りはAPIキーのままでも可）
+  2. **書き込みメソッド** — `deleteLiveChatMessage(platformMessageId)` / `banUser(liveChatId, authorChannelId, type)` を `youtubeIngestionService` に追加
+  3. **モデレーション経路から呼ぶ** — `commentsController` の削除/status変更、`usersController` のBAN、保留却下の各パスから。**保存済み識別子がNULLの行（HTTP投稿・過去データ）はスキップ**
+  4. **クォータ計上** — 書き込みは概ね **50 units/回**（日次既定10,000）。`youtubeIngestionService` のクォータ表に書き込み分を追加しないと取込予算を食い潰す
+- **フェイルセーフ規約の適用**: OAuth未設定時は**ローカルDB更新のみ＋警告ログ**で従来通り動作させること（クラッシュさせない）
+- **完了条件**: OAuth設定済み環境で、ダッシュボードからの削除が実際のYouTubeライブチャットに反映されること
+
+### W-13. `papers` の偽の約束を解消（R-21残課題）
+- `routes/papers.js` は**常に空配列**を返すが、`CommentItem.js` に「関連論文」ボタン、`RelatedPapersDialog.js` というUIが存在する。ユーザーには「壊れた機能」に見える
+- 対応は (a) UI込みで削除 か (b) バックエンドが既に返している `"configure SEMANTIC_SCHOLAR_API_KEY to enable"` を UI が「未設定」として明示表示しボタンを無効化、のいずれか。**(b)推奨**（実ブラウザ検証必須）
 
 ## 7. 定型コマンド集
 

@@ -255,6 +255,36 @@ Web調査で確認した事実と、実コードでの参照ゼロをgrepで確�
 - **検証**: 単体テスト1件追加（新インスタンス＝再起動相当でcommentsから常連を復元）。**実サーバーでE2E確認**: 同一ユーザー`loyalfan`から3コメント投稿 → `GET /api/insights/silent-departure/youtube/default` で `regularUserCount:1`（配線前は常に0）→ サーバー再起動 → 起動ログ「Warmed 3 activity record(s) from comments table」→ 再度 `regularUserCount:1`（ウォームアップで維持）
 - **再検証**: `grep -n "departureDetector.record" backend/src/controllers/commentsController.js`（配線）・`grep -n "_warmFromComments" backend/src/services/silentDepartureDetector.js`（ウォームアップ）→ 双方ヒットすれば適用済み
 
+### R-20. 🔴【第一原理分析】モデレーション判断がプラットフォームへ書き戻されない（2026-08-08発見・土台のみ実施）
+
+**第一原理からの導出**: 配信者が求める価値は「有害コメントを手作業より速く確実に処理する」こと。これを成立させる最小の因果連鎖は **①取込 → ②判定 → ③プラットフォーム上での実行 → ④人間の介在 → ⑤記録**。このうち **③が完全に欠落**している。
+
+- **確認済みの事実（backend全走査）**: モデレーション判断は一切プラットフォームに反映されない。**ダッシュボードで「削除」したコメントはYouTube上では見えたまま、「BAN」したユーザーは配信で発言し続けられる**
+  - 削除 `commentsController.js` → `UPDATE comments SET status='deleted'` のみ
+  - BAN `usersController.js` → `UPDATE users SET status, ban_until` のみ（`platform` 値は保存されるだけで未使用）
+  - 保留却下 `moderationController.js` → `held_messages.status` を反転するだけ
+  - `youtubeIngestionService.js` は **read専用**（`videos.list` と `liveChatMessages.list` の2つのみ）。docstringにも「監視型API」と明記され、クォータ表にも書き込み分の予算が無い
+  - → **現状の製品は「読み取り専用ミラー＋ローカル判断台帳」**
+- **構造的ブロッカー4つと技術的裏付け**:
+  1. **認証**: 現状はAPIキー認証。`liveChatMessages.delete` / `liveChatBans.insert` は**OAuth 2.0 + `youtube.force-ssl` スコープが必須**（同スコープは "See, edit, and permanently delete your YouTube videos, ratings, comments and captions" を要求する強い権限）。OAuth2クライアント/リフレッシュトークンはコードにも `.env.example` にも存在しない
+  2. **識別子の欠落** → ✅ **本コミットで解消**（下記）
+  3. 書き込み呼び出し自体が未実装
+  4. **クォータ会計**: 書き込み操作は概ね **50 units/回**（日次既定 10,000 units）。削除・BANを多用すると取込用の予算を圧迫するため、既存のクォータ追跡に書き込み分を計上する必要がある
+- **✅ 本コミットで実施（ブロッカー②の解消・書き戻しの前提条件）**: `comments` に `platform_message_id` / `author_channel_id` を追加（`ensureColumnDefinitions()` パターン）。`youtubeIngestionService` が**従来捨てていた** `item.id` と `item.authorDetails.channelId` を `ingestComment` へ渡し保存する。これが無い限り、将来どう実装しても**書き戻し対象を指定できない**
+- **未実施（次段）**: OAuth2資格情報の用意（運用/製品判断が必要）、書き込み呼び出し、クォータ計上。詳細な作業指示は `AI_AGENT_HANDBOOK.md` W-12
+- **再検証**: `grep -n "platform_message_id" backend/src/db.js backend/src/controllers/commentsController.js` → 双方ヒットすれば土台は適用済み
+- **出典**: [LiveChatMessages: delete](https://developers.google.com/youtube/v3/live/docs/liveChatMessages/delete) / [LiveChatBans: insert](https://developers.google.com/youtube/v3/live/docs/liveChatBans/insert) / [determine quota cost](https://developers.google.com/youtube/v3/determine_quota_cost)
+
+### R-21. 🟡【第一原理分析】因果連鎖に寄与しないルート群を削除（2026-08-08実施）
+
+- **確認済みの事実**: 以下3ルート（計182 LOC）は第一原理の5段階のいずれにも属さず、**フロントエンドからの参照がゼロ**、かつプレースホルダ文字列を返すだけだった
+  - `innovativeTechnologies.js`(72行) — 機能フラグ一覧を返すだけ
+  - `advancedAIServices.js`(58行) — `"configure OPENAI_API_KEY for full functionality"` を返すだけ。**実際のAI判定は `moderationService`/`openaiService` が担っており完全な重複surface**
+  - `integratedAnalysis.js`(52行) — `"combine multiple insight APIs..."` を返すだけ
+- **実施**: 3ファイルと `app.js` のマウント（`/api/analysis`, `/api/ai`, `/api/innovative`）を削除（前例: R-3/R-10、E-9〜E-12のデッドコード削除）
+- **残課題**: `papers.js`(56行)は学術論文検索で**常に空配列**を返すが、`CommentItem.js` に「関連論文」ボタン、`RelatedPapersDialog.js` というUIが存在する。**ユーザーから見える偽の約束**であり、削除かUI側での「未設定」明示のいずれかが必要（未着手）
+- **再検証**: `grep -rn "innovativeTechnologies\|advancedAIServices\|integratedAnalysis" backend/src frontend/src` → 0件
+
 ---
 
 ## 検証（本ブランチで実施済みの R-1/R-3/R-5a/R-5補足/R-10/R-11/R-12/R-14/R-18/R-19）

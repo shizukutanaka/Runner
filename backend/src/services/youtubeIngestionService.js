@@ -197,7 +197,17 @@ class YouTubeIngestionService {
         }
         try {
           await commentsController.ingestComment(
-            { content, user, platform: 'youtube', timestamp: item.snippet?.publishedAt },
+            {
+              content,
+              user,
+              platform: 'youtube',
+              timestamp: item.snippet?.publishedAt,
+              // R-20: 書き戻し（liveChatMessages.delete / liveChatBans.insert）に
+              // 必要な識別子。従来はここで捨てていたため、モデレーション判断を
+              // YouTube側へ反映する手段が構造的に存在しなかった
+              platformMessageId: item.id,
+              authorChannelId: item.authorDetails?.channelId
+            },
             { io: watch.io }
           );
         } catch (ingestError) {

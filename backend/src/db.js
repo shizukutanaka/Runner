@@ -175,7 +175,13 @@ const ensureCommentColumns = () => {
     { name: 'deletion_moderator_id', definition: 'TEXT' },
     { name: 'deletion_timestamp', definition: 'DATETIME' },
     { name: 'deletion_evidence', definition: 'TEXT' },
-    { name: 'updated_at', definition: 'DATETIME' }
+    { name: 'updated_at', definition: 'DATETIME' },
+    // R-20: プラットフォーム側の識別子。モデレーション判断をプラットフォームへ
+    // 書き戻す（liveChatMessages.delete / liveChatBans.insert）には、対象の
+    // メッセージIDと著者チャンネルIDが必須。従来は取込時に捨てていたため、
+    // 書き戻し機能を実装しようにも対象を指定できない状態だった
+    { name: 'platform_message_id', definition: 'TEXT' },
+    { name: 'author_channel_id', definition: 'TEXT' }
   ]);
 };
 

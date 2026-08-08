@@ -361,7 +361,10 @@ const getComment = asyncHandler(async (req, res, next) => {
  * @param {{io?: object}} [options]
  * @returns {Promise<object>} outcome descriptor: 'rate_limited' | 'rejected' | 'held' | 'created'
  */
-const ingestComment = async ({ content, user, platform, timestamp }, { io } = {}) => {
+// R-20: platformMessageId / authorChannelId は、モデレーション判断をプラット
+// フォーム側へ書き戻す（YouTubeの liveChatMessages.delete / liveChatBans.insert）
+// ために必須の識別子。取込元が提供する場合のみ保存する（HTTP経由の投稿では未指定）
+const ingestComment = async ({ content, user, platform, timestamp, platformMessageId, authorChannelId }, { io } = {}) => {
   const ts = timestamp || new Date().toISOString();
   const commentId = uuidv4();
   const normalizedContent = sanitizeForStorage(normalizeText(content ?? ''));
@@ -416,8 +419,8 @@ const ingestComment = async ({ content, user, platform, timestamp }, { io } = {}
   }
 
   await dbRun(
-    'INSERT INTO comments (id, content, user, platform, status, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
-    [commentId, normalizedContent, normalizedUser, platform, 'visible', ts]
+    'INSERT INTO comments (id, content, user, platform, status, timestamp, platform_message_id, author_channel_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [commentId, normalizedContent, normalizedUser, platform, 'visible', ts, platformMessageId || null, authorChannelId || null]
   );
 
   // ユーザーの最終コメント時刻を更新
