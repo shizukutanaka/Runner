@@ -190,7 +190,7 @@ Comment: "${text}"
 Respond with ONLY valid JSON in this exact format:
 {
   "sentiment": "positive|negative|neutral",
-  "score": 0.0-1.0,
+  "score": 0.0-1.0,   // valence: 0.0 = most negative, 0.5 = neutral, 1.0 = most positive
   "intensity": "very_negative|negative|neutral|positive|very_positive",
   "confidence": 0.0-1.0,
   "language": "detected language code",

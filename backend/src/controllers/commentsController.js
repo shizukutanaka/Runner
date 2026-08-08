@@ -901,11 +901,19 @@ const checkMessageHold = async (content, moderationResult, platform) => {
     }
 
     // 感情分析チェック
-    if (moderationResult.sentiment === 'negative' && moderationResult.sentimentScore >= holdSettings.negativeSentimentThreshold) {
+    // R-23: sentimentScore は「感情価（valence）」で、**低いほどネガティブ**（negative=0.2 /
+    // neutral=0.5 / positive=0.75）。一方 negativeSentimentThreshold(0.8) は
+    // 「どれだけネガティブか」の強度を意味する。旧実装は valence をそのまま
+    // `>= 0.8` と比較していたため、ネガティブ判定時のスコアは常に0.2で
+    // **条件が成立しえず、この保留ルールは一度も発火していなかった**。
+    // valence を強度（negativity = 1 - valence）へ変換してから比較する
+    const negativity = 1 - (moderationResult.sentimentScore ?? 0.5);
+    if (moderationResult.sentiment === 'negative' && negativity >= holdSettings.negativeSentimentThreshold) {
       reasons.push({
         type: 'negative_sentiment',
         severity: 'medium',
         sentimentScore: moderationResult.sentimentScore,
+        negativity: Math.round(negativity * 100) / 100,
         threshold: holdSettings.negativeSentimentThreshold
       });
     }

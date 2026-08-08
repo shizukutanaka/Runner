@@ -678,11 +678,32 @@ exports.analyzeComment = async (content, platform, user, timestamp) => {
   result.hasCustomFilterMatches = customFilterResults.hasMatches;
 
   // 感情分析
+  // R-23: 旧実装は、上でAI感情分析(openaiService.analyzeSentiment)を実行して
+  // aiAnalysis.sentiment に格納していたにもかかわらず、ここでルールベースの結果で
+  // result.sentiment を **無条件に上書き** していた。つまり課金・レイテンシを払って
+  // 取得したAIの判定が下流の判断（保留ルール等）に一切使われず捨てられていた。
+  // AIの結果が利用可能で信頼度が十分なときはそちらを優先し、無ければ従来通り
+  // ルールベースにフォールバックする（キー未設定時の動作は不変）
   const sentimentAnalysis = analyzeSentiment(content);
-  result.sentiment = sentimentAnalysis.sentiment;
-  result.sentimentScore = sentimentAnalysis.score;
-  result.sentimentIntensity = sentimentAnalysis.intensity;
-  result.sentimentConfidence = sentimentAnalysis.confidence;
+  const aiSentiment = result.aiAnalysis?.sentiment;
+  const useAiSentiment = aiSentiment
+    && !aiSentiment.error
+    && typeof aiSentiment.score === 'number'
+    && (aiSentiment.confidence ?? 0) >= 0.5;
+
+  if (useAiSentiment) {
+    result.sentiment = aiSentiment.sentiment;
+    result.sentimentScore = aiSentiment.score;
+    result.sentimentIntensity = aiSentiment.intensity || sentimentAnalysis.intensity;
+    result.sentimentConfidence = aiSentiment.confidence;
+    result.sentimentSource = 'ai';
+  } else {
+    result.sentiment = sentimentAnalysis.sentiment;
+    result.sentimentScore = sentimentAnalysis.score;
+    result.sentimentIntensity = sentimentAnalysis.intensity;
+    result.sentimentConfidence = sentimentAnalysis.confidence;
+    result.sentimentSource = 'rule';
+  }
 
   // リンクベースのスコアリング
   if (linkAnalysis.hasBlockedLinks) {

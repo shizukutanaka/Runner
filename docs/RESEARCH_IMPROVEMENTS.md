@@ -308,6 +308,25 @@ Web調査で確認した事実と、実コードでの参照ゼロをgrepで確�
 - **再検証**: `NODE_ENV=test npx jest tests/services/raidDetector.test.js` → 8件合格
 - **出典**: https://arxiv.org/pdf/2305.16248 (CSCW 2023, https://dl.acm.org/doi/10.1145/3610191) / https://arxiv.org/pdf/2509.00780
 
+### R-23. 評価ハーネスの検証中に発見した感情分析の2欠陥（2026-08-08・修正済み）
+
+R-5bの評価ハーネス（R-5b）でAI経路との差分を調べる過程で、**感情分析まわりに2つの実害のある欠陥**を発見・修正した。どちらもテストが無く、静かに機能していなかった。
+
+**欠陥1: ネガティブ感情による保留ルールが一度も発火していなかった**
+- `analyzeSentiment()` の `score` は**感情価（valence）**で、`negative=0.2 / neutral=0.5 / positive=0.75` と**低いほどネガティブ**。一方 `checkMessageHold()` の条件は `sentiment === 'negative' && sentimentScore >= negativeSentimentThreshold(0.8)` だった
+- ネガティブ判定時のスコアは**常に0.2**なので `0.2 >= 0.8` は**永遠に偽**。つまりこの保留ルールは**構造的に発火し得ないデッドルール**だった（NGワードを含まない強いネガティブコメントが保留されず素通りしていた）
+- **修正**: 感情価を強度へ変換（`negativity = 1 - valence`）してから閾値と比較。**実サーバーで確認**: 「最悪だしつまらない、ひどい」→ **202 Held**（`negative_sentiment`, `negativity: 0.8`）。通常コメント3件は 201 のまま（誤検知なし）
+
+**欠陥2: AI感情分析の結果を取得しながら捨てていた**
+- `analyzeComment()` は `openaiService.analyzeSentiment()` を実行して `aiAnalysis.sentiment` に格納していたが、その後**ルールベースの結果で `result.sentiment` / `sentimentScore` を無条件に上書き**していた
+- 結果、**課金とレイテンシを払って取得したAI判定が下流の判断（保留ルール等）に一切使われず捨てられていた**
+- **修正**: AI結果が利用可能かつ `confidence >= 0.5` のときはそちらを優先し、無ければ従来のルールベースへフォールバック。どちらを使ったかを `sentimentSource` ('ai'|'rule') として明示。**キー未設定時の挙動は不変**（フェイルセーフ規約を維持）
+- 併せて、AI側プロンプトの `score` の向きが未定義で解釈が曖昧だったため「0.0=最もネガティブ / 1.0=最もポジティブ」と明記し、ルールベースと**同じ感情価スケール**に揃えた
+
+- **意義**: R-5bの実測で `indirect`（語彙に頼らない攻撃）が0%だったが、欠陥1の修正により**NGワードを含まない強いネガティブコメントは保留キューに載る**ようになり、人間の判断へ回る経路ができた
+- **回帰テスト**: `tests/services/sentimentHold.test.js`（4件）
+- **再検証**: `grep -n "sentimentSource" backend/src/services/moderationService.js` / `grep -n "negativity" backend/src/controllers/commentsController.js`
+
 ---
 
 ## 検証（本ブランチで実施済みの R-1/R-3/R-5a/R-5補足/R-10/R-11/R-12/R-14/R-18/R-19）
