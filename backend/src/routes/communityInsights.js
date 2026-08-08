@@ -16,6 +16,7 @@ const detector  = require('../services/emotionalContagionDetector');
 const health    = require('../services/communityHealthService');
 const culture   = require('../services/creatorCultureService');
 const departure = require('../services/silentDepartureDetector');
+const raid      = require('../services/raidDetector');
 const triage    = require('../services/moderatorTriageService');
 const logger    = require('../logger');
 const { authenticateToken, requireRole } = require('../middleware/auth');
@@ -363,6 +364,24 @@ router.post('/triage', (req, res) => {
   } catch (err) {
     logger.error('[CommunityInsights] Triage error:', err);
     res.status(500).json({ status: 500, message: 'トリアージに失敗しました' });
+  }
+});
+
+// ─────────────────────────────────────────
+//    ヘイトレイド（協調攻撃）検知 — R-22
+//    GET /api/insights/raid-detection/:platform/:channelId
+//
+//    1コメント単位の判定では捉えられない「多数アカウントによる同時類似投稿」
+//    を検知する。研究的背景は RESEARCH_IMPROVEMENTS R-22 を参照
+// ─────────────────────────────────────────
+router.get('/raid-detection/:platform/:channelId', (req, res) => {
+  try {
+    const { platform, channelId } = req.params;
+    const result = raid.analyze(platform, channelId);
+    res.json({ status: 200, data: result });
+  } catch (err) {
+    logger.error('[CommunityInsights] Raid detection error:', err);
+    res.status(500).json({ status: 500, message: 'レイド検知の解析に失敗しました' });
   }
 });
 

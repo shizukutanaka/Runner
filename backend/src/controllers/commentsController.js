@@ -6,6 +6,7 @@ const logger = require('../logger');
 const moderationService = require('../services/moderationService');
 const commentService = require('../services/commentService');
 const departureDetector = require('../services/silentDepartureDetector');
+const raidDetector = require('../services/raidDetector');
 const { asyncHandler } = require('../middleware/errorHandler');
 
 // HTTP経由のコメント作成/更新をWebSocketクライアントへブロードキャストする。
@@ -438,6 +439,15 @@ const ingestComment = async ({ content, user, platform, timestamp, platformMessa
     departureDetector.record(platform, 'default', normalizedUser, ts);
   } catch (recordErr) {
     logger.warn('[Comments] Failed to record activity for departure detection', { error: recordErr.message });
+  }
+
+  // R-22: ヘイトレイド（協調攻撃）検知へ記録する。1コメント単位の判定では
+  // 「多数のアカウントが同時に類似内容を投稿する」というライブ配信固有の
+  // 攻撃パターンを捉えられないため、横断シグナルを別途蓄積する
+  try {
+    raidDetector.record(platform, 'default', normalizedUser, normalizedContent, ts);
+  } catch (raidErr) {
+    logger.warn('[Comments] Failed to record activity for raid detection', { error: raidErr.message });
   }
 
   const created = await dbGet('SELECT * FROM comments WHERE id = ?', [commentId]);

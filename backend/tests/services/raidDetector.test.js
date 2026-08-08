@@ -1,0 +1,85 @@
+// R-22: ヘイトレイド（協調攻撃）検知。研究(arXiv:2305.16248)が示す
+// 「多数アカウントによる同時類似投稿」というライブ配信固有の攻撃パターンを
+// 捉えられるか、および正当な同時多発コメントを誤検知しないかを検証する。
+const { RaidDetector, normalizeForSimilarity } = require('../../src/services/raidDetector');
+
+describe('RaidDetector（協調攻撃検知・R-22）', () => {
+  let det;
+  beforeEach(() => { det = new RaidDetector(); });
+
+  describe('正規化', () => {
+    it('記号/空白/連続文字の揺れを吸収して同一視する', () => {
+      const a = normalizeForSimilarity('死ね!!!');
+      const b = normalizeForSimilarity('し ね');
+      expect(normalizeForSimilarity('死ね')).toBe(a);
+      expect(b).toBe('しね');
+      // 3連以上の繰り返しは圧縮される
+      expect(normalizeForSimilarity('うざあああああ')).toBe(normalizeForSimilarity('うざああ'));
+    });
+  });
+
+  describe('検知', () => {
+    it('多数の異なるアカウントが同一内容を短時間に投稿するとレイド判定', () => {
+      // 12アカウントが同じ攻撃文を投稿（＝典型的なhate raid）
+      for (let i = 0; i < 12; i++) {
+        det.record('twitch', 'ch1', `bot_${i}`, '死ね消えろ', new Date());
+      }
+      const r = det.analyze('twitch', 'ch1');
+      expect(r.raidDetected).toBe(true);
+      expect(r.score).toBeGreaterThanOrEqual(0.6);
+      expect(r.similarClusters[0].userCount).toBeGreaterThanOrEqual(3);
+      expect(r.distinctUsers).toBe(12);
+      expect(r.recommendation).toContain('協調攻撃');
+    });
+
+    it('表記を少し変えた回避（記号/連続文字）も同一クラスタとして捉える', () => {
+      const variants = ['死ね!!!', '死ね', 'し　ね', '死ねええええ', '死ね。', '死ね~~~'];
+      variants.forEach((v, i) => det.record('twitch', 'ch2', `u${i}`, v, new Date()));
+      const r = det.analyze('twitch', 'ch2');
+      // 全て同一クラスタに寄るはず（少なくとも半数以上）
+      expect(r.similarClusters.length).toBeGreaterThanOrEqual(1);
+      expect(r.similarClusters[0].userCount).toBeGreaterThanOrEqual(3);
+    });
+
+    it('同一ユーザーの連投だけではレイド判定しない（協調ではない）', () => {
+      for (let i = 0; i < 15; i++) {
+        det.record('youtube', 'ch3', 'single_spammer', '宣伝です', new Date());
+      }
+      const r = det.analyze('youtube', 'ch3');
+      // クラスタのユーザー数は1なので、協調攻撃の主シグナルは立たない
+      expect(r.distinctUsers).toBe(1);
+      expect(r.raidDetected).toBe(false);
+    });
+
+    it('内容がバラバラな通常の盛り上がりは誤検知しない', () => {
+      const msgs = ['今日もありがとう', 'いい配信だった', '次はいつ？', 'かわいい',
+        'その戦法うまい', '初見です', 'おつかれさま', 'BGM教えて'];
+      msgs.forEach((m, i) => det.record('youtube', 'ch4', `viewer_${i}`, m, new Date()));
+      const r = det.analyze('youtube', 'ch4');
+      expect(r.raidDetected).toBe(false);
+    });
+
+    it('メッセージが少なすぎる場合は判定しない', () => {
+      det.record('youtube', 'ch5', 'u1', 'こんにちは', new Date());
+      const r = det.analyze('youtube', 'ch5');
+      expect(r.raidDetected).toBe(false);
+      expect(r.recommendation).toContain('十分なメッセージがありません');
+    });
+
+    it('ウィンドウ外の古いメッセージは解析対象から外れる', () => {
+      const old = new Date(Date.now() - 5 * 60 * 1000); // 5分前（ウィンドウ60秒外）
+      for (let i = 0; i < 12; i++) {
+        det.record('twitch', 'ch6', `bot_${i}`, '死ね', old);
+      }
+      const r = det.analyze('twitch', 'ch6');
+      expect(r.messageCount).toBe(0);
+      expect(r.raidDetected).toBe(false);
+    });
+
+    it('未観測チャンネルは空の結果を返す', () => {
+      const r = det.analyze('youtube', 'unknown');
+      expect(r.raidDetected).toBe(false);
+      expect(r.messageCount).toBe(0);
+    });
+  });
+});
