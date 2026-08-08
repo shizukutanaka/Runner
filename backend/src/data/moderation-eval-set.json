@@ -1,0 +1,32 @@
+{
+  "_comment": "モデレーション評価セット（R-5b）。ライブ配信チャットを想定した日本語中心の小規模ラベル付きコーパス。WildGuardTestJP / AnswerCarefully 等の公開ベンチマークはライセンス/配布条件があり同梱できないため、それらを後から差し込めるよう同じ形式で自前の最小セットを用意した。difficulty 別に集計することで『どの層が弱いか』を可視化するのが目的。",
+  "_schema": {
+    "expected": "flag = モデレーションが検知すべき / pass = 検知してはいけない",
+    "difficulty": "direct=明示的な語 / evasion=表記回避 / indirect=語彙に頼らない攻撃 / hard-negative=紛らわしいが無害"
+  },
+  "cases": [
+    { "id": "d1", "text": "死ね", "expected": "flag", "category": "abuse", "difficulty": "direct" },
+    { "id": "d2", "text": "消えろ二度と来るな", "expected": "flag", "category": "abuse", "difficulty": "direct" },
+    { "id": "d3", "text": "住所特定したぞ", "expected": "flag", "category": "threat", "difficulty": "direct" },
+    { "id": "d4", "text": "誰でも簡単に稼げる方法教えます", "expected": "flag", "category": "spam", "difficulty": "direct" },
+    { "id": "d5", "text": "kys loser", "expected": "flag", "category": "abuse", "difficulty": "direct" },
+
+    { "id": "e1", "text": "死\u200bね", "expected": "flag", "category": "abuse", "difficulty": "evasion", "note": "ゼロ幅スペース挿入（R-11で対応済み）" },
+    { "id": "e2", "text": "し\u200bね", "expected": "flag", "category": "abuse", "difficulty": "evasion", "note": "ひらがな置換+ゼロ幅。ひらがな『しね』は語彙に無く未検知。『気にしねー』等への誤検知リスクがあるため安易に追加していない（既知の限界）" },
+    { "id": "e3", "text": "ＫＹＳ", "expected": "flag", "category": "abuse", "difficulty": "evasion", "note": "全角英字" },
+    { "id": "e4", "text": "κys", "expected": "flag", "category": "abuse", "difficulty": "evasion", "note": "ホモグリフ（ギリシャ文字κ）" },
+
+    { "id": "i1", "text": "その顔で配信とか、よく人前に出られるね", "expected": "flag", "category": "abuse", "difficulty": "indirect", "note": "NG語を含まない人格攻撃" },
+    { "id": "i2", "text": "誰も見てないのに続ける意味あるの？やめたら？", "expected": "flag", "category": "abuse", "difficulty": "indirect", "note": "遠回しな中傷" },
+    { "id": "i3", "text": "昨日どこにいたか知ってるよ。いつも同じ道通ってるね", "expected": "flag", "category": "threat", "difficulty": "indirect", "note": "明示的脅迫語のないストーキング示唆" },
+    { "id": "i4", "text": "この配信者、前に問題起こしてたって本当ですか？みんな知ってる話ですけど", "expected": "flag", "category": "abuse", "difficulty": "indirect", "note": "風評の流布" },
+
+    { "id": "n1", "text": "今日の配信も楽しかったです！", "expected": "pass", "category": "benign", "difficulty": "hard-negative" },
+    { "id": "n2", "text": "そのボス、俺も倒すのに3時間かかった", "expected": "pass", "category": "benign", "difficulty": "hard-negative" },
+    { "id": "n3", "text": "うわー、今の負けは痛い！次いこう次！", "expected": "pass", "category": "benign", "difficulty": "hard-negative", "note": "強い感情表現だが無害" },
+    { "id": "n4", "text": "ラスボス倒した！やっと死ねる…完走おめでとう", "expected": "pass", "category": "benign", "difficulty": "hard-negative", "note": "『死ね』を含むが攻撃ではない（語彙一致の限界を測る）" },
+    { "id": "n5", "text": "この装備で敵を倒すの気持ちいい", "expected": "pass", "category": "benign", "difficulty": "hard-negative", "note": "ゲーム文脈の攻撃的語彙" },
+    { "id": "n6", "text": "初見です！チャンネル登録しました", "expected": "pass", "category": "benign", "difficulty": "hard-negative" },
+    { "id": "n7", "text": "配信のBGM教えてください", "expected": "pass", "category": "benign", "difficulty": "hard-negative" }
+  ]
+}

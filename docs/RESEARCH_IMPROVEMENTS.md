@@ -94,7 +94,14 @@
   - リコー等が14カテゴリの日本語ガードレールモデルを2025年に公開するなど、日本語有害性検出のリソースが充実してきた。(https://jp.ricoh.com/release/2025/1225_1)
 - **元の弱点**: 実効NGリストが `['badword','spamword']` のプレースホルダで**キーワードモデレーションが実質無効**。日本語カバレッジがほぼ無い
 - **(a) ✅ 実施済み（2026-07-13）**: `src/data/ng-words.json` を新設（ja/en・abuse/threat/spamカテゴリ別、明白に敵対的/スパム的な語句に限定した実用最小リスト）。`analyzeComment()` が起動時に読み込み、英語は小文字化比較で大文字小文字を区別せず検出。読込失敗時は空リスト+警告のフェイルセーフ。`tests/services/moderationService.test.js`（新規8テスト）で検証。文脈依存語（ゲーム実況の「殺す」等）は意図的に収録せず、文化プロファイル/AI分析側に委ねる設計
-- **(b) 未着手**: AnswerCarefully等の日本語評価セットでモデレーション合格率を測るハーネス。R-1（omni-moderation化）の効果測定を兼ねる
+- **(b) 実施済み（2026-08-08）— 評価ハーネスと実測値**: `src/scripts/evaluateModeration.js`（Precision/Recall/F1 を difficulty 別に集計）と `src/data/moderation-eval-set.json`（ライブ配信チャットを想定した日本語20件のラベル付きコーパス）を新設。公開ベンチマーク（**WildGuardTestJP**: 英語WildGuardTestベースの日本語ガードレール評価、入出力の有害性と応答拒否を多角評価 / **AnswerCarefully** / リコーのガードレールモデル）はライセンス・配布条件のため同梱できないが、**同じ形式に変換すれば差し替えて評価できる**設計にした
+  - **実測結果（キーワード層のみ・OpenAIキー無し）**: 全体 **Precision 88.9% / Recall 61.5% / F1 72.7%**
+  - **難易度別**: `direct`（明示的NG語）**100%** / `evasion`（表記回避）**75%** / `indirect`（語彙に頼らない攻撃）**0%** / `hard-negative` 誤検知 1/7
+  - **この数値が示すこと（重要）**: 語彙一致層は明示的な語に対しては機能している一方、**「その顔で配信とか、よく人前に出られるね」「昨日どこにいたか知ってるよ」のようなNG語を含まない攻撃は原理的に1件も検知できない**。さらに「やっと死ねる（ゲーム完走の肯定表現）」を誤検知する。**つまり語彙リストの拡充では解決せず、R-4（Policy-as-Prompt によるLLM文脈判定）が必要**という実証的な根拠が得られた。単に語を足すと誤検知が増える（例: ひらがな「しね」は「気にしねー」に誤爆するため意図的に未追加）
+  - **副次的な確認**: R-11のゼロ幅文字除去は正常動作（`死`+ZWSP+`ね`は検知）。未検知の1件はひらがな置換という語彙カバレッジの問題であり、正規化の不具合ではないことを切り分けた
+  - **回帰テスト**: `tests/services/moderationEval.test.js` が上記の実測値を下限として固定。**`indirect` が改善したらR-4の効果測定として期待値を引き上げる**運用
+  - **再検証**: `node src/scripts/evaluateModeration.js`（人間向け）/ `--json`（CI用）
+  - **出典**: [WildGuardTestJP (SB Intuitions, 2025-09)](https://www.sbintuitions.co.jp/blog/entry/2025/09/16/160351) / [リコー ガードレールモデル (2025-12)](https://jp.ricoh.com/release/2025/1225_1) / [日本語誹謗中傷検出の裁判例データセット](https://www.jstage.jst.go.jp/article/jnlp/31/4/31_1598/_article/-char/ja/)
 - **再検証**: `NODE_ENV=test npx jest tests/services/moderationService.test.js` → 8件合格なら(a)維持
 
 ### R-5補足. ✅ 実装検証中に発見・修正した既存バグ: カスタムフィルタ全滅（2026-07-13）

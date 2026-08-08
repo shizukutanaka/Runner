@@ -19,7 +19,7 @@
 1. **実動する認証基盤** — 登録/ログイン/2FA/リフレッシュトークンローテーション（旧トークン即無効化）/パスワードリセット。curl+実ブラウザでE2E検証済み
 2. **YouTube Live Chat 実取込** — クォータ追跡（日次1万units・超過前ブロック）・APIの`pollingIntervalMillis`尊重・指数バックオフ・連続エラー自動停止（`services/youtubeIngestionService.js`）
 3. **フェイルセーフ設計の一貫性** — 全APIキー未設定でも警告のみで起動しルールベースにフォールバック。**新機能もこの規約に必ず従うこと**
-4. **テスト運用規律** — 481テスト・失敗4件（意図的据え置き）。「ベースライン悪化ゼロ」を毎変更で確認する文化が確立
+4. **テスト運用規律** — 486テスト・失敗4件（意図的据え置き）。「ベースライン悪化ゼロ」を毎変更で確認する文化が確立
 5. **差別化機能群（UI込み）** — 健全性スコア/離脱検知（取込配線+再起動ウォームアップ済み・R-19）/文化プロファイル（DB永続化済み・R-18）/文脈分析
 6. **協調攻撃（hate raid）検知** — ライブ配信固有の脅威。1コメント単位では捉えられない「多数アカウントの同時類似投稿」を合成スコアで検知し、遷移時にWebSocketでリアルタイム通知（R-22/R-22b・研究裏付けあり）
 7. **モデレーションの近代化済み部分** — omni-moderation化(R-1)・実翻訳配線(R-10)・NGワード+回避対策（全角/ゼロ幅/ホモグリフ・R-5a/R-11）・構造化フラグ理由+UIバッジ(R-14a/b)・カスタムフィルタ復旧(R-5補足)
@@ -40,7 +40,7 @@
 
 ## 3. 絶対規約（Non-negotiables）
 
-- **テストベースライン**: `cd backend && rm -f data/test.db && NODE_ENV=test npx jest --runInBand` → **4 failed / 467 passed / 481 total** が基準（2026-08-08時点。この数値は増分ごとに更新すること）。失敗4件は `tests/api/settings.test.js` の仕様未確定分（意図的据え置き）。**これを1件でも増やす変更は禁止**。並列実行は共有 test.db の競合で偽の失敗（20件超）を出すため、**必ず `--runInBand` + 事前の `rm -f data/test.db`**
+- **テストベースライン**: `cd backend && rm -f data/test.db && NODE_ENV=test npx jest --runInBand` → **4 failed / 472 passed / 486 total** が基準（2026-08-08時点。この数値は増分ごとに更新すること）。失敗4件は `tests/api/settings.test.js` の仕様未確定分（意図的据え置き）。**これを1件でも増やす変更は禁止**。並列実行は共有 test.db の競合で偽の失敗（20件超）を出すため、**必ず `--runInBand` + 事前の `rm -f data/test.db`**
 - **フェイルセーフ**: 外部キー/サービス未設定でもクラッシュせず警告のみで全機能動作させる（例: `openaiService.isAvailable()` チェック→ルールベース続行、`ng-words.json` 読込失敗→空リスト+警告）
 - **UI変更は実ブラウザ検証必須**: frontend/ ディレクトリから `require('playwright-core')`（トップレベルの `playwright` は無い）、実行ファイルは `/opt/pw-browsers/chromium`、スクリプトは **`.cjs` 拡張子**（frontend は `"type":"module"`）。検証不能な場合は成果報告にその旨を明記する
 - **スキーマ変更**: `CREATE TABLE IF NOT EXISTS` は**既存テーブルに対してno-op**（列は追加されない）。既存テーブルへの列追加は `db.js` の `ensureColumnDefinitions()` パターン（`PRAGMA table_info` 照合→`ALTER TABLE ADD COLUMN`）を使用
@@ -91,8 +91,10 @@
 - **手順**: 関数ごとに `grep -rn "<エンドポイントパス>" frontend/src` で利用有無を確認 → 数関数単位でコミット
 - **完了条件**: 「デモ応答」「ハードコード値」を返すAPIがゼロになる（実装 or 削除で）
 
-### W-5. 日本語評価ハーネス（R-5b）
-- AnswerCarefully 等の日本語安全性データセットからサンプルを取り、`analyzeComment`/omni-moderation の検出率を計測するテスト/スクリプトを追加。R-1の効果測定を兼ねる
+### W-5. 日本語評価ハーネス（R-5b）完了（2026-08-08）
+- `node src/scripts/evaluateModeration.js` で Precision/Recall/F1 を difficulty 別に測定。**実測: F1 72.7%（direct 100% / evasion 75% / indirect 0% / hard-negative 誤検知1）**
+- **この数値はW-3（R-4 Policy-as-Prompt）の優先度の根拠**: 語彙に頼らない攻撃が0%であり、語を足しても解決しない（誤検知が増えるだけ）ことが実証された。W-3実装後は同ハーネスで効果を測ること
+- 回帰テスト `tests/services/moderationEval.test.js` が現状値を下限として固定済み
 
 ### W-6. YouTube 新イベント種別の取込（R-8）
 - 対象タイプ確定済み: `membershipGiftingEvent`/`giftMembershipReceivedEvent`/`newSponsorEvent`/`memberMilestoneChatEvent`/`pollEvent`/`superStickerEvent`。`ingestComment` メタデータへ保存しインサイト入力に活用
