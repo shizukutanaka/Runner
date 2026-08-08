@@ -544,6 +544,7 @@ function detectLanguage(text) {
 
 // Import OpenAI service
 const openaiService = require('./openaiService');
+const creatorCultureService = require('./creatorCultureService');
 
 // コメント本文からURLを抽出し、LINK_BLOCK_CONFIGに基づいてブロック/警告対象を判定する
 function analyzeLinks(content) {
@@ -620,7 +621,9 @@ function analyzeSentiment(content) {
   };
 }
 
-exports.analyzeComment = async (content, platform, user, timestamp) => {
+// R-24: contextComments は直近の文脈コメント（時系列順）。Policy-as-Prompt の
+// 文脈込み判定に使う。省略時は文脈なしで判定する（既存呼び出し元は変更不要）
+exports.analyzeComment = async (content, platform, user, timestamp, contextComments = []) => {
   const result = {
     isSpam: false,
     isOffensive: false,
@@ -657,6 +660,37 @@ exports.analyzeComment = async (content, platform, user, timestamp) => {
       // Add toxicity details
       result.toxicityScore = toxicityResult.score;
       result.toxicityCategories = toxicityResult.categories;
+
+      // R-24: Policy-as-Prompt による文脈込みの判定。文化プロファイル（配信ごとの
+      // 許容度）を自然言語ポリシーへ変換してLLMへ渡す。R-5bの実測で、語彙一致層は
+      // 「NG語を含まない遠回しな攻撃」を0%しか検知できないと判明しており、この層が
+      // その穴を埋めることを狙う。
+      //
+      // **重要な制約（arXiv:2607.12149の指摘に基づく）**: LLMの判定は助言に留める。
+      //   - 既に決定論的判定（NGワード等）でoffensiveなものを、LLMが覆すことはしない
+      //   - LLM単独では自動処罰せず、スコアを上げて人間のレビュー（保留）へ寄せる
+      //   - どのポリシーで判定したかを必ず結果に残し、監査可能にする
+      try {
+        const policyPrompt = creatorCultureService.buildPolicyPrompt(platform, 'default');
+        const policyResult = await openaiService.moderateWithPolicy(content, policyPrompt, contextComments);
+        if (policyResult.available) {
+          result.policyAnalysis = {
+            isViolation: policyResult.isViolation,
+            score: policyResult.score,
+            reason: policyResult.reason,
+            category: policyResult.category,
+            cultureType: policyResult.cultureType,
+            advisory: true // 助言であることを明示（自動処罰の根拠にはしない）
+          };
+          if (policyResult.isViolation) {
+            // 加点のみ。決定論的な判定結果を打ち消さない
+            result.score += Math.round(policyResult.score * 0.5);
+            result.needsHumanReview = true;
+          }
+        }
+      } catch (policyError) {
+        logger.warn('[ModerationService] Policy-as-Prompt analysis failed:', policyError.message);
+      }
 
     } catch (error) {
       logger.warn('[ModerationService] AI analysis failed, falling back to rule-based:', error.message);

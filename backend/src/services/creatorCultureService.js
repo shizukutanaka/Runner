@@ -240,6 +240,72 @@ class CreatorCultureService {
   }
 
   // ─────────────────────────────────────────
+  // Policy-as-Prompt（R-4/R-24）
+  //
+  // 文化プロファイルを LLM へ渡す自然言語ポリシー文へ変換する。
+  // Palla et al., "Policy-as-Prompt: Rethinking Content Moderation in the Age
+  // of LLMs" (FAccT 2025, arXiv:2502.18695) は、抽象的なポリシーを
+  // アノテーションガイドラインやデータセットへ「操作化」する従来工程を、
+  // ポリシーを直接プロンプトとして与える形へ置き換えられると論じている。
+  // 本製品の文化プロファイル（5プリセット＋個別上書き）は、その入力として
+  // そのまま使える構造を既に持っている。
+  //
+  // ただし Neumann et al., "It is not enough to give your moderation rules to
+  // ChatGPT" (MuC 2026 Workshop, arXiv:2607.12149) は、**プロンプトを書くだけでは
+  // コミュニティガバナンスとして不十分**であり、基盤モデル側のプロンプト階層
+  // （prompt stack）が下流の指示より優先されるため、運営者のルールが必ずしも
+  // 効くとは限らないと指摘している。したがって本実装では:
+  //   - LLMの判定は **助言（advisory）** であり、決定論的なNGワード判定を上書きしない
+  //   - どのポリシー（cultureType）で判定したかを必ず結果に含め、監査可能にする
+  //   - 自動処罰には使わず、曖昧なものは人間のレビュー（保留キュー）へ回す
+  // という制約を設ける。詳細は RESEARCH_IMPROVEMENTS R-24
+  // ─────────────────────────────────────────
+  buildPolicyPrompt(platform, channelId) {
+    const profile = this.getProfile(platform, channelId);
+
+    const aggressionGuidance = profile.allowedAggression >= 0.5
+      ? '競技的な煽り・軽口・強い言葉は、この配信の文化の一部として広く許容される。相手個人の尊厳を否定する攻撃のみ問題とする。'
+      : profile.allowedAggression >= 0.3
+        ? '多少の強い言葉は許容するが、特定個人への繰り返しの攻撃は問題とする。'
+        : '攻撃的な表現はほとんど許容されない。穏やかでない言い回しも問題として扱う。';
+
+    const flagGuidance = {
+      no_profanity: '下品・卑猥な言葉遣いを禁止する。',
+      no_violence: '暴力的な描写・示唆を禁止する。',
+      no_adult: '性的・成人向けの話題を禁止する。',
+      no_misinformation: '事実に反する主張・誤情報の拡散を問題とする。',
+      topical_only: '配信の主題から大きく外れた投稿を問題とする。',
+      allow_trash_talk: 'ゲーム内の煽り合い・挑発は文化として許容する。',
+      adult_verified: '視聴者は成人であり、成人向けの話題自体は許容される。',
+    };
+    const flagLines = (profile.flags || [])
+      .map((f) => flagGuidance[f])
+      .filter(Boolean);
+
+    const policy = [
+      `# このチャンネルのモデレーション方針`,
+      ``,
+      `チャンネル種別: ${profile.label}（${profile.description}）`,
+      ``,
+      `## 判断基準`,
+      `- ${aggressionGuidance}`,
+      ...flagLines.map((l) => `- ${l}`),
+      `- 誹謗中傷・脅迫・個人情報の晒し・執拗な付きまといは、表現が遠回しでも問題として扱う。`,
+      `- 単に否定的な感想や批判であることは、それだけでは問題としない。`,
+    ].join('\n');
+
+    return {
+      cultureType: profile.cultureType,
+      policy,
+      // 判定のしきい値（LLMの出力スコアを製品側で解釈するために渡す）
+      thresholds: {
+        autoRejectScore: profile.autoRejectScore,
+        autoApproveScore: profile.autoApproveScore,
+      },
+    };
+  }
+
+  // ─────────────────────────────────────────
   // 全プリセット一覧
   // ─────────────────────────────────────────
   listPresets() {

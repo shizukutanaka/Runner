@@ -19,7 +19,7 @@
 1. **実動する認証基盤** — 登録/ログイン/2FA/リフレッシュトークンローテーション（旧トークン即無効化）/パスワードリセット。curl+実ブラウザでE2E検証済み
 2. **YouTube Live Chat 実取込** — クォータ追跡（日次1万units・超過前ブロック）・APIの`pollingIntervalMillis`尊重・指数バックオフ・連続エラー自動停止（`services/youtubeIngestionService.js`）
 3. **フェイルセーフ設計の一貫性** — 全APIキー未設定でも警告のみで起動しルールベースにフォールバック。**新機能もこの規約に必ず従うこと**
-4. **テスト運用規律** — 490テスト・失敗4件（意図的据え置き）。「ベースライン悪化ゼロ」を毎変更で確認する文化が確立
+4. **テスト運用規律** — 498テスト・失敗4件（意図的据え置き）。「ベースライン悪化ゼロ」を毎変更で確認する文化が確立
 5. **差別化機能群（UI込み）** — 健全性スコア/離脱検知（取込配線+再起動ウォームアップ済み・R-19）/文化プロファイル（DB永続化済み・R-18）/文脈分析
 6. **協調攻撃（hate raid）検知** — ライブ配信固有の脅威。1コメント単位では捉えられない「多数アカウントの同時類似投稿」を合成スコアで検知し、遷移時にWebSocketでリアルタイム通知（R-22/R-22b・研究裏付けあり）
 7. **モデレーションの近代化済み部分** — omni-moderation化(R-1)・実翻訳配線(R-10)・NGワード+回避対策（全角/ゼロ幅/ホモグリフ・R-5a/R-11）・構造化フラグ理由+UIバッジ(R-14a/b)・カスタムフィルタ復旧(R-5補足)
@@ -40,7 +40,7 @@
 
 ## 3. 絶対規約（Non-negotiables）
 
-- **テストベースライン**: `cd backend && rm -f data/test.db && NODE_ENV=test npx jest --runInBand` → **4 failed / 476 passed / 490 total** が基準（2026-08-08時点。この数値は増分ごとに更新すること）。失敗4件は `tests/api/settings.test.js` の仕様未確定分（意図的据え置き）。**これを1件でも増やす変更は禁止**。並列実行は共有 test.db の競合で偽の失敗（20件超）を出すため、**必ず `--runInBand` + 事前の `rm -f data/test.db`**
+- **テストベースライン**: `cd backend && rm -f data/test.db && NODE_ENV=test npx jest --runInBand` → **4 failed / 484 passed / 498 total** が基準（2026-08-08時点。この数値は増分ごとに更新すること）。失敗4件は `tests/api/settings.test.js` の仕様未確定分（意図的据え置き）。**これを1件でも増やす変更は禁止**。並列実行は共有 test.db の競合で偽の失敗（20件超）を出すため、**必ず `--runInBand` + 事前の `rm -f data/test.db`**
 - **フェイルセーフ**: 外部キー/サービス未設定でもクラッシュせず警告のみで全機能動作させる（例: `openaiService.isAvailable()` チェック→ルールベース続行、`ng-words.json` 読込失敗→空リスト+警告）
 - **UI変更は実ブラウザ検証必須**: frontend/ ディレクトリから `require('playwright-core')`（トップレベルの `playwright` は無い）、実行ファイルは `/opt/pw-browsers/chromium`、スクリプトは **`.cjs` 拡張子**（frontend は `"type":"module"`）。検証不能な場合は成果報告にその旨を明記する
 - **スキーマ変更**: `CREATE TABLE IF NOT EXISTS` は**既存テーブルに対してno-op**（列は追加されない）。既存テーブルへの列追加は `db.js` の `ensureColumnDefinitions()` パターン（`PRAGMA table_info` 照合→`ALTER TABLE ADD COLUMN`）を使用
@@ -79,11 +79,10 @@
 - **対象**: `services/twitchIngestionService.js`（新規、`youtubeIngestionService.js` をひな形に）・`server.js`（require+shutdown）・`routes/twitch.js`
 - **完了条件**: 取込が必ず `commentsController.ingestComment()` を通ること（モデレーション/保留/離脱検知が自動適用される）・キー未設定時は警告のみで無効化
 
-### W-3. Policy-as-Prompt 文脈分析（R-4）
-- **前提**: OpenAI APIキーが使える環境で着手（本リポジトリの検証環境では実LLM経路を検証できなかった）
-- **手順**: 文化プロファイル→ポリシー文変換を `creatorCultureService` に追加 → 直近N件の文脈と併せて chat モデルで判定する関数を `openaiService` に追加 → `routes/communityInsights.js` の `_contextAdjustedScore` をLLM版に置換（**キー未設定時は既存ヒューリスティックへフォールバック維持**）
-- **コスト設計**: プロンプトキャッシュ前提の「大きな固定ポリシー文+短い可変部」構成（根拠: RESEARCH_IMPROVEMENTS R-4）。Batch APIはリアルタイム用途に不可
-- **完了条件**: キー有無両方でテストが通ること・モックOpenAIクライアントでのプロンプト構築ユニットテスト
+### W-3. Policy-as-Prompt 文脈分析（R-4）— 骨格実装済み（R-24）/ 実LLM検証が残
+- **済**: `creatorCultureService.buildPolicyPrompt()`（文化プロファイル→自然言語ポリシー）、`openaiService.moderateWithPolicy()`（ポリシーをsystem、可変部をuserに置きプロンプトキャッシュを効かせる構成）、`analyzeComment` への配線。モック8テスト済み
+- **設計制約（arXiv:2607.12149の批判に基づく・変更しないこと）**: LLM判定は**助言**であり決定論的なNGワード判定を覆さない / LLM単独で自動処罰せず `needsHumanReview` で人間へ回す / `cultureType` を結果に残し監査可能にする
+- **残タスク**: 実APIキーでの動作確認と効果測定。**`node src/scripts/evaluateModeration.js` を実行すれば R-5b のハーネスがそのまま効果測定になる**（`indirect` 0% がどこまで改善するか）
 
 ### W-4. スタブAPIトリアージ（E-1/E-2）— analyticsController ✅ 完了 / moderationController 残
 - **対象**: `moderationController.js` 約35関数・`analyticsController.js` 13関数

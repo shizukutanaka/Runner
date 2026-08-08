@@ -235,6 +235,96 @@ Respond with ONLY valid JSON in this exact format:
   }
 }
 
+/**
+ * Policy-as-Prompt によるコンテキスト付きモデレーション判定（R-24）
+ *
+ * 根拠: Palla et al. "Policy-as-Prompt" (FAccT 2025, arXiv:2502.18695) —
+ * ポリシーを自然言語プロンプトとして直接LLMへ与える方式。
+ * 制約: Neumann et al. (MuC 2026, arXiv:2607.12149) が指摘するとおり、
+ * プロンプトだけではガバナンスとして不十分なため、本関数の出力は
+ * **助言（advisory）** として扱い、決定論的な判定を上書きしない設計にしている。
+ *
+ * @param {string} text 判定対象のコメント
+ * @param {{cultureType:string, policy:string}} policyPrompt creatorCultureService.buildPolicyPrompt() の出力
+ * @param {string[]} contextComments 直近の文脈コメント（新しい順でなく時系列順）
+ */
+async function moderateWithPolicy(text, policyPrompt, contextComments = []) {
+  const startTime = Date.now();
+
+  if (!isAvailable) {
+    initializeOpenAI();
+    if (!isAvailable) {
+      // フェイルセーフ規約: キー未設定でも落とさず「判定不能」を返す
+      return {
+        available: false, isViolation: false, score: 0, reason: null,
+        cultureType: policyPrompt?.cultureType ?? null, cached: false,
+        error: 'OpenAI not available'
+      };
+    }
+  }
+
+  const policyText = policyPrompt?.policy ?? '';
+  const cacheKey = _cacheKey('policy', `${policyPrompt?.cultureType}|${contextComments.join('|')}|${text}`);
+  const cached = _cacheGet(cacheKey);
+  if (cached) {
+    _trackUsage('policy', null, true);
+    return { ...cached, fromCache: true, cached: true, latency: Date.now() - startTime };
+  }
+
+  try {
+    // 大きな固定ポリシー文を先頭（systemメッセージ）に置き、可変部分を後ろへ回すことで
+    // OpenAIのプロンプトキャッシュ（1024トークン以上で自動適用）が効きやすい構成にする
+    const contextBlock = contextComments.length > 0
+      ? `\n\n## 直近の文脈（時系列）\n${contextComments.map((c, i) => `${i + 1}. ${c}`).join('\n')}`
+      : '';
+
+    const completion = await _withRetry(() => _callWithTimeout(() =>
+      openai.chat.completions.create({
+        model: config.services.openai.model,
+        messages: [
+          {
+            role: 'system',
+            content: `あなたはライブ配信チャットのモデレーション支援AIです。以下の方針に厳密に従って判定してください。\n\n${policyText}\n\n必ず有効なJSONのみで回答してください。`
+          },
+          {
+            role: 'user',
+            content: `次のコメントを判定してください。${contextBlock}\n\n## 判定対象\n"${text}"\n\n以下の形式のJSONのみを返してください:\n{\n  "isViolation": true|false,\n  "score": 0-100,\n  "reason": "簡潔な理由（日本語）",\n  "category": "harassment|threat|spam|misinformation|none"\n}`
+          }
+        ],
+        temperature: 0.2,
+        max_tokens: 300,
+        response_format: { type: 'json_object' }
+      })
+    ));
+
+    const parsed = JSON.parse(completion.choices[0].message.content);
+    const output = {
+      available: true,
+      isViolation: Boolean(parsed.isViolation),
+      score: Math.max(0, Math.min(100, Number(parsed.score) || 0)),
+      reason: parsed.reason || null,
+      category: parsed.category || 'none',
+      // 監査のため、どのポリシーで判定したかを必ず残す（R-24の制約）
+      cultureType: policyPrompt?.cultureType ?? null,
+      contextUsed: contextComments.length,
+      model: config.services.openai.model,
+      usage: completion.usage
+    };
+
+    _cacheSet(cacheKey, output, CACHE_TTL_MS.sentiment);
+    _trackUsage('policy', completion.usage);
+    return { ...output, cached: false, latency: Date.now() - startTime };
+
+  } catch (error) {
+    logger.error('[OpenAI] Policy moderation failed:', error.message);
+    _trackError('policy');
+    return {
+      available: false, isViolation: false, score: 0, reason: null,
+      cultureType: policyPrompt?.cultureType ?? null, cached: false, error: error.message
+    };
+  }
+}
+
 // Detect toxic content using GPT-4o
 async function detectToxicContent(text) {
   const startTime = Date.now();
@@ -479,6 +569,7 @@ module.exports = {
   isAvailable:            () => isAvailable,
   analyzeSentiment,
   detectToxicContent,
+  moderateWithPolicy,
   generateChatbotResponse,
   summarizeComments,
   translateText,

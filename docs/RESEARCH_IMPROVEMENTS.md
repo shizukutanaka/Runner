@@ -327,6 +327,29 @@ R-5bの評価ハーネス（R-5b）でAI経路との差分を調べる過程で�
 - **回帰テスト**: `tests/services/sentimentHold.test.js`（4件）
 - **再検証**: `grep -n "sentimentSource" backend/src/services/moderationService.js` / `grep -n "negativity" backend/src/controllers/commentsController.js`
 
+### R-24. Policy-as-Prompt の実装（2026-08-08・R-4の骨格を実装 / 実LLM検証は未実施）
+
+R-5bの実測で `indirect`（NG語を含まない遠回しな攻撃）が**0%**と判明したため、R-4で設計だけ確定していた Policy-as-Prompt を実装した。
+
+**根拠となる研究（2本・賛否両方）**:
+- **Palla et al., "Policy-as-Prompt: Rethinking Content Moderation in the Age of Large Language Models"**（FAccT 2025, arXiv:2502.18695）— 抽象的なポリシーをアノテーションガイドラインや学習データへ「操作化」する従来工程を、ポリシーを自然言語プロンプトとして直接LLMへ与える形に置き換えうると論じる
+- **Neumann et al., "It is not enough to give your moderation rules to ChatGPT: Policy-as-Prompt Moderation and Its Potential Impacts on Community Governance"**（MuC 2026 Workshop, arXiv:2607.12149）— **批判的な後続研究**。プロンプトを書くだけでは意味のあるコミュニティガバナンスにならないと結論づける。特に **prompt stack**（基盤モデル開発者のプロンプトが下流の指示より優先される階層構造）のため、**運営者が書いたルールが必ず効くとは限らない**
+
+**実装（批判を設計制約として取り込んだ）**:
+- `creatorCultureService.buildPolicyPrompt()` — 既存の文化プロファイル（5プリセット＋個別上書き）を自然言語のポリシー文へ変換。R-4が指摘したとおり「器は既にあった」ため、許容度・フラグ（`allow_trash_talk` 等）が方針文へそのまま反映される
+- `openaiService.moderateWithPolicy()` — ポリシー文をsystemメッセージ、可変部（文脈＋対象コメント）をuserメッセージに置く。**大きな固定部分を先頭に置くことでプロンプトキャッシュが効く構成**（R-4のコスト設計に対応）
+- **arXiv:2607.12149 に基づく3つの制約**:
+  1. LLMの判定は **助言（`advisory: true`）** であり、**決定論的なNGワード判定を覆さない**（LLMが「問題なし」と言っても NG語ヒットは維持される）
+  2. LLM単独で自動処罰しない。加点して `needsHumanReview` を立て、**人間のレビューへ寄せる**
+  3. どのポリシー（`cultureType`）で判定したかを必ず結果に残し、**監査可能**にする
+
+**検証**: 実LLMは呼べない（キー未設定）ため、`openaiService` をモックした8テストで検証。ポリシー文が文化ごとに実際に異なること、助言として扱われること、**LLMが「問題なし」でもNGワード判定が覆らないこと**、LLM利用不可でも解析が成立すること（フェイルセーフ規約）を確認。キー未設定時の評価ハーネスの数値は**変化なし**（F1 72.7%）で、既存動作への影響がないことを確認済み
+
+**未実施**: 実APIキーでの動作確認と、`indirect` が実際に改善するかの測定。**キーが用意でき次第 `node src/scripts/evaluateModeration.js` を実行すれば、R-5bのハーネスがそのまま効果測定になる**（これがW-5をW-3より先に実装した理由）
+
+- **再検証**: `grep -n "buildPolicyPrompt" backend/src/services/creatorCultureService.js` / `NODE_ENV=test npx jest tests/services/policyAsPrompt.test.js` → 8件合格
+- **出典**: https://arxiv.org/abs/2502.18695 (FAccT 2025) / https://arxiv.org/abs/2607.12149 (MuC 2026 Workshop)
+
 ---
 
 ## 検証（本ブランチで実施済みの R-1/R-3/R-5a/R-5補足/R-10/R-11/R-12/R-14/R-18/R-19）
