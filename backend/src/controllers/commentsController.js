@@ -446,6 +446,14 @@ const ingestComment = async ({ content, user, platform, timestamp, platformMessa
   // 攻撃パターンを捉えられないため、横断シグナルを別途蓄積する
   try {
     raidDetector.record(platform, 'default', normalizedUser, normalizedContent, ts);
+    // R-22b: レイド状態へ遷移した瞬間だけダッシュボードへリアルタイム通知する。
+    // レイドは短時間で押し寄せるため、モデレーターがエンドポイントをポーリングして
+    // 気づくのでは遅い。通知の洪水は検知器側のクールダウンで抑止している
+    const raidAlert = raidDetector.checkForAlert(platform, 'default');
+    if (raidAlert && io) {
+      io.to('dashboard').emit('raidAlert', raidAlert);
+      io.to(`platform:${platform}`).emit('raidAlert', raidAlert);
+    }
   } catch (raidErr) {
     logger.warn('[Comments] Failed to record activity for raid detection', { error: raidErr.message });
   }

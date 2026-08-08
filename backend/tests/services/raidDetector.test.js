@@ -82,4 +82,47 @@ describe('RaidDetector（協調攻撃検知・R-22）', () => {
       expect(r.messageCount).toBe(0);
     });
   });
+
+  // R-22b: リアルタイム通知。レイドは短時間で押し寄せるため遷移の瞬間に通知するが、
+  // 毎メッセージ通知すると洪水になるので遷移時のみ＋クールダウンで抑止する
+  describe('リアルタイムアラート（checkForAlert）', () => {
+    const raidBurst = (d, ch, n = 12) => {
+      for (let i = 0; i < n; i++) d.record('twitch', ch, `bot_${i}`, '死ね消えろ', new Date());
+    };
+
+    it('レイド状態へ遷移した瞬間にアラートを返す', () => {
+      raidBurst(det, 'a1');
+      const alert = det.checkForAlert('twitch', 'a1');
+      expect(alert).not.toBeNull();
+      expect(alert.raidDetected).toBe(true);
+      expect(alert.score).toBeGreaterThanOrEqual(0.6);
+    });
+
+    it('レイドが継続していても二重に通知しない（遷移時のみ）', () => {
+      raidBurst(det, 'a2');
+      const first = det.checkForAlert('twitch', 'a2');
+      expect(first).not.toBeNull();
+
+      // 解析の間引き間隔を越えた後でも、既にレイド状態なので再通知しない
+      const state = det.alertState.get('twitch:a2');
+      state.lastCheckAt = Date.now() - 10000;
+      det.alertState.set('twitch:a2', state);
+
+      raidBurst(det, 'a2');
+      expect(det.checkForAlert('twitch', 'a2')).toBeNull();
+    });
+
+    it('通常チャットではアラートを返さない', () => {
+      ['ありがとう', 'たのしい', '次はいつ？', 'うまい', '初見です', 'おつかれ']
+        .forEach((m, i) => det.record('youtube', 'a3', `v${i}`, m, new Date()));
+      expect(det.checkForAlert('youtube', 'a3')).toBeNull();
+    });
+
+    it('短時間に連続して呼ばれた場合は解析を間引く', () => {
+      raidBurst(det, 'a4');
+      expect(det.checkForAlert('twitch', 'a4')).not.toBeNull();
+      // 直後の呼び出しは間引かれ null
+      expect(det.checkForAlert('twitch', 'a4')).toBeNull();
+    });
+  });
 });

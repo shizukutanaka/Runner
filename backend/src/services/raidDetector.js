@@ -32,6 +32,8 @@ const MIN_MESSAGES_FOR_ANALYSIS = 5;  // これ未満は判定しない（統計
 const SIMILAR_CLUSTER_MIN_USERS = 3;  // 類似クラスタとみなす最小ユーザー数
 const RATE_SPIKE_THRESHOLD = 30;      // ウィンドウ内メッセージ数のスパイク閾値
 const RAID_SCORE_THRESHOLD = 0.6;     // これ以上でレイド判定
+const ALERT_COOLDOWN_MS = 2 * 60 * 1000; // 同一チャンネルへの再通知間隔（通知の洪水を防ぐ）
+const CHECK_MIN_INTERVAL_MS = 2000;      // 解析の実行間隔（毎メッセージでの再計算を避ける）
 
 // 類似判定用の正規化: 記号/空白/連続同一文字を圧縮し、表記ゆれを吸収する。
 // 「死ね!!!」「しね～」「死ね」を同一クラスタに寄せるのが狙い
@@ -48,6 +50,45 @@ class RaidDetector {
     this.records = new Map();
     // channelKey → Set(userId)  これまでに観測したユーザー（初出判定用）
     this.seenUsers = new Map();
+    // channelKey → { lastAlertAt, lastCheckAt, inRaid } 通知の状態管理
+    this.alertState = new Map();
+  }
+
+  /**
+   * 記録直後に呼ぶ。レイド状態へ **遷移した瞬間だけ** アラートを返す。
+   *
+   * ライブ配信のレイドは短時間で大量に押し寄せるため、モデレーターが
+   * ポーリングして気づくのでは遅い（研究が指摘する「リアルタイム性」の要件）。
+   * 一方、毎メッセージで通知すると通知自体が洪水になるので:
+   *  - 解析は CHECK_MIN_INTERVAL_MS 間隔に間引く
+   *  - 通知は「非レイド→レイド」の遷移時のみ、かつ ALERT_COOLDOWN_MS のクールダウン付き
+   * アラート不要なら null を返す。
+   */
+  checkForAlert(platform, channelId) {
+    const key = this._key(platform, channelId);
+    const now = Date.now();
+    const state = this.alertState.get(key) || { lastAlertAt: 0, lastCheckAt: 0, inRaid: false };
+
+    if (now - state.lastCheckAt < CHECK_MIN_INTERVAL_MS) {
+      return null; // 解析の間引き
+    }
+    state.lastCheckAt = now;
+
+    const result = this.analyze(platform, channelId);
+    const wasInRaid = state.inRaid;
+    state.inRaid = result.raidDetected;
+
+    // 遷移時のみ、かつクールダウンを過ぎている場合だけ通知する
+    const isNewRaid = result.raidDetected && !wasInRaid;
+    const cooledDown = now - state.lastAlertAt >= ALERT_COOLDOWN_MS;
+    this.alertState.set(key, state);
+
+    if (isNewRaid && cooledDown) {
+      state.lastAlertAt = now;
+      this.alertState.set(key, state);
+      return result;
+    }
+    return null;
   }
 
   record(platform, channelId, userId, content, timestamp = new Date()) {
