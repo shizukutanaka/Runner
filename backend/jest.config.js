@@ -22,6 +22,7 @@ module.exports = {
       statements: 90
     }
   },
+  globalSetup: '<rootDir>/tests/globalSetup.js',
   setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
   testTimeout: 15000,
   verbose: true,

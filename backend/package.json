@@ -208,5 +208,12 @@
     "LICENSE",
     "README.md",
     "CHANGELOG.md"
-  ]
+  ],
+  "allowScripts": {
+    "sqlite3@5.1.7": true,
+    "bcrypt@5.1.1": true
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.62.4"
+  }
 }

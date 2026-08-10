@@ -133,7 +133,10 @@ describe('LanguageSwitcher', () => {
       await user.click(button);
 
       await waitFor(() => {
-        expect(screen.getByText('English')).toBeInTheDocument();
+        // 'English' はトグルボタンのキャプションとメニュー項目の両方に現れるため
+        // getByText では常に「複数一致」で落ちる。メニューが開いたことの検証なので
+        // 1件以上あればよい。
+        expect(screen.getAllByText('English').length).toBeGreaterThan(0);
       });
 
       const enMenuItem = screen.getByText('現在の言語').closest('li');
@@ -182,6 +185,7 @@ describe('LanguageSwitcher', () => {
     });
 
     it('supports keyboard navigation', async () => {
+      const user = userEvent.setup();
       render(<LanguageSwitcher />);
 
       const button = screen.getByRole('button', { name: /言語設定/i });
@@ -189,10 +193,13 @@ describe('LanguageSwitcher', () => {
 
       expect(button).toHaveFocus();
 
-      fireEvent.keyDown(button, { key: 'Enter' });
+      // fireEvent.keyDown は低レベルイベントを1つ流すだけで、ブラウザが
+      // ネイティブに行う「Enter → click」変換を行わないためメニューが開かない。
+      // userEvent はその変換を再現するので、こちらで実際の操作を検証する。
+      await user.keyboard('{Enter}');
 
       await waitFor(() => {
-        expect(screen.getByText('日本語')).toBeInTheDocument();
+        expect(screen.getAllByText('日本語').length).toBeGreaterThan(0);
       });
     });
   });

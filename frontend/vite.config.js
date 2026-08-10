@@ -40,6 +40,10 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.js',
     css: true,
+    // tests/e2e/ は Playwright 用のスペック。vitest が拾うと
+    // "Playwright Test did not expect test.describe() to be called here" で必ず落ちる。
+    // Playwright 側は `npm run test:e2e` が担当するので、ユニットテストからは除外する。
+    exclude: ['node_modules/**', 'dist/**', 'tests/e2e/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],

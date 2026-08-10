@@ -34,7 +34,7 @@
   "dependencies": {
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
-    "@mui/icons-material": "^5.15.0",
+    "@mui/icons-material": "^5.18.0",
     "@mui/material": "^5.15.0",
     "@mui/x-charts": "^6.18.1",
     "axios": "^1.18.1",
@@ -88,5 +88,8 @@
     "material-ui"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.62.4"
+  }
 }
