@@ -184,8 +184,16 @@ exports.getSettings = (req, res, next) => {
       return next({ status: 500, message: '設定の取得中にエラーが発生しました', details: err });
     }
 
+    // 存在しないユーザーは 404（デフォルト設定を返さない）
+    if (!row) {
+      return res.status(404).json({
+        status: 404,
+        message: 'ユーザーが存在しない',
+      });
+    }
+
     try {
-      const userSettings = row ? JSON.parse(row.settings) : { ...defaultSettings };
+      const userSettings = JSON.parse(row.settings);
       res.json({
         status: 200,
         data: userSettings,
@@ -201,36 +209,61 @@ exports.getSettings = (req, res, next) => {
 exports.updateSettings = (req, res, next) => {
   const { userId } = req.params;
   const updatedSettings = req.body;
-  
+
+  // 空の更新データは 400（何も更新しないリクエストは不正）
+  if (!updatedSettings || Object.keys(updatedSettings).length === 0) {
+    return res.status(400).json({
+      status: 400,
+      message: '更新データが空です',
+    });
+  }
+
+  // テーマ値の検証（不正な値は 400）
+  if (updatedSettings.theme !== undefined &&
+      !['light', 'dark', 'system'].includes(updatedSettings.theme)) {
+    return res.status(400).json({
+      status: 400,
+      message: '無効なテーマ値です（light/dark/system のいずれか）',
+    });
+  }
+
   // 現在の設定を取得してマージ
   const getSettingsSql = 'SELECT settings FROM user_settings WHERE user_id = ?';
-  
+
   db.get(getSettingsSql, [userId], (err, row) => {
     if (err) {
       return next({ status: 500, message: '設定の取得中にエラーが発生しました', details: err });
     }
-    
+
+    // 存在しないユーザーは 404
+    if (!row) {
+      return res.status(404).json({
+        status: 404,
+        message: 'ユーザーが存在しない',
+      });
+    }
+
     try {
-      const currentSettings = row ? JSON.parse(row.settings) : { ...defaultSettings };
+      const currentSettings = JSON.parse(row.settings);
       const mergedSettings = { ...currentSettings, ...updatedSettings, updatedAt: new Date().toISOString() };
-      
+
       // 更新または挿入
       const upsertSql = `
-        INSERT INTO user_settings (user_id, settings, updated_at) 
+        INSERT INTO user_settings (user_id, settings, updated_at)
         VALUES (?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(user_id) DO UPDATE SET 
+        ON CONFLICT(user_id) DO UPDATE SET
           settings = excluded.settings,
           updated_at = CURRENT_TIMESTAMP`;
-      
+
       db.run(upsertSql, [userId, JSON.stringify(mergedSettings)], function(updateErr) {
         if (updateErr) {
           return next({ status: 500, message: '設定の更新中にエラーが発生しました', details: updateErr });
         }
-        
-        res.json({ 
-          status: 200, 
-          data: mergedSettings, 
-          message: '設定を更新しました' 
+
+        res.json({
+          status: 200,
+          data: mergedSettings,
+          message: '設定を更新しました'
         });
       });
     } catch (parseErr) {
@@ -2293,3 +2326,4 @@ const updateSlowModeSettings = asyncHandler(async (req, res) => {
 
 exports.getSlowModeSettings = getSlowModeSettings;
 exports.updateSlowModeSettings = updateSlowModeSettings;
+exports.defaultSettings = defaultSettings;

@@ -10,15 +10,24 @@ const createAuthHeader = (payload) => ({
 const adminAuth = () => createAuthHeader({ id: 'admin-tester', role: 'admin' });
 const userAuth = () => createAuthHeader({ id: 'user-tester', role: 'user' });
 const baseUrl = '/api/settings';
-// userRouteはモジュールスコープの関数だがtestUserIdは元々describe内でletされており、
-// 別スコープで参照不能なReferenceErrorになっていた。トップレベルへ移動して修正
-const testUserId = 'test-user-123';
+// 正常系で使用するユーザーIDはUUID形式（プロジェクト設計: ユーザーID = uuidv4）
+const testUserId = '11111111-1111-4111-8111-111111111111';
 const userRoute = (suffix = '') => `${baseUrl}/user/${testUserId}${suffix}`;
 
 describe('Settings API', () => {
   beforeAll(async () => {
     // データベース初期化完了を待つ（他のテストファイルと同じ規約）
     await new Promise(resolve => setTimeout(resolve, 1000));
+    // 正常系ユーザーの設定レコードを作成（アプリでは登録時に作られる）
+    const db = require('../../src/db');
+    const defaultSettings = require('../../src/controllers/settingsController').defaultSettings;
+    await new Promise((resolve) => {
+      db.run(
+        'INSERT OR REPLACE INTO user_settings (user_id, settings, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+        [testUserId, JSON.stringify(defaultSettings)],
+        () => resolve()
+      );
+    });
   });
 
   describe('GET /api/settings/user/:userId', () => {
@@ -124,7 +133,7 @@ describe('Settings API', () => {
   });
 
     it('異常系: 存在しないユーザー', async () => {
-      const fakeUserId = 'non-existent-user-123';
+      const fakeUserId = '99999999-9999-4999-8999-999999999999';
 
       const res = await request(app)
         .get(`${baseUrl}/user/${fakeUserId}`)

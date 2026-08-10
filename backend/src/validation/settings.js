@@ -2,7 +2,7 @@
 const Joi = require('joi');
 
 exports.userIdParam = Joi.object({
-  userId: Joi.string().required(),
+  userId: Joi.string().uuid().required(),
 });
 
 exports.commentIdParam = Joi.object({
