@@ -20,7 +20,7 @@ describe('Security Middleware', () => {
 
       request(app)
         .post('/test')
-        .send({ content: 'Hello <script>alert(\"xss\")</script> world' })
+        .send({ content: 'Hello <script>alert("xss")</script> world' })
         .expect(200, done);
     });
 
@@ -37,7 +37,7 @@ describe('Security Middleware', () => {
         .send({
           user: {
             name: 'John <script>evil()</script> Doe',
-            comment: 'Nice <img src=\"x\"> post'
+            comment: 'Nice <img src="x"> post'
           }
         })
         .expect(200, done);
