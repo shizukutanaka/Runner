@@ -8,14 +8,14 @@ describe('Security Integration Tests', () => {
   let authToken;
 
   beforeAll(async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     const registerRes = await request(app)
       .post('/api/users/register')
       .send({
         username: 'securitytester',
         password: 'TestPass123!',
-        email: 'securitytester@example.com',
+        email: 'securitytester@example.com'
       });
 
     if (registerRes.status === 201 || registerRes.status === 409) {
@@ -23,7 +23,7 @@ describe('Security Integration Tests', () => {
         .post('/api/users/login')
         .send({
           username: 'securitytester',
-          password: 'TestPass123!',
+          password: 'TestPass123!'
         });
 
       authToken = loginRes.body.token;

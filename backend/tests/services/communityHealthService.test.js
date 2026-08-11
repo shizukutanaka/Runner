@@ -6,7 +6,7 @@ const makeComment = (overrides = {}) => ({
   sentiment: 'positive',
   status: 'active',
   user: 'user1',
-  ...overrides,
+  ...overrides
 });
 
 describe('CommunityHealthService', () => {
@@ -47,7 +47,7 @@ describe('CommunityHealthService', () => {
         content: 'ありがとう！これは素晴らしい内容ですね。質問があります。',
         sentimentScore: 0.9,
         sentiment: 'positive',
-        status: 'active',
+        status: 'active'
       }));
       const report = svc.calculateHealth(comments);
       expect(['S', 'A']).toContain(report.grade);
@@ -59,7 +59,7 @@ describe('CommunityHealthService', () => {
         sentimentScore: 0.1,
         sentiment: 'negative',
         status: 'deleted',
-        user: 'baduser',  // single-user domination
+        user: 'baduser'  // single-user domination
       }));
       const report = svc.calculateHealth(comments);
       expect(['C', 'D']).toContain(report.grade);
@@ -82,7 +82,7 @@ describe('CommunityHealthService', () => {
     it('scores 1 when all comments are meaningful', () => {
       const comments = [
         { content: 'This is a long and meaningful comment about the topic at hand.' },
-        { content: 'Another substantive comment that adds value to the discussion.' },
+        { content: 'Another substantive comment that adds value to the discussion.' }
       ];
       expect(svc._engagementDepth(comments)).toBe(1);
     });
@@ -91,7 +91,7 @@ describe('CommunityHealthService', () => {
       const comments = [
         { content: 'lol' },
         { content: 'ok' },
-        { content: 'https://spam.com https://spam2.com buy now https://spam3.com' },
+        { content: 'https://spam.com https://spam2.com buy now https://spam3.com' }
       ];
       expect(svc._engagementDepth(comments)).toBe(0);
     });
@@ -147,7 +147,7 @@ describe('CommunityHealthService', () => {
       const comments = [
         { content: 'ありがとう！' },
         { content: 'Great content, love it!' },
-        { content: 'おすすめのツールはありますか？' },
+        { content: 'おすすめのツールはありますか？' }
       ];
       expect(svc._constructiveness(comments)).toBe(1);
     });
@@ -155,7 +155,7 @@ describe('CommunityHealthService', () => {
     it('scores 0 when no comments are constructive', () => {
       const comments = [
         { content: 'blah blah blah' },
-        { content: 'boring content' },
+        { content: 'boring content' }
       ];
       expect(svc._constructiveness(comments)).toBe(0);
     });
@@ -167,7 +167,7 @@ describe('CommunityHealthService', () => {
       [75, 'A'],
       [60, 'B'],
       [45, 'C'],
-      [30, 'D'],
+      [30, 'D']
     ])('score %i → grade %s', (score, expected) => {
       expect(svc._grade(score)).toBe(expected);
     });
@@ -186,7 +186,7 @@ describe('CommunityHealthService', () => {
         diversityScore: 0.9,
         moderationLoad: 0.8,
         returnUserRate: 0.8,
-        constructiveness: 0.7,
+        constructiveness: 0.7
       };
       const insight = svc._insight(60, signals);
       expect(insight).toContain('有意義な発言の深さ');

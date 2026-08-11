@@ -20,5 +20,11 @@
     "object-curly-spacing": ["error", "always"],
     "array-bracket-spacing": ["error", "never"],
     "max-len": ["warn", { "code": 120 }]
-  }
+  },
+  "overrides": [
+    {
+      "files": ["tests/**/*.js", "**/*.test.js"],
+      "env": { "jest": true }
+    }
+  ]
 }

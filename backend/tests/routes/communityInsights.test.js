@@ -43,7 +43,7 @@ describe('Community Insights API', () => {
         platform: 'youtube',
         channelId: 'test',
         content: 'This is a test comment',
-        id: 'comment-1',
+        id: 'comment-1'
       };
 
       const res = await request(app)
@@ -58,7 +58,7 @@ describe('Community Insights API', () => {
 
     it('returns 400 when platform is missing', async () => {
       const comment = {
-        content: 'Test comment',
+        content: 'Test comment'
       };
 
       const res = await request(app)
@@ -73,7 +73,7 @@ describe('Community Insights API', () => {
 
     it('returns 400 when content is missing', async () => {
       const comment = {
-        platform: 'youtube',
+        platform: 'youtube'
       };
 
       const res = await request(app)
@@ -92,7 +92,7 @@ describe('Community Insights API', () => {
       const comments = [
         { content: 'Great video!', sentimentScore: 0.9 },
         { content: 'Thanks for sharing', sentimentScore: 0.85 },
-        { content: 'Very informative', sentimentScore: 0.8 },
+        { content: 'Very informative', sentimentScore: 0.8 }
       ];
 
       const res = await request(app)
@@ -121,7 +121,7 @@ describe('Community Insights API', () => {
     it('returns 400 when comments array exceeds 1000 items', async () => {
       const comments = Array.from({ length: 1001 }, (_, i) => ({
         content: `Comment ${i}`,
-        sentimentScore: 0.5,
+        sentimentScore: 0.5
       }));
 
       const res = await request(app)
@@ -140,7 +140,7 @@ describe('Community Insights API', () => {
       const targetComment = { content: 'This is okay' };
       const contextComments = [
         { content: 'Great!' },
-        { content: 'Awesome' },
+        { content: 'Awesome' }
       ];
 
       const res = await request(app)
@@ -168,7 +168,7 @@ describe('Community Insights API', () => {
     it('returns 400 when context exceeds 200 comments', async () => {
       const targetComment = { content: 'Test' };
       const contextComments = Array.from({ length: 201 }, () => ({
-        content: 'Context comment',
+        content: 'Context comment'
       }));
 
       const res = await request(app)
@@ -249,7 +249,7 @@ describe('Community Insights API', () => {
         .send({
           platform: 'youtube',
           channelId: 'test',
-          rawScore: 50,
+          rawScore: 50
         })
         .expect(200);
 
@@ -264,7 +264,7 @@ describe('Community Insights API', () => {
         .set(moderatorAuth())
         .send({
           platform: 'youtube',
-          rawScore: 'not a number',
+          rawScore: 'not a number'
         })
         .expect(400);
 
@@ -292,7 +292,7 @@ describe('Community Insights API', () => {
         .send({
           platform: 'youtube',
           userId: 'user123',
-          timestamp: new Date().toISOString(),
+          timestamp: new Date().toISOString()
         })
         .expect(200);
 
@@ -325,7 +325,7 @@ describe('Community Insights API', () => {
     it('performs triage on pending comments', async () => {
       const pendingComments = [
         { id: 'c1', content: 'Test comment 1', toxicityScore: 0.2 },
-        { id: 'c2', content: 'Test comment 2', toxicityScore: 0.8 },
+        { id: 'c2', content: 'Test comment 2', toxicityScore: 0.8 }
       ];
 
       const res = await request(app)
@@ -352,7 +352,7 @@ describe('Community Insights API', () => {
     it('returns 400 when pendingComments exceeds 500 items', async () => {
       const pendingComments = Array.from({ length: 501 }, (_, i) => ({
         id: `c${i}`,
-        content: `Comment ${i}`,
+        content: `Comment ${i}`
       }));
 
       const res = await request(app)

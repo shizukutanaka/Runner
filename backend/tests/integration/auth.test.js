@@ -8,11 +8,11 @@ describe('Authentication Integration Tests', () => {
   const testUser = {
     username: 'authTestUser',
     password: 'SecurePass123!',
-    email: 'authtest@example.com',
+    email: 'authtest@example.com'
   };
 
   beforeAll(async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   });
 
   afterAll(async () => {
@@ -48,7 +48,7 @@ describe('Authentication Integration Tests', () => {
         .send({
           username: 'weakpassuser',
           password: '123',
-          email: 'weak@example.com',
+          email: 'weak@example.com'
         })
         .expect(400);
     });
@@ -59,7 +59,7 @@ describe('Authentication Integration Tests', () => {
         .send({
           username: 'invalidemail',
           password: 'SecurePass123!',
-          email: 'invalid-email',
+          email: 'invalid-email'
         })
         .expect(400);
     });
@@ -68,7 +68,7 @@ describe('Authentication Integration Tests', () => {
       await request(app)
         .post('/api/users/register')
         .send({
-          username: 'incompleteuser',
+          username: 'incompleteuser'
         })
         .expect(400);
     });
@@ -79,7 +79,7 @@ describe('Authentication Integration Tests', () => {
         .send({
           username: '<script>alert("xss")</script>testuser2',
           password: 'SecurePass123!',
-          email: 'sanitize@example.com',
+          email: 'sanitize@example.com'
         })
         .expect(201);
 
@@ -93,7 +93,7 @@ describe('Authentication Integration Tests', () => {
         .post('/api/users/login')
         .send({
           username: testUser.username,
-          password: testUser.password,
+          password: testUser.password
         })
         .expect(200);
 
@@ -111,7 +111,7 @@ describe('Authentication Integration Tests', () => {
         .post('/api/users/login')
         .send({
           username: testUser.username,
-          password: 'WrongPassword123!',
+          password: 'WrongPassword123!'
         })
         .expect(401);
     });
@@ -121,7 +121,7 @@ describe('Authentication Integration Tests', () => {
         .post('/api/users/login')
         .send({
           username: 'nonexistentuser',
-          password: 'SomePassword123!',
+          password: 'SomePassword123!'
         })
         .expect(401);
     });
@@ -131,7 +131,7 @@ describe('Authentication Integration Tests', () => {
         .post('/api/users/login')
         .send({
           username: testUser.username,
-          password: testUser.password,
+          password: testUser.password
         })
         .expect(200);
 
@@ -266,7 +266,7 @@ describe('Authentication Integration Tests', () => {
         .post('/api/users/reset-password')
         .send({
           token: 'invalid-reset-token',
-          newPassword: 'NewSecurePass123!',
+          newPassword: 'NewSecurePass123!'
         })
         .expect(400);
     });
@@ -276,7 +276,7 @@ describe('Authentication Integration Tests', () => {
         .post('/api/users/reset-password')
         .send({
           token: 'some-token',
-          newPassword: '123',
+          newPassword: '123'
         })
         .expect(400);
     });
@@ -289,7 +289,7 @@ describe('Authentication Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .send({
           currentPassword: testUser.password,
-          newPassword: 'NewSecurePass456!',
+          newPassword: 'NewSecurePass456!'
         })
         .expect(200);
 
@@ -305,7 +305,7 @@ describe('Authentication Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .send({
           currentPassword: 'WrongPassword',
-          newPassword: 'NewSecurePass789!',
+          newPassword: 'NewSecurePass789!'
         })
         .expect(401);
     });
@@ -315,7 +315,7 @@ describe('Authentication Integration Tests', () => {
         .put('/api/users/change-password')
         .send({
           currentPassword: 'anything',
-          newPassword: 'NewSecurePass789!',
+          newPassword: 'NewSecurePass789!'
         })
         .expect(401);
     });
@@ -376,8 +376,8 @@ describe('Authentication Integration Tests', () => {
       await request(app)
         .post('/api/users/login')
         .send({
-          username: "admin' OR '1'='1",
-          password: "anything",
+          username: 'admin\' OR \'1\'=\'1',
+          password: 'anything'
         })
         .expect(401);
     });
@@ -388,7 +388,7 @@ describe('Authentication Integration Tests', () => {
         .send({
           username: '<script>alert("xss")</script>xsstest',
           password: 'SecurePass123!',
-          email: 'xss@example.com',
+          email: 'xss@example.com'
         });
 
       if (res.status === 201) {
@@ -410,13 +410,13 @@ describe('Authentication Integration Tests', () => {
             .post('/api/users/login')
             .send({
               username: testUser.username,
-              password: 'WrongPassword',
+              password: 'WrongPassword'
             })
         );
       }
 
       const results = await Promise.all(attempts);
-      const rateLimited = results.some(res => res.status === 429);
+      const rateLimited = results.some((res) => res.status === 429);
 
       expect(rateLimited).toBe(true);
     });

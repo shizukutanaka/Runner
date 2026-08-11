@@ -9,7 +9,7 @@ const makeComment = (overrides = {}) => ({
   toxicityScore: 0,
   timestamp: new Date().toISOString(),
   user: 'user1',
-  ...overrides,
+  ...overrides
 });
 
 describe('EmotionalContagionDetector', () => {
@@ -47,7 +47,7 @@ describe('EmotionalContagionDetector', () => {
           sentimentScore: 0.1,
           toxicityScore: 0.9,
           timestamp: new Date(now.getTime() - i * 1000).toISOString(),
-          user: 'badUser',
+          user: 'badUser'
         }));
       }
       const result = detector.evaluate('youtube', 'ch1');
@@ -65,7 +65,7 @@ describe('EmotionalContagionDetector', () => {
           sentimentScore: 0.05,
           toxicityScore: 0.95,
           timestamp: new Date(now.getTime() - i * 500).toISOString(),
-          user: `u${i % 3}`,
+          user: `u${i % 3}`
         }));
       }
 
@@ -109,13 +109,13 @@ describe('EmotionalContagionDetector', () => {
     });
 
     it('returns positive gradient for improving sentiment', () => {
-      const comments = [0.1, 0.3, 0.5, 0.7, 0.9].map(s => ({ sentiment: s }));
+      const comments = [0.1, 0.3, 0.5, 0.7, 0.9].map((s) => ({ sentiment: s }));
       const gradient = detector._sentimentGradient(comments);
       expect(gradient).toBeGreaterThan(0);
     });
 
     it('returns negative gradient for declining sentiment', () => {
-      const comments = [0.9, 0.7, 0.5, 0.3, 0.1].map(s => ({ sentiment: s }));
+      const comments = [0.9, 0.7, 0.5, 0.3, 0.1].map((s) => ({ sentiment: s }));
       const gradient = detector._sentimentGradient(comments);
       expect(gradient).toBeLessThan(0);
     });
@@ -138,7 +138,7 @@ describe('EmotionalContagionDetector', () => {
       [0.1, 'safe'],
       [0.35, 'watch'],
       [0.55, 'warning'],
-      [0.75, 'critical'],
+      [0.75, 'critical']
     ])('score %f → level %s', (score, expected) => {
       expect(detector._riskLevel(score)).toBe(expected);
     });

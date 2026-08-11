@@ -189,7 +189,7 @@ class TestHelpers {
    * 遅延実行ヘルパー
    */
   async wait(milliseconds) {
-    return new Promise(resolve => setTimeout(resolve, milliseconds));
+    return new Promise((resolve) => setTimeout(resolve, milliseconds));
   }
 
   /**

@@ -6,7 +6,7 @@ const db = require('../../src/db');
 
 describe('Tenant Controller Safety Guard', () => {
   beforeAll(async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   });
 
   afterAll(async () => {

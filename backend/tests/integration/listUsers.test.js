@@ -11,13 +11,13 @@ describe('GET /api/users (list)', () => {
   const moderatorToken = generateToken({ id: 'list-users-tester', role: 'moderator' });
 
   beforeAll(async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     await dbRun(
-      `INSERT INTO users (id, platform, username, status) VALUES (?, ?, ?, ?)`,
+      'INSERT INTO users (id, platform, username, status) VALUES (?, ?, ?, ?)',
       ['listtest-1', 'youtube', 'alice_yt', 'active']
     );
     await dbRun(
-      `INSERT INTO users (id, platform, username, status) VALUES (?, ?, ?, ?)`,
+      'INSERT INTO users (id, platform, username, status) VALUES (?, ?, ?, ?)',
       ['listtest-2', 'twitch', 'bob_twitch', 'banned']
     );
   });
@@ -50,8 +50,8 @@ describe('GET /api/users (list)', () => {
       .set('Authorization', `Bearer ${moderatorToken}`)
       .expect(200);
 
-    expect(res.body.data.users.every(u => u.platform === 'twitch')).toBe(true);
-    expect(res.body.data.users.some(u => u.username === 'bob_twitch')).toBe(true);
+    expect(res.body.data.users.every((u) => u.platform === 'twitch')).toBe(true);
+    expect(res.body.data.users.some((u) => u.username === 'bob_twitch')).toBe(true);
   });
 
   test('filters by status', async () => {
@@ -60,7 +60,7 @@ describe('GET /api/users (list)', () => {
       .set('Authorization', `Bearer ${moderatorToken}`)
       .expect(200);
 
-    expect(res.body.data.users.every(u => u.status === 'banned')).toBe(true);
+    expect(res.body.data.users.every((u) => u.status === 'banned')).toBe(true);
   });
 
   test('searches by username substring', async () => {
@@ -69,7 +69,7 @@ describe('GET /api/users (list)', () => {
       .set('Authorization', `Bearer ${moderatorToken}`)
       .expect(200);
 
-    expect(res.body.data.users.some(u => u.username === 'alice_yt')).toBe(true);
+    expect(res.body.data.users.some((u) => u.username === 'alice_yt')).toBe(true);
   });
 
   test('does not match GET /:id route (no ID collision)', async () => {

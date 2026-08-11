@@ -13,7 +13,7 @@ const invoke = (fn, req = {}) => new Promise((resolve) => {
   const res = {
     _status: 200,
     status(code) { this._status = code; return this; },
-    json(body) { resolve({ status: this._status, body }); return this; },
+    json(body) { resolve({ status: this._status, body }); return this; }
   };
   const next = (err) => resolve({ status: err?.status || 500, body: { _error: err?.message } });
   Promise.resolve(fn({ query: {}, params: {}, ...req }, res, next)).catch((e) => next({ status: 500, message: e.message }));
@@ -25,10 +25,10 @@ describe('analyticsController（実装済みスタブ・W-4）', () => {
     const uniq = `az_${Date.now()}`;
     global.__azUser = uniq;
     // alice相当: visible2 + deleted1、bob相当: visible1
-    await dbRun("INSERT INTO comments (id,platform,user,content,timestamp,status) VALUES (?,?,?,?,datetime('now','-2 hours'),'visible')", [`${uniq}_1`, 'youtube', uniq, 'hi']);
-    await dbRun("INSERT INTO comments (id,platform,user,content,timestamp,status,moderation_reason,moderation_timestamp) VALUES (?,?,?,?,datetime('now','-30 minutes'),'deleted','NG',datetime('now','-29 minutes'))", [`${uniq}_2`, 'youtube', uniq, 'bad']);
-    await dbRun("INSERT INTO comments (id,platform,user,content,timestamp,status) VALUES (?,?,?,?,datetime('now','-10 minutes'),'visible')", [`${uniq}_3`, 'youtube', uniq, 'ok']);
-    await dbRun("INSERT INTO users (id,platform,username,status) VALUES (?,?,?,?)", [`${uniq}_u`, 'youtube', uniq, 'active']);
+    await dbRun('INSERT INTO comments (id,platform,user,content,timestamp,status) VALUES (?,?,?,?,datetime(\'now\',\'-2 hours\'),\'visible\')', [`${uniq}_1`, 'youtube', uniq, 'hi']);
+    await dbRun('INSERT INTO comments (id,platform,user,content,timestamp,status,moderation_reason,moderation_timestamp) VALUES (?,?,?,?,datetime(\'now\',\'-30 minutes\'),\'deleted\',\'NG\',datetime(\'now\',\'-29 minutes\'))', [`${uniq}_2`, 'youtube', uniq, 'bad']);
+    await dbRun('INSERT INTO comments (id,platform,user,content,timestamp,status) VALUES (?,?,?,?,datetime(\'now\',\'-10 minutes\'),\'visible\')', [`${uniq}_3`, 'youtube', uniq, 'ok']);
+    await dbRun('INSERT INTO users (id,platform,username,status) VALUES (?,?,?,?)', [`${uniq}_u`, 'youtube', uniq, 'active']);
   });
 
   it('getModerationStats はステータス別のflagged/passedを実データから返す', async () => {

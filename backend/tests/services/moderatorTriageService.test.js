@@ -11,7 +11,7 @@ const makeComment = (overrides = {}) => ({
   replyCount: 0,
   likeCount: 0,
   violationCount: 0,
-  ...overrides,
+  ...overrides
 });
 
 describe('ModeratorTriageService', () => {
@@ -66,8 +66,8 @@ describe('ModeratorTriageService', () => {
       const recidiv = makeComment({ violationCount: 5 });
       const r = svc.triage([clean, recidiv], { riskLevel: 'safe' });
       const all = Object.values(r.queues).flat();
-      const cleanItem   = all.find(i => i.commentId === clean.id);
-      const recidivItem = all.find(i => i.commentId === recidiv.id);
+      const cleanItem   = all.find((i) => i.commentId === clean.id);
+      const recidivItem = all.find((i) => i.commentId === recidiv.id);
       expect(recidivItem.priorityScore).toBeGreaterThan(cleanItem.priorityScore);
     });
 
@@ -76,8 +76,8 @@ describe('ModeratorTriageService', () => {
       const superChat = makeComment({ isSuperChat: true, toxicityScore: 0.3 });
       const r = svc.triage([normal, superChat], { riskLevel: 'watch' });
       const all = Object.values(r.queues).flat();
-      const normalItem    = all.find(i => i.commentId === normal.id);
-      const superChatItem = all.find(i => i.commentId === superChat.id);
+      const normalItem    = all.find((i) => i.commentId === normal.id);
+      const superChatItem = all.find((i) => i.commentId === superChat.id);
       expect(superChatItem.priorityScore).toBeGreaterThan(normalItem.priorityScore);
     });
   });
@@ -87,7 +87,7 @@ describe('ModeratorTriageService', () => {
       const comments = [
         makeComment({ toxicityScore: 0.2 }),
         makeComment({ toxicityScore: 0.8 }),
-        makeComment({ toxicityScore: 0.5 }),
+        makeComment({ toxicityScore: 0.5 })
       ];
       const r = svc.triage(comments, { riskLevel: 'safe' });
       for (const queue of Object.values(r.queues)) {
@@ -133,7 +133,7 @@ describe('ModeratorTriageService', () => {
       ['死ね', 0.9],
       ['クソ', 0.65],
       ['つまらない', 0.35],
-      ['nice video', 0],
+      ['nice video', 0]
     ])('"%s" → %f', (text, expected) => {
       expect(svc._keywordToxicity(text)).toBe(expected);
     });

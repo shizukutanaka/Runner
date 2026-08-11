@@ -60,7 +60,7 @@ describe('SilentDepartureDetector', () => {
 
     it('risk increases proportionally with more silent regulars', () => {
       // 4 regulars, all silent for 6 days
-      ['alice', 'bob', 'carol', 'dave'].forEach(user => {
+      ['alice', 'bob', 'carol', 'dave'].forEach((user) => {
         for (let i = 5; i < 8; i++) {
           det.record('youtube', 'ch1', user, daysAgo(i));
         }

@@ -17,7 +17,7 @@ describe('CommentService', () => {
     // このファイルはapp.jsを経由せずdb.jsを直接requireするため、この待機が無いと
     // ALTER TABLE等の非同期スキーマ初期化が完了する前にテストが実行され
     // "no such table"/"no such column" エラーになることがある
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   });
 
   afterAll(async () => {
@@ -91,7 +91,7 @@ describe('CommentService', () => {
       const comments = await commentService.getComments({ platform: 'youtube' });
 
       expect(Array.isArray(comments)).toBe(true);
-      comments.forEach(comment => {
+      comments.forEach((comment) => {
         expect(comment.platform).toBe('youtube');
       });
     });
@@ -100,7 +100,7 @@ describe('CommentService', () => {
       const comments = await commentService.getComments({ status: 'active' });
 
       expect(Array.isArray(comments)).toBe(true);
-      comments.forEach(comment => {
+      comments.forEach((comment) => {
         expect(comment.status).toBe('active');
       });
     });
@@ -323,7 +323,7 @@ describe('CommentService', () => {
       const errors = commentService.validateCommentData(invalidData);
 
       expect(errors.length).toBeGreaterThan(0);
-      expect(errors.some(error => error.includes('Platform'))).toBe(true);
+      expect(errors.some((error) => error.includes('Platform'))).toBe(true);
     });
 
     it('異常系: ユーザ検証エラー', () => {
@@ -332,7 +332,7 @@ describe('CommentService', () => {
       const errors = commentService.validateCommentData(invalidData);
 
       expect(errors.length).toBeGreaterThan(0);
-      expect(errors.some(error => error.includes('User'))).toBe(true);
+      expect(errors.some((error) => error.includes('User'))).toBe(true);
     });
 
     it('異常系: コンテンツ検証エラー', () => {
@@ -341,7 +341,7 @@ describe('CommentService', () => {
       const errors = commentService.validateCommentData(invalidData);
 
       expect(errors.length).toBeGreaterThan(0);
-      expect(errors.some(error => error.includes('Content'))).toBe(true);
+      expect(errors.some((error) => error.includes('Content'))).toBe(true);
     });
 
     it('異常系: 無効なプラットフォーム値', () => {
@@ -350,7 +350,7 @@ describe('CommentService', () => {
       const errors = commentService.validateCommentData(invalidData);
 
       expect(errors.length).toBeGreaterThan(0);
-      expect(errors.some(error => error.includes('Platform must be either youtube or twitch'))).toBe(true);
+      expect(errors.some((error) => error.includes('Platform must be either youtube or twitch'))).toBe(true);
     });
   });
 });

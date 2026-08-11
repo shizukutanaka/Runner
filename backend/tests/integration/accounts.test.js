@@ -13,7 +13,7 @@ const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
 
 describe('Account Bootstrap and Role Management', () => {
   beforeAll(async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   });
 
   afterAll(async () => {
@@ -32,7 +32,7 @@ describe('Account Bootstrap and Role Management', () => {
       .send({
         username: 'bootstrapTestUser',
         password: 'SecurePass123!',
-        email: 'bootstraptest@example.com',
+        email: 'bootstraptest@example.com'
       })
       .expect(201);
 
@@ -43,7 +43,7 @@ describe('Account Bootstrap and Role Management', () => {
       .send({
         username: 'secondUser',
         password: 'SecurePass123!',
-        email: 'seconduser@example.com',
+        email: 'seconduser@example.com'
       })
       .expect(201);
 
@@ -58,7 +58,7 @@ describe('Account Bootstrap and Role Management', () => {
     beforeAll(async () => {
       const passwordHash = await bcrypt.hash(adminCreds.password, 12);
       await dbRun(
-        `INSERT INTO accounts (id, username, email, password_hash, role, status) VALUES (?, ?, ?, ?, 'admin', 'active')`,
+        'INSERT INTO accounts (id, username, email, password_hash, role, status) VALUES (?, ?, ?, ?, \'admin\', \'active\')',
         [uuidv4(), adminCreds.username, 'seededadmin@example.com', passwordHash]
       );
 
@@ -76,7 +76,7 @@ describe('Account Bootstrap and Role Management', () => {
         .expect(200);
 
       expect(listRes.body.success).toBe(true);
-      const moderator = listRes.body.accounts.find(a => a.username === 'secondUser');
+      const moderator = listRes.body.accounts.find((a) => a.username === 'secondUser');
       expect(moderator).toBeDefined();
       expect(moderator.role).toBe('moderator');
 
@@ -91,7 +91,7 @@ describe('Account Bootstrap and Role Management', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
-      const promoted = listAfter.body.accounts.find(a => a.username === 'secondUser');
+      const promoted = listAfter.body.accounts.find((a) => a.username === 'secondUser');
       expect(promoted.role).toBe('admin');
     });
 
@@ -109,7 +109,7 @@ describe('Account Bootstrap and Role Management', () => {
         .send({
           username: 'plainModerator',
           password: 'SecurePass123!',
-          email: 'plainmod@example.com',
+          email: 'plainmod@example.com'
         })
         .expect(201);
       expect(modRegister.body.user.role).toBe('moderator');

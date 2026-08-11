@@ -8,7 +8,7 @@ describe('Comments Integration Tests', () => {
   let testCommentId;
 
   beforeAll(async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Create test user and get auth token
     const registerRes = await request(app)
@@ -16,7 +16,7 @@ describe('Comments Integration Tests', () => {
       .send({
         username: 'testuser',
         password: 'TestPass123!',
-        email: 'test@example.com',
+        email: 'test@example.com'
       });
 
     if (registerRes.status === 201 || registerRes.status === 409) {
@@ -24,7 +24,7 @@ describe('Comments Integration Tests', () => {
         .post('/api/users/login')
         .send({
           username: 'testuser',
-          password: 'TestPass123!',
+          password: 'TestPass123!'
         });
 
       authToken = loginRes.body.token;
@@ -43,7 +43,7 @@ describe('Comments Integration Tests', () => {
       const newComment = {
         platform: 'youtube',
         content: 'This is a test comment',
-        user: 'Test Author',
+        user: 'Test Author'
       };
 
       const res = await request(app)
@@ -63,7 +63,7 @@ describe('Comments Integration Tests', () => {
     test('should reject comment without authentication', async () => {
       const newComment = {
         platform: 'youtube',
-        content: 'Test comment',
+        content: 'Test comment'
       };
 
       await request(app)
@@ -75,7 +75,7 @@ describe('Comments Integration Tests', () => {
     test('should reject comment with invalid platform', async () => {
       const newComment = {
         platform: 'invalid-platform',
-        content: 'Test comment',
+        content: 'Test comment'
       };
 
       await request(app)
@@ -88,7 +88,7 @@ describe('Comments Integration Tests', () => {
     test('should reject comment with empty content', async () => {
       const newComment = {
         platform: 'youtube',
-        content: '',
+        content: ''
       };
 
       await request(app)
@@ -102,7 +102,7 @@ describe('Comments Integration Tests', () => {
       const newComment = {
         platform: 'youtube',
         content: '<script>alert("XSS")</script>Test comment',
-        user: 'testuser',
+        user: 'testuser'
       };
 
       const res = await request(app)
@@ -133,7 +133,7 @@ describe('Comments Integration Tests', () => {
         .expect(200);
 
       expect(Array.isArray(res.body.data.items)).toBe(true);
-      res.body.data.items.forEach(comment => {
+      res.body.data.items.forEach((comment) => {
         expect(comment.platform).toBe('youtube');
       });
     });
@@ -209,7 +209,7 @@ describe('Comments Integration Tests', () => {
 
       // 実際のスキーマはstatusではなくaction（visible/hidden/muted/deleted/flagged）を受け付ける
       const updatedData = {
-        action: 'visible',
+        action: 'visible'
       };
 
       const res = await request(app)
@@ -227,7 +227,7 @@ describe('Comments Integration Tests', () => {
       }
 
       const updatedData = {
-        action: 'invalid-status',
+        action: 'invalid-status'
       };
 
       await request(app)
@@ -279,7 +279,7 @@ describe('Comments Integration Tests', () => {
       const newComment = {
         platform: 'youtube',
         content: 'Comment to moderate',
-        user: 'testuser',
+        user: 'testuser'
       };
 
       const res = await request(app)

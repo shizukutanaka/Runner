@@ -17,7 +17,7 @@ const userRoute = (suffix = '') => `${baseUrl}/user/${testUserId}${suffix}`;
 describe('Settings API', () => {
   beforeAll(async () => {
     // データベース初期化完了を待つ（他のテストファイルと同じ規約）
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     // 正常系ユーザーの設定レコードを作成（アプリでは登録時に作られる）
     const db = require('../../src/db');
     const defaultSettings = require('../../src/controllers/settingsController').defaultSettings;
@@ -42,95 +42,95 @@ describe('Settings API', () => {
       expect(typeof res.body.data).toBe('object');
     });
 
-  describe('PUT /api/settings/user/:userId/auto-translation', () => {
-    it('正常系: 最小入力で自動翻訳設定更新', async () => {
-      const res = await request(app)
-        .put(userRoute('/auto-translation'))
-        .send({ enabled: true })
-        .set(adminAuth())
-        .expect(200);
+    describe('PUT /api/settings/user/:userId/auto-translation', () => {
+      it('正常系: 最小入力で自動翻訳設定更新', async () => {
+        const res = await request(app)
+          .put(userRoute('/auto-translation'))
+          .send({ enabled: true })
+          .set(adminAuth())
+          .expect(200);
 
-      expect(res.body.status).toBe(200);
-      expect(res.body.data.autoTranslation.enabled).toBe(true);
-      expect(res.body.data.autoTranslation.provider).toBe('google');
-      expect(res.body.data.autoTranslation.usageLimitPerHour).toBe(120);
-    });
+        expect(res.body.status).toBe(200);
+        expect(res.body.data.autoTranslation.enabled).toBe(true);
+        expect(res.body.data.autoTranslation.provider).toBe('google');
+        expect(res.body.data.autoTranslation.usageLimitPerHour).toBe(120);
+      });
 
-    it('正常系: 追加パラメータ反映', async () => {
-      const payload = {
-        enabled: true,
-        targetLanguage: 'en',
-        sourceLanguage: 'ja',
-        provider: 'azure',
-        usageLimitPerHour: 60,
-        fallbackLanguages: ['ja', 'ko'],
-        notifyOnFailure: true
-      };
+      it('正常系: 追加パラメータ反映', async () => {
+        const payload = {
+          enabled: true,
+          targetLanguage: 'en',
+          sourceLanguage: 'ja',
+          provider: 'azure',
+          usageLimitPerHour: 60,
+          fallbackLanguages: ['ja', 'ko'],
+          notifyOnFailure: true
+        };
 
-      const res = await request(app)
-        .put(userRoute('/auto-translation'))
-        .send(payload)
-        .set(adminAuth())
-        .expect(200);
+        const res = await request(app)
+          .put(userRoute('/auto-translation'))
+          .send(payload)
+          .set(adminAuth())
+          .expect(200);
 
-      expect(res.body.status).toBe(200);
-      expect(res.body.data.autoTranslation).toMatchObject({
-        enabled: true,
-        targetLanguage: 'en',
-        sourceLanguage: 'ja',
-        provider: 'azure',
-        usageLimitPerHour: 60,
-        fallbackLanguages: ['ja', 'ko'],
-        notifyOnFailure: true
+        expect(res.body.status).toBe(200);
+        expect(res.body.data.autoTranslation).toMatchObject({
+          enabled: true,
+          targetLanguage: 'en',
+          sourceLanguage: 'ja',
+          provider: 'azure',
+          usageLimitPerHour: 60,
+          fallbackLanguages: ['ja', 'ko'],
+          notifyOnFailure: true
+        });
+      });
+
+      it('異常系: 不正なプロバイダ', async () => {
+        const res = await request(app)
+          .put(userRoute('/auto-translation'))
+          .send({ enabled: true, provider: 'invalid' })
+          .set(adminAuth())
+          .expect(400);
+
+        expect(res.body.message).toMatch(/provider|無効|invalid/i);
+      });
+
+      it('異常系: フォールバック言語数超過', async () => {
+        const res = await request(app)
+          .put(userRoute('/auto-translation'))
+          .send({
+            enabled: true,
+            fallbackLanguages: ['ja', 'en', 'zh', 'ko', 'es', 'fr']
+          })
+          .set(adminAuth())
+          .expect(400);
+
+        expect(res.body.message).toMatch(/fallback|最大|5/);
+      });
+
+      it('異常系: フォールバック言語の不正値', async () => {
+        const res = await request(app)
+          .put(userRoute('/auto-translation'))
+          .send({
+            enabled: true,
+            fallbackLanguages: ['ja', 'xx']
+          })
+          .set(adminAuth())
+          .expect(400);
+
+        expect(res.body.message).toMatch(/fallback|無効|invalid/i);
+      });
+
+      it('異常系: 利用上限の範囲外', async () => {
+        const res = await request(app)
+          .put(userRoute('/auto-translation'))
+          .send({ enabled: true, usageLimitPerHour: 2000 })
+          .set(adminAuth())
+          .expect(400);
+
+        expect(res.body.message).toMatch(/usageLimitPerHour|最大|1000/);
       });
     });
-
-    it('異常系: 不正なプロバイダ', async () => {
-      const res = await request(app)
-        .put(userRoute('/auto-translation'))
-        .send({ enabled: true, provider: 'invalid' })
-        .set(adminAuth())
-        .expect(400);
-
-      expect(res.body.message).toMatch(/provider|無効|invalid/i);
-    });
-
-    it('異常系: フォールバック言語数超過', async () => {
-      const res = await request(app)
-        .put(userRoute('/auto-translation'))
-        .send({
-          enabled: true,
-          fallbackLanguages: ['ja', 'en', 'zh', 'ko', 'es', 'fr']
-        })
-        .set(adminAuth())
-        .expect(400);
-
-      expect(res.body.message).toMatch(/fallback|最大|5/);
-    });
-
-    it('異常系: フォールバック言語の不正値', async () => {
-      const res = await request(app)
-        .put(userRoute('/auto-translation'))
-        .send({
-          enabled: true,
-          fallbackLanguages: ['ja', 'xx']
-        })
-        .set(adminAuth())
-        .expect(400);
-
-      expect(res.body.message).toMatch(/fallback|無効|invalid/i);
-    });
-
-    it('異常系: 利用上限の範囲外', async () => {
-      const res = await request(app)
-        .put(userRoute('/auto-translation'))
-        .send({ enabled: true, usageLimitPerHour: 2000 })
-        .set(adminAuth())
-        .expect(400);
-
-      expect(res.body.message).toMatch(/usageLimitPerHour|最大|1000/);
-    });
-  });
 
     it('異常系: 存在しないユーザー', async () => {
       const fakeUserId = '99999999-9999-4999-8999-999999999999';
@@ -703,7 +703,7 @@ describe('Settings API', () => {
 
     it('SQLインジェクション対策: SQLを含む設定', async () => {
       const sqlInjectionSettings = {
-        timezone: "'; DROP TABLE settings; --"
+        timezone: '\'; DROP TABLE settings; --'
       };
 
       const res = await request(app)
@@ -733,7 +733,7 @@ describe('Settings API', () => {
       const startTime = Date.now();
 
       // バッチで設定を更新
-      const updatePromises = settings.map(setting =>
+      const updatePromises = settings.map((setting) =>
         request(app)
           .put(userRoute())
           .send(setting)
@@ -743,7 +743,7 @@ describe('Settings API', () => {
       const results = await Promise.all(updatePromises);
       const endTime = Date.now();
 
-      const successfulUpdates = results.filter(res => res.statusCode === 200);
+      const successfulUpdates = results.filter((res) => res.statusCode === 200);
       const processingTime = endTime - startTime;
 
       // 成功率と処理時間を確認

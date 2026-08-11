@@ -19,7 +19,7 @@ module.exports = async () => {
   // 過去実行の残骸をベストエフォートで掃除（ロック中のものはスキップ）
   const stale = fs
     .readdirSync(dir)
-    .filter((f) => /^test[-.\d]*\.db(-journal|-wal|-shm)?$/.test(f))
+    .filter((f) => /^test[-.\w]*\.db(-journal|-wal|-shm)?$/.test(f))
     .map((f) => path.join(dir, f));
 
   for (const f of stale) {

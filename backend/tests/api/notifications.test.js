@@ -13,7 +13,7 @@ const adminAuth = () => createAuthHeader({ id: 'admin-tester', role: 'admin' });
 describe('Notifications API', () => {
   beforeAll(async () => {
     // データベース初期化完了を待つ（他のテストファイルと同じ規約）
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   });
 
   describe('GET /api/notifications', () => {

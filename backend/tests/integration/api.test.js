@@ -15,14 +15,14 @@ describe('API Integration Tests', () => {
 
   beforeAll(async () => {
     // Wait for database initialization
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     const registerRes = await request(app)
       .post('/api/users/register')
       .send({
         username: 'apiintegrationtester',
         password: 'TestPass123!',
-        email: 'apiintegrationtester@example.com',
+        email: 'apiintegrationtester@example.com'
       });
 
     if (registerRes.status === 201 || registerRes.status === 409) {
@@ -30,7 +30,7 @@ describe('API Integration Tests', () => {
         .post('/api/users/login')
         .send({
           username: 'apiintegrationtester',
-          password: 'TestPass123!',
+          password: 'TestPass123!'
         });
 
       authToken = loginRes.body.token;
@@ -83,7 +83,7 @@ describe('API Integration Tests', () => {
     const testComment = {
       platform: 'youtube',
       user: 'testuser',
-      content: 'Test comment',
+      content: 'Test comment'
     };
     let createdCommentId;
 
@@ -219,7 +219,7 @@ describe('API Integration Tests', () => {
         .send({
           platform: 'invalid-platform',
           user: 'test',
-          content: 'test',
+          content: 'test'
         })
         .expect(400);
 

@@ -11,7 +11,7 @@ describe('Held Messages Queue', () => {
   const moderatorToken = generateToken({ id: 'held-msg-tester', role: 'moderator' });
 
   beforeAll(async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
   });
 
   afterAll(async () => {

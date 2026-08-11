@@ -69,7 +69,7 @@ describe('Policy-as-Prompt（R-24）', () => {
         isAvailable: () => true,
         analyzeSentiment: async () => ({ sentiment: 'neutral', score: 0.5, confidence: 0.9 }),
         detectToxicContent: async () => toxic,
-        moderateWithPolicy: async () => policyResult,
+        moderateWithPolicy: async () => policyResult
       }));
       return require('../../src/services/moderationService');
     };
@@ -77,7 +77,7 @@ describe('Policy-as-Prompt（R-24）', () => {
     it('LLMが違反と判定したら助言として記録しスコアを加点する', async () => {
       const mod = loadWithMock({
         available: true, isViolation: true, score: 80,
-        reason: '遠回しな人格攻撃', category: 'harassment', cultureType: 'entertainment',
+        reason: '遠回しな人格攻撃', category: 'harassment', cultureType: 'entertainment'
       });
       const r = await mod.analyzeComment('その顔で配信とか、よく人前に出られるね', 'youtube', 'u', new Date().toISOString());
       expect(r.policyAnalysis).toBeDefined();
@@ -91,7 +91,7 @@ describe('Policy-as-Prompt（R-24）', () => {
     it('LLMが「問題なし」でも、NGワードによる決定論的判定は覆らない', async () => {
       const mod = loadWithMock({
         available: true, isViolation: false, score: 0,
-        reason: null, category: 'none', cultureType: 'gaming',
+        reason: null, category: 'none', cultureType: 'gaming'
       });
       const r = await mod.analyzeComment('死ね', 'youtube', 'u', new Date().toISOString());
       // 助言が「問題なし」でも NGワード判定は維持される（arXiv:2607.12149の制約）
@@ -101,7 +101,7 @@ describe('Policy-as-Prompt（R-24）', () => {
 
     it('LLMが利用不可でも解析は成立する（フェイルセーフ規約）', async () => {
       const mod = loadWithMock({
-        available: false, isViolation: false, score: 0, error: 'OpenAI not available',
+        available: false, isViolation: false, score: 0, error: 'OpenAI not available'
       });
       const r = await mod.analyzeComment('こんにちは', 'youtube', 'u', new Date().toISOString());
       expect(r.policyAnalysis).toBeUndefined(); // 助言は付かない

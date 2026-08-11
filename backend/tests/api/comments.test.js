@@ -25,14 +25,14 @@ describe('Comments API', () => {
   const auth = (req) => req.set('Authorization', `Bearer ${authToken}`);
 
   beforeAll(async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     const registerRes = await request(app)
       .post('/api/users/register')
       .send({
         username: 'commentsapitester',
         password: 'TestPass123!',
-        email: 'commentsapitester@example.com',
+        email: 'commentsapitester@example.com'
       });
 
     if (registerRes.status === 201 || registerRes.status === 409) {
@@ -40,7 +40,7 @@ describe('Comments API', () => {
         .post('/api/users/login')
         .send({
           username: 'commentsapitester',
-          password: 'TestPass123!',
+          password: 'TestPass123!'
         });
 
       authToken = loginRes.body.token;
@@ -392,7 +392,7 @@ describe('Comments API', () => {
     it('SQLインジェクション対策: SQLを含むコメント', async () => {
       const sqlInjectionComment = {
         ...testCommentData,
-        content: "'; DROP TABLE comments; --"
+        content: '\'; DROP TABLE comments; --'
       };
 
       const res = await auth(request(app).post('/api/comments')).send(sqlInjectionComment);
@@ -414,7 +414,7 @@ describe('Comments API', () => {
         requests.push(auth(request(app).get('/api/comments?platform=youtube')));
       }
       const results = await Promise.all(requests);
-      const rateLimitedRequests = results.filter(res => res.statusCode === 429);
+      const rateLimitedRequests = results.filter((res) => res.statusCode === 429);
       expect(rateLimitedRequests.length).toBeGreaterThan(0);
     });
   });
@@ -435,14 +435,14 @@ describe('Comments API', () => {
       const startTime = Date.now();
 
       // バッチでコメントを作成
-      const createPromises = comments.map(comment =>
+      const createPromises = comments.map((comment) =>
         auth(request(app).post('/api/comments')).send(comment)
       );
 
       const results = await Promise.all(createPromises);
       const endTime = Date.now();
 
-      const successfulCreates = results.filter(res => res.statusCode === 201);
+      const successfulCreates = results.filter((res) => res.statusCode === 201);
       const processingTime = endTime - startTime;
 
       // 成功率と処理時間を確認

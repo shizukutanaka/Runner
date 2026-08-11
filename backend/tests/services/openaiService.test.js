@@ -41,7 +41,7 @@ jest.mock('redis', () => ({
     isOpen:   true,
     isReady:  true,
     on:       jest.fn(),
-    info:     jest.fn().mockResolvedValue('redis_version:7.0.0\r\n'),
+    info:     jest.fn().mockResolvedValue('redis_version:7.0.0\r\n')
   }))
 }));
 

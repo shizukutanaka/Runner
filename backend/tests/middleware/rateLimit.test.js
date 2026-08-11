@@ -10,7 +10,7 @@ const loadSecurityWith = (rateLimitOverrides) => {
   const realConfig = jest.requireActual('../../src/config');
   jest.doMock('../../src/config', () => ({
     ...realConfig,
-    rateLimit: { ...realConfig.rateLimit, ...rateLimitOverrides },
+    rateLimit: { ...realConfig.rateLimit, ...rateLimitOverrides }
   }));
   // security.js はモジュールロード時に limiter を構築するため、doMock 後に require する
   return require('../../src/middleware/security');
@@ -39,7 +39,7 @@ describe('rate limiting enable/disable (E-14 / W-1)', () => {
     const security = loadSecurityWith({
       enabled: true,
       store: 'memory',
-      general: { windowMs: 60000, max: 3 }, // テスト用に低い上限
+      general: { windowMs: 60000, max: 3 } // テスト用に低い上限
     });
     const app = express();
     app.use(security.generalRateLimit);

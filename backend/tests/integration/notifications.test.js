@@ -8,7 +8,7 @@ describe('Notifications Integration Tests', () => {
   let testNotificationId;
 
   beforeAll(async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Create test user and get auth token
     const registerRes = await request(app)
@@ -16,7 +16,7 @@ describe('Notifications Integration Tests', () => {
       .send({
         username: 'notifuser',
         password: 'TestPass123!',
-        email: 'notif@example.com',
+        email: 'notif@example.com'
       });
 
     if (registerRes.status === 201 || registerRes.status === 409) {
@@ -24,7 +24,7 @@ describe('Notifications Integration Tests', () => {
         .post('/api/users/login')
         .send({
           username: 'notifuser',
-          password: 'TestPass123!',
+          password: 'TestPass123!'
         });
 
       authToken = loginRes.body.token;
@@ -57,7 +57,7 @@ describe('Notifications Integration Tests', () => {
         .expect(200);
 
       expect(Array.isArray(res.body.notifications)).toBe(true);
-      res.body.notifications.forEach(notification => {
+      res.body.notifications.forEach((notification) => {
         expect(notification.read).toBe(false);
       });
     });
@@ -70,7 +70,7 @@ describe('Notifications Integration Tests', () => {
 
       expect(Array.isArray(res.body.notifications)).toBe(true);
       if (res.body.notifications.length > 0) {
-        res.body.notifications.forEach(notification => {
+        res.body.notifications.forEach((notification) => {
           expect(notification.type).toBe('comment');
         });
       }
@@ -178,7 +178,7 @@ describe('Notifications Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
-      const found = res.body.notifications.find(n => n.id === deleteNotificationId);
+      const found = res.body.notifications.find((n) => n.id === deleteNotificationId);
       expect(found).toBeUndefined();
     });
 
@@ -242,8 +242,8 @@ describe('Notifications Integration Tests', () => {
         types: {
           comment: true,
           moderation: true,
-          system: false,
-        },
+          system: false
+        }
       };
 
       const res = await request(app)
@@ -259,7 +259,7 @@ describe('Notifications Integration Tests', () => {
 
     test('should reject invalid settings', async () => {
       const invalidSettings = {
-        email: 'not-a-boolean',
+        email: 'not-a-boolean'
       };
 
       await request(app)
@@ -314,12 +314,12 @@ describe('Notifications Integration Tests', () => {
           .set('Authorization', `Bearer ${authToken}`)
           .send({
             platform: 'youtube',
-            content: `Test comment ${i}`,
+            content: `Test comment ${i}`
           });
       }
 
       // Wait for batching
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const res = await request(app)
         .get('/api/notifications?type=comment')
