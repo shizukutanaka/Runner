@@ -16,6 +16,7 @@ let openaiWarningIssued = false;
 // ため、主判定文字列の置き換えには使わず、あくまで追加の照合候補として
 // OR条件でのみ使う（誤爆しても主判定には影響しない設計）
 // U+200B ZERO WIDTH SPACE, U+200C ZWNJ, U+200D ZWJ, U+2060 WORD JOINER, U+FEFF BOM/ZWNBSP
+// eslint-disable-next-line no-misleading-character-class -- 意図的にZWJ等のゼロ幅文字を個別に除去する
 const ZERO_WIDTH_CHARS_REGEX = /[\u200B\u200C\u200D\u2060\uFEFF]/g;
 const stripZeroWidthChars = (text) => text.replace(ZERO_WIDTH_CHARS_REGEX, '');
 const normalizeForMatching = (text) => stripZeroWidthChars(text).normalize('NFKC');
@@ -67,7 +68,7 @@ const LINK_BLOCK_CONFIG = {
     /goo\.gl\//i,
     /t\.co\//i,
     /discord\.gg\//i, // Discord招待リンクはモデレーター判断を推奨
-    /paypal\.me\//i, // PayPalリンクはスパムになりやすい
+    /paypal\.me\//i // PayPalリンクはスパムになりやすい
   ],
   // 許可するドメイン
   allowedDomains: [
@@ -83,7 +84,7 @@ const LINK_BLOCK_CONFIG = {
 };
 
 // URL抽出の正規表現
-const URL_REGEX = /(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?/gi;
+const URL_REGEX = /(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?/gi;
 
 // YouTube Community Guidelinesに基づく追加フィルタ
 const YOUTUBE_COMMUNITY_FILTERS = {
@@ -124,7 +125,7 @@ const CUSTOM_FILTER_CONFIG = {
         /\b(?:free|win|prize|gift)\b.*\$?\d+/i,  // "free money", "win $100" など
         /\b(?:paypal|bitcoin|crypto)\b.*\b(?:send|give|donate)\b/i, // 仮想通貨関連
         /(?:http|https|www\.)\S+/i,  // 一般的なURL
-        /\b(?:follow|subscribe|like)\b.*\b(?:back|me|now)\b/i, // フォロー誘導
+        /\b(?:follow|subscribe|like)\b.*\b(?:back|me|now)\b/i // フォロー誘導
       ],
       action: 'flag',
       severity: 'medium',
@@ -168,7 +169,7 @@ function applyCustomFilters(content, customFilters = []) {
   const allFilters = [...CUSTOM_FILTER_CONFIG.defaultFilters, ...customFilters];
 
   // 有効なフィルタのみ適用
-  const activeFilters = allFilters.filter(filter => filter.enabled);
+  const activeFilters = allFilters.filter((filter) => filter.enabled);
 
   for (const filter of activeFilters) {
     try {
@@ -177,7 +178,7 @@ function applyCustomFilters(content, customFilters = []) {
 
       if (filter.matchType === 'exact') {
         // 完全一致
-        const words = filter.patterns.map(p => p.toString());
+        const words = filter.patterns.map((p) => p.toString());
         for (const word of words) {
           const regex = filter.caseSensitive
             ? new RegExp(`\\b${word}\\b`)
@@ -242,16 +243,16 @@ function applyCustomFilters(content, customFilters = []) {
         matches.reduce((max, match) =>
           ['low', 'medium', 'high'].indexOf(match.severity) >
           ['low', 'medium', 'high'].indexOf(max) ? match.severity : max,
-          'low'
+        'low'
         )
       ) : -1,
     recommendedAction: matches.length > 0 ?
       matches.reduce((action, match) =>
         match.severity === 'high' ? 'block' :
-        action === 'block' ? 'block' :
-        match.action === 'block' ? 'block' :
-        match.action === 'flag' ? 'flag' : action,
-        'allow'
+          action === 'block' ? 'block' :
+            match.action === 'block' ? 'block' :
+              match.action === 'flag' ? 'flag' : action,
+      'allow'
       ) : 'allow'
   };
 }
@@ -347,7 +348,7 @@ function generateChatbotResponse(content, context = {}) {
 
     // 1. FAQチェック
     for (const [key, faq] of Object.entries(CHATBOT_CONFIG.faqResponses)) {
-      if (faq.keywords.some(keyword => lowerContent.includes(keyword))) {
+      if (faq.keywords.some((keyword) => lowerContent.includes(keyword))) {
         return {
           response: faq.response,
           confidence: faq.confidence,
@@ -360,7 +361,7 @@ function generateChatbotResponse(content, context = {}) {
 
     // 2. 製品推薦チェック
     for (const [key, product] of Object.entries(CHATBOT_CONFIG.productRecommendations)) {
-      if (product.keywords.some(keyword => lowerContent.includes(keyword))) {
+      if (product.keywords.some((keyword) => lowerContent.includes(keyword))) {
         return {
           response: product.response,
           confidence: product.confidence,
@@ -373,7 +374,7 @@ function generateChatbotResponse(content, context = {}) {
 
     // 3. インタラクション応答
     for (const [key, interaction] of Object.entries(CHATBOT_CONFIG.interactionResponses)) {
-      if (interaction.patterns.some(pattern => pattern.test(content))) {
+      if (interaction.patterns.some((pattern) => pattern.test(content))) {
         const randomResponse = interaction.responses[Math.floor(Math.random() * interaction.responses.length)];
         return {
           response: randomResponse,
@@ -501,7 +502,7 @@ function detectLanguage(text) {
 
     // 単語ベースの検出（英語をデフォルトに）
     const words = text.toLowerCase().split(/\s+/);
-    const englishWords = words.filter(word =>
+    const englishWords = words.filter((word) =>
       /^[a-z]+$/i.test(word) &&
       !TRANSLATION_CONFIG.languagePatterns.es.test(word) &&
       !TRANSLATION_CONFIG.languagePatterns.fr.test(word) &&
@@ -856,7 +857,7 @@ function shouldHoldMessage(content, moderationResult, settings = {}) {
 
     // 疑わしいキーワードチェック
     const lowerContent = content.toLowerCase();
-    const foundKeywords = suspiciousKeywords.filter(keyword =>
+    const foundKeywords = suspiciousKeywords.filter((keyword) =>
       lowerContent.includes(keyword.toLowerCase())
     );
     if (foundKeywords.length > 0) {

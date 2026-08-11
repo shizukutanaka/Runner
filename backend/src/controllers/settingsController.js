@@ -188,7 +188,7 @@ exports.getSettings = (req, res, next) => {
     if (!row) {
       return res.status(404).json({
         status: 404,
-        message: 'ユーザーが存在しない',
+        message: 'ユーザーが存在しない'
       });
     }
 
@@ -214,7 +214,7 @@ exports.updateSettings = (req, res, next) => {
   if (!updatedSettings || Object.keys(updatedSettings).length === 0) {
     return res.status(400).json({
       status: 400,
-      message: '更新データが空です',
+      message: '更新データが空です'
     });
   }
 
@@ -223,7 +223,7 @@ exports.updateSettings = (req, res, next) => {
       !['light', 'dark', 'system'].includes(updatedSettings.theme)) {
     return res.status(400).json({
       status: 400,
-      message: '無効なテーマ値です（light/dark/system のいずれか）',
+      message: '無効なテーマ値です（light/dark/system のいずれか）'
     });
   }
 
@@ -239,7 +239,7 @@ exports.updateSettings = (req, res, next) => {
     if (!row) {
       return res.status(404).json({
         status: 404,
-        message: 'ユーザーが存在しない',
+        message: 'ユーザーが存在しない'
       });
     }
 
@@ -816,7 +816,7 @@ exports.setUICustomization = (req, res, next) => {
     'Georgia', 'Garamond', 'Courier New', 'Brush Script MT', 'sans-serif', 'serif', 'monospace'
   ];
   
-  if (fontFamily && !safeFonts.some(font => fontFamily.includes(font))) {
+  if (fontFamily && !safeFonts.some((font) => fontFamily.includes(font))) {
     return next({ 
       status: 400, 
       message: `安全でないフォントが指定されました。許可されているフォント: ${safeFonts.join(', ')}` 
@@ -1668,10 +1668,10 @@ function parseDurationToMs(duration) {
   const value = parseInt(duration.slice(0, -1));
 
   switch (unit) {
-    case 'm': return value * 60 * 1000;
-    case 'h': return value * 60 * 60 * 1000;
-    case 'd': return value * 24 * 60 * 60 * 1000;
-    default: return 0;
+  case 'm': return value * 60 * 1000;
+  case 'h': return value * 60 * 60 * 1000;
+  case 'd': return value * 24 * 60 * 60 * 1000;
+  default: return 0;
   }
 }
 
@@ -1818,17 +1818,17 @@ exports.setAutoRestore = (req, res, next) => {
     const nextDate = new Date();
 
     switch (frequency) {
-      case 'hourly':
-        nextDate.setHours(nextDate.getHours() + 1, 0, 0, 0);
-        break;
-      case 'daily':
-        nextDate.setDate(nextDate.getDate() + 1);
-        nextDate.setHours(2, 0, 0, 0);
-        break;
-      case 'weekly':
-        nextDate.setDate(nextDate.getDate() + 7);
-        nextDate.setHours(2, 0, 0, 0);
-        break;
+    case 'hourly':
+      nextDate.setHours(nextDate.getHours() + 1, 0, 0, 0);
+      break;
+    case 'daily':
+      nextDate.setDate(nextDate.getDate() + 1);
+      nextDate.setHours(2, 0, 0, 0);
+      break;
+    case 'weekly':
+      nextDate.setDate(nextDate.getDate() + 7);
+      nextDate.setHours(2, 0, 0, 0);
+      break;
     }
 
     autoRestoreSettings.nextScheduled = nextDate.toISOString();
@@ -2213,7 +2213,7 @@ exports.checkExpirationStatus = (req, res, next) => {
 };
 
 // スローモード設定の取得
-const getSlowModeSettings = asyncHandler(async (req, res) => {
+const getSlowModeSettings = asyncHandler(async (req, res, next) => {
   const { userId } = req.params;
 
   const getSettingsSql = 'SELECT settings FROM user_settings WHERE user_id = ?';
@@ -2249,7 +2249,7 @@ const getSlowModeSettings = asyncHandler(async (req, res) => {
 });
 
 // スローモード設定の更新
-const updateSlowModeSettings = asyncHandler(async (req, res) => {
+const updateSlowModeSettings = asyncHandler(async (req, res, next) => {
   const { userId } = req.params;
   const { enabled, intervalSeconds, platformSpecific } = req.body;
 

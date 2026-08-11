@@ -54,7 +54,7 @@ class NotificationChannelService {
           return reject(err);
         }
 
-        rows.forEach(row => {
+        rows.forEach((row) => {
           this.channels.set(row.id, {
             ...row,
             config: row.config ? JSON.parse(row.config) : {}
@@ -87,7 +87,7 @@ class NotificationChannelService {
   async sendWebSocket(io, userId, notification) {
     return new Promise((resolve) => {
       const userSockets = Array.from(io.sockets.sockets.values())
-        .filter(socket => socket.userId === userId);
+        .filter((socket) => socket.userId === userId);
 
       if (userSockets.length === 0) {
         resolve({ success: false, reason: 'No active sockets' });
@@ -105,7 +105,7 @@ class NotificationChannelService {
         read: false
       };
 
-      userSockets.forEach(socket => {
+      userSockets.forEach((socket) => {
         socket.emit('notification', message);
       });
 
@@ -243,49 +243,51 @@ class NotificationChannelService {
 
     try {
       switch (channel.type) {
-        case 'websocket':
-          result = await this.sendWebSocket(io, userId, notification);
-          break;
-        case 'email':
-          // ユーザーのEmailアドレスを取得
-          const userSql = 'SELECT email FROM users WHERE id = ?';
-          const user = await new Promise((resolve, reject) => {
-            db.get(userSql, [userId], (err, row) => {
-              if (err) reject(err);
-              else resolve(row);
-            });
+      case 'websocket':
+        result = await this.sendWebSocket(io, userId, notification);
+        break;
+      case 'email': {
+        // ユーザーのEmailアドレスを取得
+        const userSql = 'SELECT email FROM users WHERE id = ?';
+        const user = await new Promise((resolve, reject) => {
+          db.get(userSql, [userId], (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
           });
+        });
 
-          if (!user || !user.email) {
-            throw new Error('User email not found');
-          }
+        if (!user || !user.email) {
+          throw new Error('User email not found');
+        }
 
-          result = await this.sendEmail(user.email, notification, channel.config);
-          break;
-        case 'sms':
-          // ユーザーの電話番号を取得
-          const phoneSql = 'SELECT phone FROM users WHERE id = ?';
-          const phoneUser = await new Promise((resolve, reject) => {
-            db.get(phoneSql, [userId], (err, row) => {
-              if (err) reject(err);
-              else resolve(row);
-            });
+        result = await this.sendEmail(user.email, notification, channel.config);
+        break;
+      }
+      case 'sms': {
+        // ユーザーの電話番号を取得
+        const phoneSql = 'SELECT phone FROM users WHERE id = ?';
+        const phoneUser = await new Promise((resolve, reject) => {
+          db.get(phoneSql, [userId], (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
           });
+        });
 
-          if (!phoneUser || !phoneUser.phone) {
-            throw new Error('User phone not found');
-          }
+        if (!phoneUser || !phoneUser.phone) {
+          throw new Error('User phone not found');
+        }
 
-          result = await this.sendSMS(phoneUser.phone, notification, channel.config);
-          break;
-        case 'slack':
-          result = await this.sendSlack(notification, channel.config);
-          break;
-        case 'push':
-          result = await this.sendPush(userId, notification, channel.config);
-          break;
-        default:
-          throw new Error(`Unsupported channel type: ${channel.type}`);
+        result = await this.sendSMS(phoneUser.phone, notification, channel.config);
+        break;
+      }
+      case 'slack':
+        result = await this.sendSlack(notification, channel.config);
+        break;
+      case 'push':
+        result = await this.sendPush(userId, notification, channel.config);
+        break;
+      default:
+        throw new Error(`Unsupported channel type: ${channel.type}`);
       }
 
       return {
@@ -324,7 +326,7 @@ class NotificationChannelService {
 
         // 成功した場合、少し待機（レート制限対策）
         if (result.success) {
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise((resolve) => setTimeout(resolve, 50));
         }
       } catch (error) {
         results.push({

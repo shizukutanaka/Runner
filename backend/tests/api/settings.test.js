@@ -749,6 +749,6 @@ describe('Settings API', () => {
       // 成功率と処理時間を確認
       expect(successfulUpdates.length).toBeGreaterThanOrEqual(95); // 95%以上の成功率
       expect(processingTime).toBeLessThan(60000); // 60秒以内に処理完了
-    });
+    }, 90000); // テスト自身の許容が60秒なので、jest既定の15秒タイムアウトを上書きする
   });
 });

@@ -1,20 +1,32 @@
-// Jest globalSetup: 各テスト実行の前に共有 SQLite テストDBを削除して、
-// 前回実行の残骸によるユニーク制約違反 (409 Conflict / SQLITE_CONSTRAINT) を防ぐ。
+// Jest globalSetup: テストDBの残骸によるユニーク制約違反 (409 Conflict /
+// SQLITE_CONSTRAINT) や SQLITE_BUSY を防ぐ。
+// Windowsでは forceExit で残った sqlite ハンドルにより前回のDBファイルを
+// 削除できない (EBUSY/EPERM) ことがあるため、削除に頼らず「実行ごとに一意な
+// DBファイル名」を採用し、削除はベストエフォートの掃除に留める。
 const fs = require('fs');
 const path = require('path');
 
 module.exports = async () => {
-  const dbPath = process.env.DATABASE_PATH || path.resolve(__dirname, '../data/test.db');
-  const dir = path.dirname(dbPath);
+  const dir = path.resolve(__dirname, '../data');
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  for (const f of [dbPath, `${dbPath}-journal`, `${dbPath}-wal`, `${dbPath}-shm`]) {
+
+  // この実行専用のDB識別子。ワーカープロセスは親のenvを継承するので
+  // tests/setup.js 側で test-<runId>-<workerId>.db として利用される。
+  process.env.JEST_DB_RUN_ID = `${Date.now()}`;
+
+  // 過去実行の残骸をベストエフォートで掃除（ロック中のものはスキップ）
+  const stale = fs
+    .readdirSync(dir)
+    .filter((f) => /^test[-.\d]*\.db(-journal|-wal|-shm)?$/.test(f))
+    .map((f) => path.join(dir, f));
+
+  for (const f of stale) {
     try {
-      if (fs.existsSync(f)) fs.unlinkSync(f);
+      fs.unlinkSync(f);
     } catch (err) {
-      // Windows のファイルロックで消せない場合はスキップ（致命的ではない）
-      if (err.code !== 'EBUSY' && err.code !== 'EPERM') throw err;
+      if (err.code !== 'EBUSY' && err.code !== 'EPERM' && err.code !== 'ENOENT') throw err;
     }
   }
 };

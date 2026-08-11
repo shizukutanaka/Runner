@@ -124,27 +124,28 @@ const normalizeColumnValue = (column, value) => {
   }
   // カラム固有のバリデーションを追加
   switch (column) {
-    case 'avatar_url':
-      // URLバリデーションを強化
-      if (value && !validator.isURL(value, { protocols: ['http', 'https'] })) {
-        throw new Error('Invalid URL format for avatar_url');
-      }
-      return value.trim();
-    case 'background_color':
-      // カラーコードのバリデーション（例: #RGB, #RRGGBB）
-      if (value && !/^#[0-9A-Fa-f]{3,8}$/.test(value)) {
-        throw new Error('Invalid color format');
-      }
-      return value.trim();
-    case 'notification_frequency':
-      // 頻度のバリデーション（例: daily, weekly）
-      const allowedFrequencies = ['immediate', 'daily', 'weekly', 'monthly'];
-      if (value && !allowedFrequencies.includes(value)) {
-        throw new Error('Invalid notification frequency');
-      }
-      return value.trim();
-    default:
-      return value.trim();
+  case 'avatar_url':
+    // URLバリデーションを強化
+    if (value && !validator.isURL(value, { protocols: ['http', 'https'] })) {
+      throw new Error('Invalid URL format for avatar_url');
+    }
+    return value.trim();
+  case 'background_color':
+    // カラーコードのバリデーション（例: #RGB, #RRGGBB）
+    if (value && !/^#[0-9A-Fa-f]{3,8}$/.test(value)) {
+      throw new Error('Invalid color format');
+    }
+    return value.trim();
+  case 'notification_frequency': {
+    // 頻度のバリデーション（例: daily, weekly）
+    const allowedFrequencies = ['immediate', 'daily', 'weekly', 'monthly'];
+    if (value && !allowedFrequencies.includes(value)) {
+      throw new Error('Invalid notification frequency');
+    }
+    return value.trim();
+  }
+  default:
+    return value.trim();
   }
 };
 
@@ -473,38 +474,38 @@ const createComment = asyncHandler(async (req, res, next) => {
     const result = await ingestComment({ content, user, platform }, { io: req.app.get('io') });
 
     switch (result.outcome) {
-      case 'rate_limited':
-        return res.status(429).json({
-          status: 429,
-          data: {
-            remainingTime: result.remainingTime,
-            nextAllowedTime: result.nextAllowedTime
-          },
-          message: `スローモードが有効です。${result.remainingTime}秒後にコメントできます。`
-        });
-      case 'rejected':
-        return res.status(422).json({
-          status: 422,
-          data: { moderation: result.moderation },
-          message: 'Comment rejected by moderation policies'
-        });
-      case 'held':
-        return res.status(202).json({
-          status: 202,
-          data: {
-            holdId: result.holdId,
-            holdUntil: result.holdUntil,
-            holdLevel: result.holdLevel,
-            reasons: result.reasons
-          },
-          message: 'メッセージが保留されました。モデレーターの確認をお待ちください。'
-        });
-      default:
-        return res.status(201).json({
-          status: 201,
-          data: result.comment,
-          message: 'Comment created'
-        });
+    case 'rate_limited':
+      return res.status(429).json({
+        status: 429,
+        data: {
+          remainingTime: result.remainingTime,
+          nextAllowedTime: result.nextAllowedTime
+        },
+        message: `スローモードが有効です。${result.remainingTime}秒後にコメントできます。`
+      });
+    case 'rejected':
+      return res.status(422).json({
+        status: 422,
+        data: { moderation: result.moderation },
+        message: 'Comment rejected by moderation policies'
+      });
+    case 'held':
+      return res.status(202).json({
+        status: 202,
+        data: {
+          holdId: result.holdId,
+          holdUntil: result.holdUntil,
+          holdLevel: result.holdLevel,
+          reasons: result.reasons
+        },
+        message: 'メッセージが保留されました。モデレーターの確認をお待ちください。'
+      });
+    default:
+      return res.status(201).json({
+        status: 201,
+        data: result.comment,
+        message: 'Comment created'
+      });
     }
   } catch (err) {
     next({ status: 500, message: 'Failed to create comment', details: err });
@@ -869,7 +870,7 @@ const checkMessageHold = async (content, moderationResult, platform) => {
 
     // 疑わしいキーワードチェック
     const lowerContent = content.toLowerCase();
-    const foundKeywords = holdSettings.suspiciousKeywords.filter(keyword =>
+    const foundKeywords = holdSettings.suspiciousKeywords.filter((keyword) =>
       lowerContent.includes(keyword.toLowerCase())
     );
     if (foundKeywords.length > 0) {
@@ -1331,7 +1332,7 @@ const getCommentVisibilityHistory = asyncHandler(async (req, res) => {
       LIMIT ? OFFSET ?
     `, [id, parseInt(limit), parseInt(offset)]);
 
-    const formattedHistory = history.map(record => ({
+    const formattedHistory = history.map((record) => ({
       moderatorId: record.moderator_id,
       action: record.action,
       oldVisibility: record.old_visibility,
@@ -1518,7 +1519,7 @@ const getCommentReports = asyncHandler(async (req, res) => {
 
     const reports = await dbAll(sql, params);
 
-    const formattedReports = reports.map(report => ({
+    const formattedReports = reports.map((report) => ({
       id: report.id,
       category: report.category,
       reason: report.reason,
@@ -1572,17 +1573,17 @@ const getReportStats = asyncHandler(async (req, res) => {
     let startDate;
 
     switch (period) {
-      case '24h':
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        break;
-      case '7d':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case '30d':
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      default:
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    case '24h':
+      startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      break;
+    case '7d':
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      break;
+    case '30d':
+      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      break;
+    default:
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     }
 
     const startDateStr = startDate.toISOString().split('T')[0];
@@ -1665,7 +1666,7 @@ const getReportCategories = asyncHandler(async (req, res) => {
       ORDER BY severity DESC, name ASC
     `);
 
-    const formattedCategories = categories.map(category => ({
+    const formattedCategories = categories.map((category) => ({
       id: category.id,
       name: category.name,
       description: category.description,
@@ -2215,7 +2216,7 @@ const getExpiringComments = asyncHandler(async (req, res) => {
       parseInt(offset)
     ]);
 
-    const formattedComments = comments.map(comment => ({
+    const formattedComments = comments.map((comment) => ({
       id: comment.id,
       content: comment.content,
       user: comment.user,
@@ -2652,22 +2653,22 @@ const getPinnedComments = asyncHandler(async (req, res) => {
     // ソート順を決定
     let orderClause = 'ORDER BY c.pinned_display_order ASC';
     switch (orderBy) {
-      case 'recent':
-        orderClause = 'ORDER BY c.pinned_display_set_at DESC';
-        break;
-      case 'oldest':
-        orderClause = 'ORDER BY c.pinned_display_set_at ASC';
-        break;
-      case 'alphabetical':
-        orderClause = 'ORDER BY c.content ASC';
-        break;
-      case 'platform':
-        orderClause = 'ORDER BY c.platform ASC, c.pinned_display_order ASC';
-        break;
-      case 'display_order':
-      default:
-        orderClause = 'ORDER BY c.pinned_display_order ASC';
-        break;
+    case 'recent':
+      orderClause = 'ORDER BY c.pinned_display_set_at DESC';
+      break;
+    case 'oldest':
+      orderClause = 'ORDER BY c.pinned_display_set_at ASC';
+      break;
+    case 'alphabetical':
+      orderClause = 'ORDER BY c.content ASC';
+      break;
+    case 'platform':
+      orderClause = 'ORDER BY c.platform ASC, c.pinned_display_order ASC';
+      break;
+    case 'display_order':
+    default:
+      orderClause = 'ORDER BY c.pinned_display_order ASC';
+      break;
     }
 
     sql += ` ${orderClause} LIMIT ? OFFSET ?`;
@@ -2675,7 +2676,7 @@ const getPinnedComments = asyncHandler(async (req, res) => {
 
     const comments = await dbAll(sql, params);
 
-    const formattedComments = comments.map(comment => ({
+    const formattedComments = comments.map((comment) => ({
       id: comment.id,
       content: comment.content,
       user: comment.user,

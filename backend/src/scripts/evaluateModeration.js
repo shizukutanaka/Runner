@@ -20,7 +20,7 @@ const moderationService = require('../services/moderationService');
 
 const loadCases = (file) => {
   const target = file || path.join(__dirname, '..', 'data', 'moderation-eval-set.json');
-  // eslint-disable-next-line global-require, import/no-dynamic-require
+  // eslint-disable-next-line global-require
   return require(target).cases;
 };
 
@@ -51,7 +51,7 @@ const evaluate = async (file) => {
       flagged: isFlagged(result),
       score: result.score,
       categories: result.flaggedCategories || [],
-      correct: (c.expected === 'flag') === isFlagged(result),
+      correct: (c.expected === 'flag') === isFlagged(result)
     });
   }
 

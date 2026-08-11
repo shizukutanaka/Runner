@@ -91,7 +91,7 @@ function validatePasswordStrength(password, options = {}) {
     score += 1;
   }
 
-  if (PASSWORD_POLICY.requireSpecialChars && !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+  if (PASSWORD_POLICY.requireSpecialChars && !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) {
     issues.push('Password must contain at least one special character');
   } else if (PASSWORD_POLICY.requireSpecialChars) {
     score += 1;
@@ -192,7 +192,7 @@ async function checkPasswordHistory(password, passwordHistory = []) {
 const passwordSchema = Joi.string()
   .min(PASSWORD_POLICY.minLength)
   .max(PASSWORD_POLICY.maxLength)
-  .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).*$/)
+  .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).*$/)
   .messages({
     'string.min': `Password must be at least ${PASSWORD_POLICY.minLength} characters long`,
     'string.max': `Password must be no more than ${PASSWORD_POLICY.maxLength} characters long`,

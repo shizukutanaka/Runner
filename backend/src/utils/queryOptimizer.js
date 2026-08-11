@@ -92,9 +92,9 @@ class QueryOptimizer {
       const whereClause = whereMatch[1];
 
       // Look for column comparisons
-      const columnMatches = whereClause.match(/(\w+)\s*[=<>!]+\s*[\?\w]/g);
+      const columnMatches = whereClause.match(/(\w+)\s*[=<>!]+\s*[?\w]/g);
       if (columnMatches) {
-        columnMatches.forEach(match => {
+        columnMatches.forEach((match) => {
           const column = match.split(/\s*[=<>!]+\s*/)[0];
           if (column && !column.includes('?')) {
             suggestions.push(`CREATE INDEX IF NOT EXISTS idx_${column} ON table_name(${column})`);
@@ -106,7 +106,7 @@ class QueryOptimizer {
       if (whereMatch[1].includes('LIKE')) {
         const likeMatches = whereClause.match(/(\w+)\s+LIKE/g);
         if (likeMatches) {
-          likeMatches.forEach(match => {
+          likeMatches.forEach((match) => {
             const column = match.replace(/\s+LIKE/, '');
             suggestions.push(`CREATE INDEX IF NOT EXISTS idx_${column}_like ON table_name(${column})`);
           });
@@ -117,8 +117,8 @@ class QueryOptimizer {
     // Check for ORDER BY clauses
     const orderByMatch = query.match(/ORDER BY\s+(.+?)(?:\s+(?:LIMIT|OFFSET)|\s*$)/i);
     if (orderByMatch) {
-      const orderColumns = orderByMatch[1].split(',').map(col => col.trim().split(' ')[0]);
-      orderColumns.forEach(column => {
+      const orderColumns = orderByMatch[1].split(',').map((col) => col.trim().split(' ')[0]);
+      orderColumns.forEach((column) => {
         if (column && !column.includes('?')) {
           suggestions.push(`CREATE INDEX IF NOT EXISTS idx_${column}_order ON table_name(${column})`);
         }
@@ -152,7 +152,7 @@ class QueryOptimizer {
         };
 
         // Analyze the query plan for potential optimizations
-        rows.forEach(row => {
+        rows.forEach((row) => {
           const detail = row.detail.toLowerCase();
 
           // Check for table scans (inefficient)
@@ -211,18 +211,18 @@ function executeWithMonitoring(db, sql, params = [], operation = 'all') {
     };
 
     switch (operation) {
-      case 'get':
-        db.get(sql, params, callback);
-        break;
-      case 'run':
-        db.run(sql, params, function(err) {
-          callback(err, { lastID: this.lastID, changes: this.changes });
-        });
-        break;
-      case 'all':
-      default:
-        db.all(sql, params, callback);
-        break;
+    case 'get':
+      db.get(sql, params, callback);
+      break;
+    case 'run':
+      db.run(sql, params, function(err) {
+        callback(err, { lastID: this.lastID, changes: this.changes });
+      });
+      break;
+    case 'all':
+    default:
+      db.all(sql, params, callback);
+      break;
     }
   });
 }

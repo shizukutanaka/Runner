@@ -40,8 +40,8 @@ const CHECK_MIN_INTERVAL_MS = 2000;      // 解析の実行間隔（毎メッセ
 const normalizeForSimilarity = (text) => String(text || '')
   .normalize('NFKC')
   .toLowerCase()
-  .replace(/[\s　]+/g, '')
-  .replace(/[!-\/:-@\[-`{-~！-／：-＠［-｀｛-～、。！？…〜ー]/g, '')
+  .replace(/[\s\u3000]+/g, '')
+  .replace(/[!-/:-@[-`{-~！-／：-＠［-｀｛-～、。！？…〜ー]/g, '')
   .replace(/(.)\1{2,}/g, '$1$1'); // 3連以上の繰り返しは2文字に圧縮
 
 class RaidDetector {
@@ -106,7 +106,7 @@ class RaidDetector {
       userId,
       normalized: normalizeForSimilarity(content),
       timestamp: ts,
-      isFirstSeen: !seen.has(userId),
+      isFirstSeen: !seen.has(userId)
     });
     seen.add(userId);
 
@@ -165,7 +165,7 @@ class RaidDetector {
     if (raidDetected) {
       logger.warn('[RaidDetector] Possible coordinated attack detected', {
         platform, channelId, score: Math.round(score * 100) / 100,
-        distinctUsers, topCluster: clusters[0]?.userCount,
+        distinctUsers, topCluster: clusters[0]?.userCount
       });
     }
 
@@ -182,10 +182,10 @@ class RaidDetector {
       signals: {
         clusterRatio: Math.round(clusterRatio * 100) / 100,
         rateRatio: Math.round(rateRatio * 100) / 100,
-        firstSeenRatio: Math.round(firstSeenRatio * 100) / 100,
+        firstSeenRatio: Math.round(firstSeenRatio * 100) / 100
       },
       recommendation: this._recommendation(raidDetected, score),
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     };
   }
 
@@ -212,7 +212,7 @@ class RaidDetector {
       similarClusters: [],
       signals: { clusterRatio: 0, rateRatio: 0, firstSeenRatio: 0 },
       recommendation: '解析に十分なメッセージがありません',
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     };
   }
 
