@@ -548,7 +548,10 @@ const scheduleDatabaseOptimization = () => {
     scheduleDatabaseOptimization();
   } catch (err) {
     logger.error('[Database] Fatal initialization error', { error: err.message });
-    process.exit(1);
+    // テスト環境では process.exit するとJestランナー全体が即死し、
+    // 無関係なスイートまで巻き込んで落ちる（テスト後のハンドルclose起因の
+    // SQLITE_MISUSE でも発生する）。本番のみ異常終了させる。
+    if (process.env.NODE_ENV !== 'test') process.exit(1);
   }
 })();
 
