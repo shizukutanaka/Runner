@@ -28,7 +28,7 @@ const PRIORITY_WEIGHTS = {
   spreadRisk:      0.30,  // 拡散リスク（返信数・類似コメント数）
   riskTrend:       0.25,  // チャンネルリスクレベル（炎上中かどうか）
   recidivism:      0.15,  // 繰り返し違反者
-  impactMultiplier: 0.05, // 投稿者の影響力（Super Chat・常連度）
+  impactMultiplier: 0.05 // 投稿者の影響力（Super Chat・常連度）
 };
 
 // ─── トリアージレベル定義 ──────────────────────────────
@@ -39,7 +39,7 @@ const TRIAGE_LEVELS = {
     color:       '#d32f2f',
     icon:        '🔴',
     description: '今すぐ介入が必要。炎上拡大中または重大規約違反',
-    slaMinutes:  5,
+    slaMinutes:  5
   },
   URGENT: {
     id:          'URGENT',
@@ -47,7 +47,7 @@ const TRIAGE_LEVELS = {
     color:       '#f57c00',
     icon:        '🟠',
     description: '30分以内に対応。悪化傾向または繰り返し違反',
-    slaMinutes:  30,
+    slaMinutes:  30
   },
   ROUTINE: {
     id:          'ROUTINE',
@@ -55,7 +55,7 @@ const TRIAGE_LEVELS = {
     color:       '#f9a825',
     icon:        '🟡',
     description: '通常業務での対応で十分',
-    slaMinutes:  240,
+    slaMinutes:  240
   },
   CAN_WAIT: {
     id:          'CAN_WAIT',
@@ -63,8 +63,8 @@ const TRIAGE_LEVELS = {
     color:       '#388e3c',
     icon:        '🟢',
     description: '余裕時に確認。自動処理で解決可能かもしれない',
-    slaMinutes:  1440,
-  },
+    slaMinutes:  1440
+  }
 };
 
 class ModeratorTriageService {
@@ -85,7 +85,7 @@ class ModeratorTriageService {
       return this._emptyResult();
     }
 
-    const scored = pendingComments.map(comment =>
+    const scored = pendingComments.map((comment) =>
       this._scoreComment(comment, channelContext)
     );
 
@@ -93,7 +93,7 @@ class ModeratorTriageService {
       EMERGENCY: [],
       URGENT:    [],
       ROUTINE:   [],
-      CAN_WAIT:  [],
+      CAN_WAIT:  []
     };
 
     for (const item of scored) {
@@ -115,13 +115,13 @@ class ModeratorTriageService {
         emergency: emergencyCount,
         urgent:    queues.URGENT.length,
         routine:   queues.ROUTINE.length,
-        canWait:   queues.CAN_WAIT.length,
+        canWait:   queues.CAN_WAIT.length
       },
       channelRisk:    channelContext.riskLevel ?? 'safe',
       insight:        this._insight(queues, channelContext),
       suggestedFocus: this._suggestedFocus(queues, channelContext),
       levels:         TRIAGE_LEVELS,
-      timestamp:      new Date().toISOString(),
+      timestamp:      new Date().toISOString()
     };
   }
 
@@ -173,8 +173,8 @@ class ModeratorTriageService {
         spreadRisk:       Math.round(spreadRisk       * 100) / 100,
         riskTrend:        Math.round(riskTrend        * 100) / 100,
         recidivism:       Math.round(recidivism       * 100) / 100,
-        impactMultiplier: Math.round(impactMultiplier * 100) / 100,
-      },
+        impactMultiplier: Math.round(impactMultiplier * 100) / 100
+      }
     };
   }
 
@@ -274,7 +274,7 @@ class ModeratorTriageService {
       level:         first.triageLevel,
       commentId:     first.commentId,
       priorityScore: first.priorityScore,
-      reason:        `最優先案件: スコア${Math.round(first.priorityScore * 100)}点（${first.triageMeta.description}）`,
+      reason:        `最優先案件: スコア${Math.round(first.priorityScore * 100)}点（${first.triageMeta.description}）`
     };
   }
 
@@ -286,7 +286,7 @@ class ModeratorTriageService {
       insight:        '対応待ちコメントはありません。',
       suggestedFocus: null,
       levels:         TRIAGE_LEVELS,
-      timestamp:      new Date().toISOString(),
+      timestamp:      new Date().toISOString()
     };
   }
 }

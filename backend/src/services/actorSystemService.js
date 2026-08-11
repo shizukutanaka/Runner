@@ -41,7 +41,7 @@ class ActorSystemService extends EventEmitter {
       db.all(sql, (err, rows) => {
         if (err) return reject(err);
 
-        rows.forEach(row => {
+        rows.forEach((row) => {
           this.systems.set(row.system_name, {
             ...row,
             config: row.config ? JSON.parse(row.config) : {}
@@ -61,7 +61,7 @@ class ActorSystemService extends EventEmitter {
       db.all(sql, (err, rows) => {
         if (err) return reject(err);
 
-        rows.forEach(row => {
+        rows.forEach((row) => {
           this.actorRegistry.set(row.actor_path, {
             ...row,
             stateData: row.state_data ? JSON.parse(row.state_data) : {},
@@ -82,7 +82,7 @@ class ActorSystemService extends EventEmitter {
       db.all(sql, (err, rows) => {
         if (err) return reject(err);
 
-        rows.forEach(row => {
+        rows.forEach((row) => {
           if (!this.routingTable.has(row.route_pattern)) {
             this.routingTable.set(row.route_pattern, []);
           }
@@ -217,18 +217,18 @@ class ActorSystemService extends EventEmitter {
    */
   async createActorInstance(actorClass, actorPath, props) {
     switch (actorClass) {
-      case 'NotificationRouter':
-        return new NotificationRouterActor(actorPath, props);
-      case 'DeliveryCoordinator':
-        return new DeliveryCoordinatorActor(actorPath, props);
-      case 'ChannelManager':
-        return new ChannelManagerActor(actorPath, props);
-      case 'TemplateManager':
-        return new TemplateManagerActor(actorPath, props);
-      case 'NotificationWorker':
-        return new NotificationWorkerActor(actorPath, props);
-      default:
-        return new BaseActor(actorPath, props);
+    case 'NotificationRouter':
+      return new NotificationRouterActor(actorPath, props);
+    case 'DeliveryCoordinator':
+      return new DeliveryCoordinatorActor(actorPath, props);
+    case 'ChannelManager':
+      return new ChannelManagerActor(actorPath, props);
+    case 'TemplateManager':
+      return new TemplateManagerActor(actorPath, props);
+    case 'NotificationWorker':
+      return new NotificationWorkerActor(actorPath, props);
+    default:
+      return new BaseActor(actorPath, props);
     }
   }
 
@@ -334,7 +334,7 @@ class ActorSystemService extends EventEmitter {
     }
 
     // 優先度順に挿入
-    const insertIndex = mailbox.queue.findIndex(msg => msg.priority < actorMessage.priority);
+    const insertIndex = mailbox.queue.findIndex((msg) => msg.priority < actorMessage.priority);
     if (insertIndex === -1) {
       mailbox.queue.push(actorMessage);
     } else {
@@ -660,10 +660,10 @@ class ActorDispatcher {
           }
         }
 
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise((resolve) => setTimeout(resolve, 100));
       } catch (error) {
         logger.error('[ActorDispatcher] Message processing error', { error: error.message });
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
   }
@@ -708,16 +708,16 @@ class BaseActor {
     this.context.sender = context.sender;
 
     switch (message.type) {
-      case 'initialize':
-        return await this.onInitialize(message.data);
-      case 'terminate':
-        return await this.onTerminate(message.data);
-      case 'get_state':
-        return this.state;
-      case 'update_state':
-        return await this.onUpdateState(message.data);
-      default:
-        return await this.onMessage(message);
+    case 'initialize':
+      return await this.onInitialize(message.data);
+    case 'terminate':
+      return await this.onTerminate(message.data);
+    case 'get_state':
+      return this.state;
+    case 'update_state':
+      return await this.onUpdateState(message.data);
+    default:
+      return await this.onMessage(message);
     }
   }
 
@@ -750,12 +750,12 @@ class NotificationRouterActor extends BaseActor {
   async onMessage(message) {
     // ルーティングロジック
     switch (message.type) {
-      case 'route_notification':
-        return await this.routeNotification(message.data);
-      case 'add_route':
-        return await this.addRoute(message.data);
-      default:
-        return { error: 'Unknown message type' };
+    case 'route_notification':
+      return await this.routeNotification(message.data);
+    case 'add_route':
+      return await this.addRoute(message.data);
+    default:
+      return { error: 'Unknown message type' };
     }
   }
 
@@ -771,12 +771,12 @@ class NotificationRouterActor extends BaseActor {
 class DeliveryCoordinatorActor extends BaseActor {
   async onMessage(message) {
     switch (message.type) {
-      case 'coordinate_delivery':
-        return await this.coordinateDelivery(message.data);
-      case 'track_delivery':
-        return await this.trackDelivery(message.data);
-      default:
-        return { error: 'Unknown message type' };
+    case 'coordinate_delivery':
+      return await this.coordinateDelivery(message.data);
+    case 'track_delivery':
+      return await this.trackDelivery(message.data);
+    default:
+      return { error: 'Unknown message type' };
     }
   }
 
@@ -792,12 +792,12 @@ class DeliveryCoordinatorActor extends BaseActor {
 class ChannelManagerActor extends BaseActor {
   async onMessage(message) {
     switch (message.type) {
-      case 'register_channel':
-        return await this.registerChannel(message.data);
-      case 'update_channel':
-        return await this.updateChannel(message.data);
-      default:
-        return { error: 'Unknown message type' };
+    case 'register_channel':
+      return await this.registerChannel(message.data);
+    case 'update_channel':
+      return await this.updateChannel(message.data);
+    default:
+      return { error: 'Unknown message type' };
     }
   }
 
@@ -813,12 +813,12 @@ class ChannelManagerActor extends BaseActor {
 class TemplateManagerActor extends BaseActor {
   async onMessage(message) {
     switch (message.type) {
-      case 'render_template':
-        return await this.renderTemplate(message.data);
-      case 'validate_template':
-        return await this.validateTemplate(message.data);
-      default:
-        return { error: 'Unknown message type' };
+    case 'render_template':
+      return await this.renderTemplate(message.data);
+    case 'validate_template':
+      return await this.validateTemplate(message.data);
+    default:
+      return { error: 'Unknown message type' };
     }
   }
 
@@ -834,12 +834,12 @@ class TemplateManagerActor extends BaseActor {
 class NotificationWorkerActor extends BaseActor {
   async onMessage(message) {
     switch (message.type) {
-      case 'process_notification':
-        return await this.processNotification(message.data);
-      case 'batch_notifications':
-        return await this.batchProcess(message.data);
-      default:
-        return { error: 'Unknown message type' };
+    case 'process_notification':
+      return await this.processNotification(message.data);
+    case 'batch_notifications':
+      return await this.batchProcess(message.data);
+    default:
+      return { error: 'Unknown message type' };
     }
   }
 

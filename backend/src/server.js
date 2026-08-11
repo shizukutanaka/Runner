@@ -21,16 +21,16 @@ const onError = (error) => {
 
   const bind = `port ${PORT}`;
   switch (error.code) {
-    case 'EACCES':
-      logger.error(`[Server] ${bind} requires elevated privileges`);
-      process.exit(1);
-      break;
-    case 'EADDRINUSE':
-      logger.error(`[Server] ${bind} is already in use`);
-      process.exit(1);
-      break;
-    default:
-      throw error;
+  case 'EACCES':
+    logger.error(`[Server] ${bind} requires elevated privileges`);
+    process.exit(1);
+    break;
+  case 'EADDRINUSE':
+    logger.error(`[Server] ${bind} is already in use`);
+    process.exit(1);
+    break;
+  default:
+    throw error;
   }
 };
 

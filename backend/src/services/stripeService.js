@@ -374,14 +374,14 @@ const getSubscriptionStatus = async (userId) => {
     subscription: record,
     plan: plan
       ? {
-          id: record.planId,
-          name: plan.name,
-          currency: plan.currency,
-          interval: plan.interval,
-          seats: plan.seats,
-          summary: plan.summary,
-          features: plan.features
-        }
+        id: record.planId,
+        name: plan.name,
+        currency: plan.currency,
+        interval: plan.interval,
+        seats: plan.seats,
+        summary: plan.summary,
+        features: plan.features
+      }
       : null
   };
 };
@@ -488,20 +488,20 @@ const handleSubscriptionDeleted = async (subscription) => {
 
 const processWebhookEvent = async (event) => {
   switch (event.type) {
-    case 'checkout.session.completed':
-      await handleCheckoutCompleted(event.data.object);
-      return 'checkout.session.completed';
-    case 'customer.subscription.created':
-    case 'customer.subscription.updated':
-      await handleSubscriptionUpdated(event.data.object);
-      return event.type;
-    case 'customer.subscription.deleted':
-    case 'customer.subscription.cancelled':
-      await handleSubscriptionDeleted(event.data.object);
-      return event.type;
-    default:
-      logger.debug('[StripeService] Webhook event ignored', { eventType: event.type });
-      return 'ignored';
+  case 'checkout.session.completed':
+    await handleCheckoutCompleted(event.data.object);
+    return 'checkout.session.completed';
+  case 'customer.subscription.created':
+  case 'customer.subscription.updated':
+    await handleSubscriptionUpdated(event.data.object);
+    return event.type;
+  case 'customer.subscription.deleted':
+  case 'customer.subscription.cancelled':
+    await handleSubscriptionDeleted(event.data.object);
+    return event.type;
+  default:
+    logger.debug('[StripeService] Webhook event ignored', { eventType: event.type });
+    return 'ignored';
   }
 };
 

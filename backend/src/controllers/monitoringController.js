@@ -13,23 +13,23 @@ const { metricsCollector } = require('../middleware/monitoring');
 exports.getSystemStats = async (req, res, next) => {
   try {
     const [cpuUsage, memInfo, fsInfo, networkInfo, processes] = await Promise.all([
-      si.currentLoad().catch(error => {
+      si.currentLoad().catch((error) => {
         logger.warn('[Monitoring] Failed to collect CPU load', { error: error.message });
         return {};
       }),
-      si.mem().catch(error => {
+      si.mem().catch((error) => {
         logger.warn('[Monitoring] Failed to collect memory stats', { error: error.message });
         return {};
       }),
-      si.fsSize().catch(error => {
+      si.fsSize().catch((error) => {
         logger.warn('[Monitoring] Failed to collect filesystem stats', { error: error.message });
         return [];
       }),
-      si.networkStats().catch(error => {
+      si.networkStats().catch((error) => {
         logger.warn('[Monitoring] Failed to collect network stats', { error: error.message });
         return [];
       }),
-      si.processes().catch(error => {
+      si.processes().catch((error) => {
         logger.warn('[Monitoring] Failed to collect process stats', { error: error.message });
         return {};
       })
@@ -79,7 +79,7 @@ exports.getSystemStats = async (req, res, next) => {
         buffers: safeMemInfo.buffers,
         cached: safeMemInfo.cached
       },
-      disk: diskInfo.map(fs => ({
+      disk: diskInfo.map((fs) => ({
         filesystem: fs.fs,
         size: Number(fs.size) || 0,
         used: Number(fs.used) || 0,
@@ -88,7 +88,7 @@ exports.getSystemStats = async (req, res, next) => {
         mount: fs.mount
       })),
       network: {
-        interfaces: networkStats.map(net => ({
+        interfaces: networkStats.map((net) => ({
           interface: net.iface,
           rx_bytes: Number(net.rx_bytes) || 0,
           tx_bytes: Number(net.tx_bytes) || 0,
@@ -151,20 +151,20 @@ exports.getAppStats = async (req, res, next) => {
     const startDate = new Date();
 
     switch (period) {
-      case '1h':
-        startDate.setHours(now.getHours() - 1);
-        break;
-      case '24h':
-        startDate.setDate(now.getDate() - 1);
-        break;
-      case '7d':
-        startDate.setDate(now.getDate() - 7);
-        break;
-      case '30d':
-        startDate.setDate(now.getDate() - 30);
-        break;
-      default:
-        startDate.setDate(now.getDate() - 1);
+    case '1h':
+      startDate.setHours(now.getHours() - 1);
+      break;
+    case '24h':
+      startDate.setDate(now.getDate() - 1);
+      break;
+    case '7d':
+      startDate.setDate(now.getDate() - 7);
+      break;
+    case '30d':
+      startDate.setDate(now.getDate() - 30);
+      break;
+    default:
+      startDate.setDate(now.getDate() - 1);
     }
 
     // コメント集計データ取得
@@ -362,20 +362,20 @@ exports.getPerformanceMetrics = async (req, res, next) => {
     const startDate = new Date();
 
     switch (period) {
-      case '5m':
-        startDate.setMinutes(now.getMinutes() - 5);
-        break;
-      case '1h':
-        startDate.setHours(now.getHours() - 1);
-        break;
-      case '24h':
-        startDate.setDate(now.getDate() - 1);
-        break;
-      case '7d':
-        startDate.setDate(now.getDate() - 7);
-        break;
-      default:
-        startDate.setMinutes(now.getMinutes() - 5);
+    case '5m':
+      startDate.setMinutes(now.getMinutes() - 5);
+      break;
+    case '1h':
+      startDate.setHours(now.getHours() - 1);
+      break;
+    case '24h':
+      startDate.setDate(now.getDate() - 1);
+      break;
+    case '7d':
+      startDate.setDate(now.getDate() - 7);
+      break;
+    default:
+      startDate.setMinutes(now.getMinutes() - 5);
     }
 
     // パフォーマンスメトリクスを取得
@@ -414,7 +414,7 @@ exports.getPerformanceMetrics = async (req, res, next) => {
           }
         };
 
-        rows.forEach(row => {
+        rows.forEach((row) => {
           // ステータスコード集計
           aggregated.statusCodes[row.status_code] = (aggregated.statusCodes[row.status_code] || 0) + 1;
 
@@ -636,7 +636,7 @@ exports.getHealthStatus = async (req, res, next) => {
     const memoryUsage = (memInfo.used / memInfo.total) * 100;
     checks.memory = memoryUsage < 90;
 
-    const overallHealth = Object.values(checks).every(check => check);
+    const overallHealth = Object.values(checks).every((check) => check);
 
     res.json({
       status: overallHealth ? 200 : 503,

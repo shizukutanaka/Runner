@@ -26,7 +26,7 @@ const HEALTH_WEIGHTS = {
   diversityScore:    0.15, // 発言者の多様性（少数支配を防ぐ）
   moderationLoad:    0.20, // モデレーション介入の少なさ（介入不要が理想）
   returnUserRate:    0.10, // リピーターの割合（継続参加は健全性の証拠）
-  constructiveness:  0.10, // 建設的コメント（質問・提案・応援）の割合
+  constructiveness:  0.10 // 建設的コメント（質問・提案・応援）の割合
 };
 
 class CommunityHealthService {
@@ -52,7 +52,7 @@ class CommunityHealthService {
       diversityScore:    this._diversityScore(window),
       moderationLoad:    this._moderationLoad(window),
       returnUserRate:    this._returnUserRate(window, comments),
-      constructiveness:  this._constructiveness(window),
+      constructiveness:  this._constructiveness(window)
     };
 
     // 加重平均でスコア計算
@@ -72,7 +72,7 @@ class CommunityHealthService {
       insight:    this._insight(score, signals),
       action:     this._suggestedAction(score, signals),
       sampleSize: window.length,
-      timestamp:  new Date().toISOString(),
+      timestamp:  new Date().toISOString()
     };
   }
 
@@ -82,7 +82,7 @@ class CommunityHealthService {
 
   // ポジティブ + ニュートラルの割合
   _sentimentBalance(comments) {
-    const nonNegative = comments.filter(c =>
+    const nonNegative = comments.filter((c) =>
       (c.sentimentScore ?? 0.5) >= 0.35 || c.sentiment === 'positive' || c.sentiment === 'neutral'
     );
     return nonNegative.length / comments.length;
@@ -90,7 +90,7 @@ class CommunityHealthService {
 
   // 有意義な発言の割合（20文字以上 & リンクスパムでない）
   _engagementDepth(comments) {
-    const meaningful = comments.filter(c => {
+    const meaningful = comments.filter((c) => {
       const text = c.content ?? '';
       return text.length >= 20 && (text.match(/https?:\/\//g) ?? []).length <= 1;
     });
@@ -105,7 +105,7 @@ class CommunityHealthService {
     for (const c of comments) {
       userCounts[c.user] = (userCounts[c.user] ?? 0) + 1;
     }
-    const shares = Object.values(userCounts).map(n => n / comments.length);
+    const shares = Object.values(userCounts).map((n) => n / comments.length);
     // HHI（ハーフィンダール・ハーシュマン指数）の逆数
     const hhi = shares.reduce((sum, s) => sum + s ** 2, 0);
     return Math.max(0, 1 - hhi);
@@ -113,7 +113,7 @@ class CommunityHealthService {
 
   // モデレーション介入の少なさ（低いほど健全）
   _moderationLoad(comments) {
-    const moderated = comments.filter(c =>
+    const moderated = comments.filter((c) =>
       c.status && !['active', 'visible'].includes(c.status)
     );
     const moderationRate = moderated.length / comments.length;
@@ -123,8 +123,8 @@ class CommunityHealthService {
   // リピーター率（全コメント vs 直近コメントの重複ユーザー）
   _returnUserRate(recentComments, allComments) {
     if (allComments.length <= recentComments.length) return 0.5;
-    const olderUsers  = new Set(allComments.slice(0, -recentComments.length).map(c => c.user));
-    const recentUsers = new Set(recentComments.map(c => c.user));
+    const olderUsers  = new Set(allComments.slice(0, -recentComments.length).map((c) => c.user));
+    const recentUsers = new Set(recentComments.map((c) => c.user));
     let returns = 0;
     for (const u of recentUsers) if (olderUsers.has(u)) returns++;
     return returns / Math.max(recentUsers.size, 1);
@@ -136,10 +136,10 @@ class CommunityHealthService {
       /[?？]/,                         // 質問
       /すごい|great|nice|love|thanks/i, // 応援・賞賛
       /提案|おすすめ|試してみて|how about/i, // 提案
-      /ありがとう|thank you/i,          // 感謝
+      /ありがとう|thank you/i          // 感謝
     ];
-    const constructive = comments.filter(c =>
-      patterns.some(p => p.test(c.content ?? ''))
+    const constructive = comments.filter((c) =>
+      patterns.some((p) => p.test(c.content ?? ''))
     );
     return constructive.length / comments.length;
   }
@@ -166,7 +166,7 @@ class CommunityHealthService {
       diversityScore:    '参加者の多様性',
       moderationLoad:    'モデレーション負荷（低いほど良い）',
       returnUserRate:    'リピーター率',
-      constructiveness:  '建設的なコメント割合',
+      constructiveness:  '建設的なコメント割合'
     };
 
     if (score >= 85) return 'このコミュニティは非常に健全です。現在の運営方針を維持してください。';
@@ -190,7 +190,7 @@ class CommunityHealthService {
       insight: 'コメントデータが不足しています。',
       action: null,
       sampleSize: 0,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     };
   }
 }

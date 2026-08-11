@@ -282,7 +282,7 @@ async function cleanup() {
     closePromises.push(
       pubClient.quit()
         .then(() => logger.info('[WebSocket Scaling] Pub client disconnected'))
-        .catch(err => logger.warn('[WebSocket Scaling] Pub client disconnect error:', err.message))
+        .catch((err) => logger.warn('[WebSocket Scaling] Pub client disconnect error:', err.message))
     );
   }
 
@@ -290,7 +290,7 @@ async function cleanup() {
     closePromises.push(
       subClient.quit()
         .then(() => logger.info('[WebSocket Scaling] Sub client disconnected'))
-        .catch(err => logger.warn('[WebSocket Scaling] Sub client disconnect error:', err.message))
+        .catch((err) => logger.warn('[WebSocket Scaling] Sub client disconnect error:', err.message))
     );
   }
 

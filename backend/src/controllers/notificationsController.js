@@ -142,7 +142,7 @@ exports.getUserNotificationHistory = (req, res, next) => {
       return next({ status: 500, message: 'Failed to fetch notification history', details: err });
     }
 
-    const history = rows.map(row => ({
+    const history = rows.map((row) => ({
       id: row.id,
       type: row.type,
       title: row.title,
@@ -254,7 +254,7 @@ exports.getNotificationTemplates = (req, res, next) => {
       return next({ status: 500, message: 'Failed to fetch notification templates', details: err });
     }
 
-    const templates = rows.map(row => ({
+    const templates = rows.map((row) => ({
       id: row.id,
       type: row.type,
       titleTemplate: row.title_template,
@@ -519,7 +519,7 @@ exports.markAsRead = (req, res, next) => {
 exports.markAllAsRead = (req, res, next) => {
   const userId = req.user.id;
 
-  const sql = "UPDATE notifications SET read = 1, read_at = datetime('now') WHERE user_id = ? AND read = 0";
+  const sql = 'UPDATE notifications SET read = 1, read_at = datetime(\'now\') WHERE user_id = ? AND read = 0';
 
   db.run(sql, [userId], function(err) {
     if (err) {
@@ -784,7 +784,7 @@ exports.getEventStatus = async (req, res, next) => {
       return next({ status: 500, message: 'Failed to fetch event status', details: err.message });
     }
 
-    const events = rows.map(row => ({
+    const events = rows.map((row) => ({
       ...row,
       eventData: JSON.parse(row.event_data),
       targetUsers: row.target_users ? JSON.parse(row.target_users) : null

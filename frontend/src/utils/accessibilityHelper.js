@@ -563,6 +563,7 @@ export const AccessibleButton = React.forwardRef((props, ref) => {
     </button>
   );
 });
+AccessibleButton.displayName = 'AccessibleButton';
 
 // アクセシビリティ対応の入力フィールドコンポーネント
 export const AccessibleInput = React.forwardRef((props, ref) => {
@@ -620,5 +621,6 @@ export const AccessibleInput = React.forwardRef((props, ref) => {
     </div>
   );
 });
+AccessibleInput.displayName = 'AccessibleInput';
 
 export default AccessibilityHelper;

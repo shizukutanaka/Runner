@@ -393,20 +393,20 @@ exports.getTenantUsage = async (req, res, next) => {
     const startDate = new Date();
 
     switch (period) {
-      case '1h':
-        startDate.setHours(now.getHours() - 1);
-        break;
-      case '24h':
-        startDate.setDate(now.getDate() - 1);
-        break;
-      case '7d':
-        startDate.setDate(now.getDate() - 7);
-        break;
-      case '30d':
-        startDate.setDate(now.getDate() - 30);
-        break;
-      default:
-        startDate.setDate(now.getDate() - 1);
+    case '1h':
+      startDate.setHours(now.getHours() - 1);
+      break;
+    case '24h':
+      startDate.setDate(now.getDate() - 1);
+      break;
+    case '7d':
+      startDate.setDate(now.getDate() - 7);
+      break;
+    case '30d':
+      startDate.setDate(now.getDate() - 30);
+      break;
+    default:
+      startDate.setDate(now.getDate() - 1);
     }
 
     const usage = await getTenantStats(tenantId, startDate, now);

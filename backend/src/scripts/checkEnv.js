@@ -98,7 +98,7 @@ const targets = [
         validate: (value) => typeof value === 'string' && /^wss?:\/\//.test(value)
       }
     }
-  },
+  }
 ];
 
 const parseEnvFile = (filePath) => {
@@ -142,7 +142,7 @@ targets.forEach((target) => {
       status: 'missing',
       message: `${file} が見つかりません。コピー元: ${path.basename(file)}.example`,
       missingRequired: required,
-      missingOptional: optional,
+      missingOptional: optional
     });
     return;
   }

@@ -186,11 +186,11 @@ class QueryOptimizer {
         });
       });
 
-      const hasIndex = plan.some(row =>
+      const hasIndex = plan.some((row) =>
         row.detail && row.detail.includes('USING INDEX')
       );
 
-      const hasScan = plan.some(row =>
+      const hasScan = plan.some((row) =>
         row.detail && row.detail.includes('SCAN TABLE')
       );
 

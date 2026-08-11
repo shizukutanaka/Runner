@@ -22,26 +22,26 @@ const ErrorTypes = {
 // Enhanced error messages for better UX
 const getErrorMessage = (errorType, error) => {
   switch (errorType) {
-    case ErrorTypes.VALIDATION_ERROR:
-      return '入力データに問題があります。必要項目を確認してください。';
-    case ErrorTypes.AUTHENTICATION_ERROR:
-      return '認証が必要です。ログインしてください。';
-    case ErrorTypes.AUTHORIZATION_ERROR:
-      return 'この操作を実行する権限がありません。';
-    case ErrorTypes.NOT_FOUND_ERROR:
-      return 'リクエストされたリソースが見つかりません。';
-    case ErrorTypes.CONFLICT_ERROR:
-      return 'リソースの競合が発生しました。';
-    case ErrorTypes.RATE_LIMIT_ERROR:
-      return 'リクエストが多すぎます。しばらく待ってから再試行してください。';
-    case ErrorTypes.DATABASE_ERROR:
-      return 'データベースエラーが発生しました。しばらく待ってから再試行してください。';
-    case ErrorTypes.NETWORK_ERROR:
-      return 'ネットワークエラーが発生しました。接続を確認してください。';
-    case ErrorTypes.EXTERNAL_API_ERROR:
-      return '外部サービスエラーが発生しました。しばらく待ってから再試行してください。';
-    default:
-      return '予期しないエラーが発生しました。サポートチームにお問い合わせください。';
+  case ErrorTypes.VALIDATION_ERROR:
+    return '入力データに問題があります。必要項目を確認してください。';
+  case ErrorTypes.AUTHENTICATION_ERROR:
+    return '認証が必要です。ログインしてください。';
+  case ErrorTypes.AUTHORIZATION_ERROR:
+    return 'この操作を実行する権限がありません。';
+  case ErrorTypes.NOT_FOUND_ERROR:
+    return 'リクエストされたリソースが見つかりません。';
+  case ErrorTypes.CONFLICT_ERROR:
+    return 'リソースの競合が発生しました。';
+  case ErrorTypes.RATE_LIMIT_ERROR:
+    return 'リクエストが多すぎます。しばらく待ってから再試行してください。';
+  case ErrorTypes.DATABASE_ERROR:
+    return 'データベースエラーが発生しました。しばらく待ってから再試行してください。';
+  case ErrorTypes.NETWORK_ERROR:
+    return 'ネットワークエラーが発生しました。接続を確認してください。';
+  case ErrorTypes.EXTERNAL_API_ERROR:
+    return '外部サービスエラーが発生しました。しばらく待ってから再試行してください。';
+  default:
+    return '予期しないエラーが発生しました。サポートチームにお問い合わせください。';
   }
 };
 
@@ -98,32 +98,32 @@ function classifyError(error) {
 // Recovery strategy selector
 function getRecoveryStrategy(errorType, error, req) {
   switch (errorType) {
-    case ErrorTypes.NETWORK_ERROR:
-    case ErrorTypes.EXTERNAL_API_ERROR:
+  case ErrorTypes.NETWORK_ERROR:
+  case ErrorTypes.EXTERNAL_API_ERROR:
+    return RecoveryStrategies.RETRY;
+
+  case ErrorTypes.DATABASE_ERROR:
+    // Check if it's a temporary database issue
+    if (error.code === 'SQLITE_BUSY' || error.message?.includes('locked')) {
       return RecoveryStrategies.RETRY;
+    }
+    return RecoveryStrategies.ALERT;
 
-    case ErrorTypes.DATABASE_ERROR:
-      // Check if it's a temporary database issue
-      if (error.code === 'SQLITE_BUSY' || error.message?.includes('locked')) {
-        return RecoveryStrategies.RETRY;
-      }
-      return RecoveryStrategies.ALERT;
+  case ErrorTypes.RATE_LIMIT_ERROR:
+    return RecoveryStrategies.DEGRADATION;
 
-    case ErrorTypes.RATE_LIMIT_ERROR:
-      return RecoveryStrategies.DEGRADATION;
+  case ErrorTypes.CONFIGURATION_ERROR:
+    return RecoveryStrategies.ALERT;
 
-    case ErrorTypes.CONFIGURATION_ERROR:
-      return RecoveryStrategies.ALERT;
+  case ErrorTypes.VALIDATION_ERROR:
+  case ErrorTypes.AUTHENTICATION_ERROR:
+  case ErrorTypes.AUTHORIZATION_ERROR:
+  case ErrorTypes.NOT_FOUND_ERROR:
+  case ErrorTypes.CONFLICT_ERROR:
+    return RecoveryStrategies.IGNORE; // These are client errors
 
-    case ErrorTypes.VALIDATION_ERROR:
-    case ErrorTypes.AUTHENTICATION_ERROR:
-    case ErrorTypes.AUTHORIZATION_ERROR:
-    case ErrorTypes.NOT_FOUND_ERROR:
-    case ErrorTypes.CONFLICT_ERROR:
-      return RecoveryStrategies.IGNORE; // These are client errors
-
-    default:
-      return RecoveryStrategies.ALERT;
+  default:
+    return RecoveryStrategies.ALERT;
   }
 }
 
@@ -137,71 +137,71 @@ async function executeRecovery(strategy, error, req, res) {
   const key = `${req.method}:${req.originalUrl}`;
 
   switch (strategy) {
-    case RecoveryStrategies.RETRY: {
-      const now = Date.now();
-      const entry = recentRetries.get(key) || { count: 0, firstAt: now };
-      if (now - entry.firstAt > RETRY_WINDOW_MS) {
-        entry.count = 0;
-        entry.firstAt = now;
-      }
-      entry.count++;
-      recentRetries.set(key, entry);
-
-      logger.warn('[ErrorHandler] Retry strategy', {
-        error: error.message,
-        url: req.originalUrl,
-        retryCount: entry.count,
-        maxRetries: MAX_RETRIES
-      });
-
-      // リトライ回数をレスポンスヘッダーで通知
-      if (res && !res.headersSent) {
-        const retryAfter = Math.min(entry.count * 2, 30);
-        res.setHeader('Retry-After', retryAfter);
-      }
-      break;
+  case RecoveryStrategies.RETRY: {
+    const now = Date.now();
+    const entry = recentRetries.get(key) || { count: 0, firstAt: now };
+    if (now - entry.firstAt > RETRY_WINDOW_MS) {
+      entry.count = 0;
+      entry.firstAt = now;
     }
+    entry.count++;
+    recentRetries.set(key, entry);
 
-    case RecoveryStrategies.DEGRADATION:
-      logger.warn('[ErrorHandler] Degradation mode - returning partial response', {
-        error: error.message,
-        url: req.originalUrl
-      });
-      // 縮退サービス: Retry-After ヘッダーで再試行を促す
-      if (res && !res.headersSent) {
-        res.setHeader('Retry-After', '30');
-        res.setHeader('X-Degraded-Mode', 'true');
-      }
-      break;
+    logger.warn('[ErrorHandler] Retry strategy', {
+      error: error.message,
+      url: req.originalUrl,
+      retryCount: entry.count,
+      maxRetries: MAX_RETRIES
+    });
 
-    case RecoveryStrategies.FALLBACK:
-      logger.warn('[ErrorHandler] Fallback activated', {
-        error: error.message,
-        url: req.originalUrl
-      });
-      break;
+    // リトライ回数をレスポンスヘッダーで通知
+    if (res && !res.headersSent) {
+      const retryAfter = Math.min(entry.count * 2, 30);
+      res.setHeader('Retry-After', retryAfter);
+    }
+    break;
+  }
 
-    case RecoveryStrategies.ALERT:
-      // 重大エラー: 詳細ログ記録
-      logger.error('[ErrorHandler] ALERT - critical error requires attention', {
-        error: error.message,
-        stack: error.stack,
-        url: req.originalUrl,
-        method: req.method,
-        ip: req.ip,
-        userAgent: req.get('User-Agent'),
-        errorCode: error.code,
-        timestamp: new Date().toISOString()
-      });
-      break;
+  case RecoveryStrategies.DEGRADATION:
+    logger.warn('[ErrorHandler] Degradation mode - returning partial response', {
+      error: error.message,
+      url: req.originalUrl
+    });
+    // 縮退サービス: Retry-After ヘッダーで再試行を促す
+    if (res && !res.headersSent) {
+      res.setHeader('Retry-After', '30');
+      res.setHeader('X-Degraded-Mode', 'true');
+    }
+    break;
 
-    case RecoveryStrategies.IGNORE:
-    default:
-      logger.debug('[ErrorHandler] Error handled normally', {
-        error: error.message,
-        url: req.originalUrl
-      });
-      break;
+  case RecoveryStrategies.FALLBACK:
+    logger.warn('[ErrorHandler] Fallback activated', {
+      error: error.message,
+      url: req.originalUrl
+    });
+    break;
+
+  case RecoveryStrategies.ALERT:
+    // 重大エラー: 詳細ログ記録
+    logger.error('[ErrorHandler] ALERT - critical error requires attention', {
+      error: error.message,
+      stack: error.stack,
+      url: req.originalUrl,
+      method: req.method,
+      ip: req.ip,
+      userAgent: req.get('User-Agent'),
+      errorCode: error.code,
+      timestamp: new Date().toISOString()
+    });
+    break;
+
+  case RecoveryStrategies.IGNORE:
+  default:
+    logger.debug('[ErrorHandler] Error handled normally', {
+      error: error.message,
+      url: req.originalUrl
+    });
+    break;
   }
 }
 
@@ -416,102 +416,102 @@ const errorHandler = (err, req, res, next) => {
 
   // Handle different error types
   switch (err.name) {
-    case 'ValidationError':
-      response.error.type = 'validation_error';
-      break;
-    case 'NotFoundError':
-      response.error.type = 'not_found';
-      break;
-    case 'UnauthorizedError':
-      response.error.type = 'unauthorized';
-      break;
-    case 'ForbiddenError':
-      response.error.type = 'forbidden';
-      break;
-    case 'ConflictError':
-      response.error.type = 'conflict';
-      break;
-    case 'CastError':
-    case 'SyntaxError':
-      response.error.type = 'invalid_request';
-      response.error.status = 400;
-      response.error.message = 'Invalid request format';
-      break;
-    case 'JsonWebTokenError':
-      response.error.type = 'invalid_token';
-      response.error.status = 401;
-      response.error.message = 'Invalid authentication token';
-      break;
-    case 'TokenExpiredError':
-      response.error.type = 'expired_token';
-      response.error.status = 401;
-      response.error.message = 'Authentication token has expired';
-      break;
-    default:
-      response.error.type = status >= 500 ? 'server_error' : 'client_error';
+  case 'ValidationError':
+    response.error.type = 'validation_error';
+    break;
+  case 'NotFoundError':
+    response.error.type = 'not_found';
+    break;
+  case 'UnauthorizedError':
+    response.error.type = 'unauthorized';
+    break;
+  case 'ForbiddenError':
+    response.error.type = 'forbidden';
+    break;
+  case 'ConflictError':
+    response.error.type = 'conflict';
+    break;
+  case 'CastError':
+  case 'SyntaxError':
+    response.error.type = 'invalid_request';
+    response.error.status = 400;
+    response.error.message = 'Invalid request format';
+    break;
+  case 'JsonWebTokenError':
+    response.error.type = 'invalid_token';
+    response.error.status = 401;
+    response.error.message = 'Invalid authentication token';
+    break;
+  case 'TokenExpiredError':
+    response.error.type = 'expired_token';
+    response.error.status = 401;
+    response.error.message = 'Authentication token has expired';
+    break;
+  default:
+    response.error.type = status >= 500 ? 'server_error' : 'client_error';
   }
 
   // Handle database errors
   if (err.code) {
     switch (err.code) {
-      case 'SQLITE_CONSTRAINT_UNIQUE':
-      case 'UNIQUE_CONSTRAINT':
-        response.error.status = 409;
-        response.error.type = 'conflict';
-        response.error.message = 'Resource already exists';
-        break;
-      case 'SQLITE_CONSTRAINT_FOREIGNKEY':
-      case 'FOREIGN_KEY_CONSTRAINT':
-        response.error.status = 400;
-        response.error.type = 'invalid_reference';
-        response.error.message = 'Invalid reference to related resource';
-        break;
-      case 'SQLITE_BUSY':
-      case 'DATABASE_BUSY':
-        response.error.status = 503;
-        response.error.type = 'database_busy';
-        response.error.message = 'Database is temporarily busy';
-        response.error.retryable = true;
-        response.error.retryAfter = 5;
-        break;
-      case 'SQLITE_CORRUPT':
-      case 'DATABASE_CORRUPT':
-        response.error.status = 500;
-        response.error.type = 'database_error';
-        response.error.message = 'Database corruption detected';
-        logger.error('[ErrorHandler] Database corruption detected', logContext);
-        break;
-      case 'ENOTFOUND':
-      case 'ECONNREFUSED':
-      case 'ETIMEDOUT':
-        response.error.status = 503;
-        response.error.type = 'external_service_unavailable';
-        response.error.message = 'External service temporarily unavailable';
-        response.error.retryable = true;
-        response.error.retryAfter = 30;
-        break;
-      case 'EMFILE':
-      case 'ENFILE':
-        response.error.status = 503;
-        response.error.type = 'resource_exhaustion';
-        response.error.message = 'Server resources temporarily exhausted';
-        response.error.retryable = true;
-        response.error.retryAfter = 60;
-        break;
+    case 'SQLITE_CONSTRAINT_UNIQUE':
+    case 'UNIQUE_CONSTRAINT':
+      response.error.status = 409;
+      response.error.type = 'conflict';
+      response.error.message = 'Resource already exists';
+      break;
+    case 'SQLITE_CONSTRAINT_FOREIGNKEY':
+    case 'FOREIGN_KEY_CONSTRAINT':
+      response.error.status = 400;
+      response.error.type = 'invalid_reference';
+      response.error.message = 'Invalid reference to related resource';
+      break;
+    case 'SQLITE_BUSY':
+    case 'DATABASE_BUSY':
+      response.error.status = 503;
+      response.error.type = 'database_busy';
+      response.error.message = 'Database is temporarily busy';
+      response.error.retryable = true;
+      response.error.retryAfter = 5;
+      break;
+    case 'SQLITE_CORRUPT':
+    case 'DATABASE_CORRUPT':
+      response.error.status = 500;
+      response.error.type = 'database_error';
+      response.error.message = 'Database corruption detected';
+      logger.error('[ErrorHandler] Database corruption detected', logContext);
+      break;
+    case 'ENOTFOUND':
+    case 'ECONNREFUSED':
+    case 'ETIMEDOUT':
+      response.error.status = 503;
+      response.error.type = 'external_service_unavailable';
+      response.error.message = 'External service temporarily unavailable';
+      response.error.retryable = true;
+      response.error.retryAfter = 30;
+      break;
+    case 'EMFILE':
+    case 'ENFILE':
+      response.error.status = 503;
+      response.error.type = 'resource_exhaustion';
+      response.error.message = 'Server resources temporarily exhausted';
+      response.error.retryable = true;
+      response.error.retryAfter = 60;
+      break;
     }
   }
 
   // Handle specific Node.js errors
   if (err.syscall) {
     switch (err.syscall) {
-      case 'listen':
-        response.error.type = 'port_in_use';
-        response.error.message = 'Port is already in use';
-        break;
-      case 'connect':
-        response.error.type = 'connection_failed';
-        response.error.message = 'Failed to connect to external service';
-        break;
+    case 'listen':
+      response.error.type = 'port_in_use';
+      response.error.message = 'Port is already in use';
+      break;
+    case 'connect':
+      response.error.type = 'connection_failed';
+      response.error.message = 'Failed to connect to external service';
+      break;
     }
   }
 

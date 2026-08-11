@@ -245,7 +245,7 @@ class ApiKeyManager {
 
     for (const [keyId, keyData] of this.activeKeys.entries()) {
       // Count by permission
-      keyData.permissions.forEach(permission => {
+      keyData.permissions.forEach((permission) => {
         stats.byPermission[permission] = (stats.byPermission[permission] || 0) + 1;
       });
 
@@ -485,24 +485,24 @@ class TenantManager {
     }
 
     switch (action) {
-      case 'add_comment':
-        return tenant.limits.maxComments
-          ? tenant.usage.commentsCount + amount <= tenant.limits.maxComments
-          : true;
-      case 'add_user':
-        return tenant.limits.maxUsers
-          ? tenant.usage.usersCount + amount <= tenant.limits.maxUsers
-          : true;
-      case 'add_moderator':
-        return tenant.limits.maxModerators
-          ? tenant.usage.moderatorsCount + amount <= tenant.limits.maxModerators
-          : true;
-      case 'store_data':
-        return tenant.limits.maxStorage
-          ? tenant.usage.storageUsed + amount <= tenant.limits.maxStorage
-          : true;
-      default:
-        return false;
+    case 'add_comment':
+      return tenant.limits.maxComments
+        ? tenant.usage.commentsCount + amount <= tenant.limits.maxComments
+        : true;
+    case 'add_user':
+      return tenant.limits.maxUsers
+        ? tenant.usage.usersCount + amount <= tenant.limits.maxUsers
+        : true;
+    case 'add_moderator':
+      return tenant.limits.maxModerators
+        ? tenant.usage.moderatorsCount + amount <= tenant.limits.maxModerators
+        : true;
+    case 'store_data':
+      return tenant.limits.maxStorage
+        ? tenant.usage.storageUsed + amount <= tenant.limits.maxStorage
+        : true;
+    default:
+      return false;
     }
   }
 
@@ -514,20 +514,20 @@ class TenantManager {
     }
 
     switch (action) {
-      case 'add_comment':
-        tenant.usage.commentsCount += amount;
-        break;
-      case 'add_user':
-        tenant.usage.usersCount += amount;
-        break;
-      case 'add_moderator':
-        tenant.usage.moderatorsCount += amount;
-        break;
-      case 'store_data':
-        tenant.usage.storageUsed += amount;
-        break;
-      default:
-        return false;
+    case 'add_comment':
+      tenant.usage.commentsCount += amount;
+      break;
+    case 'add_user':
+      tenant.usage.usersCount += amount;
+      break;
+    case 'add_moderator':
+      tenant.usage.moderatorsCount += amount;
+      break;
+    case 'store_data':
+      tenant.usage.storageUsed += amount;
+      break;
+    default:
+      return false;
     }
 
     return true;

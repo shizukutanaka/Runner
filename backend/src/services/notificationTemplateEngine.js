@@ -37,7 +37,7 @@ class NotificationTemplateEngine {
       db.all(sql, (err, rows) => {
         if (err) return reject(err);
 
-        rows.forEach(row => {
+        rows.forEach((row) => {
           this.templates.set(row.id, {
             ...row,
             variables: row.variables ? JSON.parse(row.variables) : [],
@@ -58,7 +58,7 @@ class NotificationTemplateEngine {
       db.all(sql, (err, rows) => {
         if (err) return reject(err);
 
-        rows.forEach(row => {
+        rows.forEach((row) => {
           if (!this.variableSchemas.has(row.template_id)) {
             this.variableSchemas.set(row.template_id, new Map());
           }
@@ -78,7 +78,7 @@ class NotificationTemplateEngine {
       db.all(sql, (err, rows) => {
         if (err) return reject(err);
 
-        rows.forEach(row => {
+        rows.forEach((row) => {
           if (!this.conditions.has(row.template_id)) {
             this.conditions.set(row.template_id, []);
           }
@@ -98,7 +98,7 @@ class NotificationTemplateEngine {
       db.all(sql, (err, rows) => {
         if (err) return reject(err);
 
-        rows.forEach(row => {
+        rows.forEach((row) => {
           if (!this.channelTemplates.has(row.template_id)) {
             this.channelTemplates.set(row.template_id, new Map());
           }
@@ -195,20 +195,20 @@ class NotificationTemplateEngine {
    */
   validateVariableType(value, expectedType) {
     switch (expectedType) {
-      case 'string':
-        return typeof value === 'string';
-      case 'number':
-        return typeof value === 'number' && !isNaN(value);
-      case 'boolean':
-        return typeof value === 'boolean';
-      case 'date':
-        return value instanceof Date || !isNaN(Date.parse(value));
-      case 'array':
-        return Array.isArray(value);
-      case 'object':
-        return typeof value === 'object' && !Array.isArray(value) && value !== null;
-      default:
-        return true;
+    case 'string':
+      return typeof value === 'string';
+    case 'number':
+      return typeof value === 'number' && !isNaN(value);
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'date':
+      return value instanceof Date || !isNaN(Date.parse(value));
+    case 'array':
+      return Array.isArray(value);
+    case 'object':
+      return typeof value === 'object' && !Array.isArray(value) && value !== null;
+    default:
+      return true;
     }
   }
 
@@ -234,7 +234,7 @@ class NotificationTemplateEngine {
       return true; // 条件なしは常にtrue
     }
 
-    return templateConditions.every(condition => {
+    return templateConditions.every((condition) => {
       const value = variables[condition.condition_key];
       return this.evaluateSingleCondition(value, condition);
     });
@@ -245,22 +245,22 @@ class NotificationTemplateEngine {
    */
   evaluateSingleCondition(value, condition) {
     switch (condition.condition_operator) {
-      case 'equals':
-        return value == condition.condition_value;
-      case 'not_equals':
-        return value != condition.condition_value;
-      case 'greater_than':
-        return value > condition.condition_value;
-      case 'less_than':
-        return value < condition.condition_value;
-      case 'contains':
-        return String(value).includes(condition.condition_value);
-      case 'in':
-        return condition.condition_value.includes(value);
-      case 'not_in':
-        return !condition.condition_value.includes(value);
-      default:
-        return true;
+    case 'equals':
+      return value == condition.condition_value;
+    case 'not_equals':
+      return value != condition.condition_value;
+    case 'greater_than':
+      return value > condition.condition_value;
+    case 'less_than':
+      return value < condition.condition_value;
+    case 'contains':
+      return String(value).includes(condition.condition_value);
+    case 'in':
+      return condition.condition_value.includes(value);
+    case 'not_in':
+      return !condition.condition_value.includes(value);
+    default:
+      return true;
     }
   }
 
@@ -327,18 +327,18 @@ class NotificationTemplateEngine {
 
     // チャネルに応じたフォーマット
     switch (channel) {
-      case 'websocket':
-        return { title, message, type: template.type, level: this.getLevelFromPriority(template.priority) };
-      case 'email':
-        return { subject: title, body: message, format: 'html' };
-      case 'sms':
-        return { message: message.substring(0, 160) }; // SMSは160文字制限
-      case 'slack':
-        return { text: message, format: 'slack' };
-      case 'push':
-        return { title, body: message };
-      default:
-        return { title, message };
+    case 'websocket':
+      return { title, message, type: template.type, level: this.getLevelFromPriority(template.priority) };
+    case 'email':
+      return { subject: title, body: message, format: 'html' };
+    case 'sms':
+      return { message: message.substring(0, 160) }; // SMSは160文字制限
+    case 'slack':
+      return { text: message, format: 'slack' };
+    case 'push':
+      return { title, body: message };
+    default:
+      return { title, message };
     }
   }
 
@@ -356,7 +356,7 @@ class NotificationTemplateEngine {
    * テンプレートを更新
    */
   async updateTemplate(templateId, updates) {
-    const updateFields = Object.keys(updates).map(key => `${key} = ?`).join(', ');
+    const updateFields = Object.keys(updates).map((key) => `${key} = ?`).join(', ');
     const params = Object.values(updates);
     params.push(templateId);
 
@@ -380,7 +380,7 @@ class NotificationTemplateEngine {
    * 利用可能なテンプレートを取得
    */
   getAvailableTemplates() {
-    return Array.from(this.templates.values()).map(template => ({
+    return Array.from(this.templates.values()).map((template) => ({
       id: template.id,
       type: template.type,
       title: template.title_template,

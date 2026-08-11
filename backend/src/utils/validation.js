@@ -170,7 +170,7 @@ const validate = (schema, options = {}) => {
     const { error, value } = schema.validate(req.body, validationOptions);
 
     if (error) {
-      const details = error.details.map(detail => ({
+      const details = error.details.map((detail) => ({
         message: detail.message,
         path: detail.path,
         type: detail.type,
@@ -200,7 +200,7 @@ const validateQuery = (schema, options = {}) => {
     const { error, value } = schema.validate(req.query, validationOptions);
 
     if (error) {
-      const details = error.details.map(detail => ({
+      const details = error.details.map((detail) => ({
         message: detail.message,
         path: detail.path,
         type: detail.type,
@@ -230,7 +230,7 @@ const validateParams = (schema, options = {}) => {
     const { error, value } = schema.validate(req.params, validationOptions);
 
     if (error) {
-      const details = error.details.map(detail => ({
+      const details = error.details.map((detail) => ({
         message: detail.message,
         path: detail.path,
         type: detail.type,

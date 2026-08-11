@@ -8,7 +8,10 @@ const db = require('../db');
 const logger = require('../logger');
 const { generateToken } = require('../middleware/auth');
 
-const BCRYPT_ROUNDS = 12;
+// bcryptコスト。本番は12だが、テスト環境では1ハッシュ約1秒かかり
+// 登録系テストが15秒のjestタイムアウトを超えるため下げる（強度要件は本番のみ）。
+const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS)
+  || (process.env.NODE_ENV === 'test' ? 4 : 12);
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1時間
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30日
 
@@ -82,6 +85,12 @@ exports.register = async (req, res, next) => {
       message: 'アカウントが作成されました'
     });
   } catch (err) {
+    // 事前SELECTと同時実行のINSERTが競合した場合、UNIQUE制約違反になる。
+    // これは重複登録であり、サーバー内部エラー(500)ではなく409が正しい。
+    if (err && (err.code === 'SQLITE_CONSTRAINT' || /UNIQUE constraint failed/i.test(err.message || ''))) {
+      logger.warn('[Auth] Registration conflict', { username });
+      return next({ status: 409, message: 'このユーザー名またはメールアドレスは既に使用されています' });
+    }
     logger.error('[Auth] Registration failed', { error: err.message });
     next({ status: 500, message: 'アカウント登録中にエラーが発生しました', details: err });
   }

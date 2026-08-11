@@ -272,7 +272,7 @@ class LogManager {
       const now = Date.now();
       const maxAge = 30 * 24 * 60 * 60 * 1000; // 30日
 
-      files.forEach(file => {
+      files.forEach((file) => {
         const filePath = path.join(logDir, file);
         const stats = fs.statSync(filePath);
 
@@ -295,7 +295,7 @@ class LogManager {
       let totalSize = 0;
       const fileStats = {};
 
-      files.forEach(file => {
+      files.forEach((file) => {
         const filePath = path.join(logDir, file);
         const stats = fs.statSync(filePath);
         totalSize += stats.size;

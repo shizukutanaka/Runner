@@ -312,7 +312,7 @@ class WebhookSecurityManager {
    * List all webhooks
    */
   listWebhooks() {
-    return Array.from(this.webhooks.values()).map(webhook => ({
+    return Array.from(this.webhooks.values()).map((webhook) => ({
       id: webhook.id,
       url: webhook.url,
       events: webhook.events,
@@ -363,7 +363,7 @@ const webhookRateLimit = (maxPerMinute = 60) => {
 
     // Get recent requests
     const timestamps = requests.get(webhookId) || [];
-    const recentRequests = timestamps.filter(t => t > oneMinuteAgo);
+    const recentRequests = timestamps.filter((t) => t > oneMinuteAgo);
 
     if (recentRequests.length >= maxPerMinute) {
       logger.warn('[WebhookSecurity] Rate limit exceeded', {

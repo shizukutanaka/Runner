@@ -108,7 +108,7 @@ const initializeDatabaseWithRetry = async () => {
       logger.warn(`[Database] Retrying connection in ${RETRY_DELAY}ms...`, {
         attempt: connectionAttempts
       });
-      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
     }
   }
 };
@@ -194,7 +194,7 @@ const ensureNotificationColumns = () => {
 
 const ensureUserColumns = () => {
   ensureColumnDefinitions('users', [
-    { name: 'history', definition: "TEXT DEFAULT '[]'" },
+    { name: 'history', definition: 'TEXT DEFAULT \'[]\'' },
     { name: 'ban_until', definition: 'TEXT' },
     { name: 'mute_until', definition: 'TEXT' },
     { name: 'last_comment_at', definition: 'DATETIME' },
@@ -211,7 +211,7 @@ const ensureUserColumns = () => {
     { name: 'language', definition: 'TEXT' },
     { name: 'timezone', definition: 'TEXT' },
     { name: 'subscription', definition: 'TEXT' },
-    { name: 'auth_history', definition: "TEXT DEFAULT '[]'" },
+    { name: 'auth_history', definition: 'TEXT DEFAULT \'[]\'' },
     { name: 'two_factor', definition: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'email_verified', definition: 'INTEGER NOT NULL DEFAULT 0' }
   ]);

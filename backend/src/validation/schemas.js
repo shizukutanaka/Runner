@@ -276,7 +276,7 @@ const validate = (schema, property = 'body') => {
     });
 
     if (error) {
-      const errors = error.details.map(detail => ({
+      const errors = error.details.map((detail) => ({
         field: detail.path.join('.'),
         message: detail.message
       }));

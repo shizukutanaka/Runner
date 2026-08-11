@@ -210,7 +210,7 @@ class AuditLogService {
           logger.error('[AuditLog] Query failed', { error: err.message });
           reject(err);
         } else {
-          const logs = rows.map(row => ({
+          const logs = rows.map((row) => ({
             ...row,
             metadata: row.metadata ? JSON.parse(row.metadata) : {},
             success: Boolean(row.success)
@@ -322,7 +322,7 @@ class AuditLogService {
           logger.error('[AuditLog] User activity query failed', { error: err.message });
           reject(err);
         } else {
-          const logs = rows.map(row => ({
+          const logs = rows.map((row) => ({
             ...row,
             metadata: row.metadata ? JSON.parse(row.metadata) : {},
             success: Boolean(row.success)
@@ -391,7 +391,7 @@ class AuditLogService {
 const auditLogService = new AuditLogService();
 
 // Initialize on startup
-auditLogService.initialize().catch(err => {
+auditLogService.initialize().catch((err) => {
   logger.error('[AuditLog] Initialization failed', { error: err.message });
 });
 

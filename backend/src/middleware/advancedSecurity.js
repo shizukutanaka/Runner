@@ -173,7 +173,7 @@ class IPWhitelistManager {
 
     const userIPs = this.whitelist.get(userId);
 
-    if (!userIPs.find(entry => entry.ip === ip)) {
+    if (!userIPs.find((entry) => entry.ip === ip)) {
       userIPs.push({
         ip,
         description,
@@ -194,7 +194,7 @@ class IPWhitelistManager {
       return false;
     }
 
-    const index = userIPs.findIndex(entry => entry.ip === ip);
+    const index = userIPs.findIndex((entry) => entry.ip === ip);
 
     if (index !== -1) {
       userIPs.splice(index, 1);
@@ -229,7 +229,7 @@ class IPWhitelistManager {
       return true; // No whitelist = allow all
     }
 
-    return userIPs.some(entry => entry.ip === ip);
+    return userIPs.some((entry) => entry.ip === ip);
   }
 
   /**
@@ -357,7 +357,7 @@ class SessionSecurityManager {
   destroyUserSessions(userId) {
     const sessions = this.userSessions.get(userId) || [];
 
-    sessions.forEach(sessionId => {
+    sessions.forEach((sessionId) => {
       this.activeSessions.delete(sessionId);
     });
 
@@ -375,7 +375,7 @@ class SessionSecurityManager {
   getUserSessions(userId) {
     const sessionIds = this.userSessions.get(userId) || [];
 
-    return sessionIds.map(sessionId => {
+    return sessionIds.map((sessionId) => {
       const session = this.activeSessions.get(sessionId);
       return {
         sessionId: sessionId.substring(0, 8),

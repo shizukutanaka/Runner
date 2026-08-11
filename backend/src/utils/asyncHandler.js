@@ -84,7 +84,7 @@ const withRetry = async (fn, retries = 3, delay = 1000) => {
     } catch (error) {
       if (i === retries - 1) throw error;
       // エクスポネンシャルバックオフ: 1秒 → 2秒 → 4秒
-      await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+      await new Promise((resolve) => setTimeout(resolve, delay * Math.pow(2, i)));
     }
   }
 };

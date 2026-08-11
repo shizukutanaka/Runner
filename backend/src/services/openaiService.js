@@ -137,7 +137,7 @@ async function _withRetry(fn, maxRetries = 3) {
         error: err.message,
         status: err.status
       });
-      await new Promise(r => setTimeout(r, delayMs));
+      await new Promise((r) => setTimeout(r, delayMs));
     }
   }
 }
@@ -396,7 +396,7 @@ async function generateChatbotResponse(userMessage, context = {}) {
 
     // Add context if available
     if (context.previousMessages && context.previousMessages.length > 0) {
-      context.previousMessages.forEach(msg => {
+      context.previousMessages.forEach((msg) => {
         messages.push({ role: msg.role, content: msg.content });
       });
     }

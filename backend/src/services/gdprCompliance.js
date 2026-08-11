@@ -309,7 +309,7 @@ class GDPRComplianceService {
     for (const table of tables) {
       await new Promise((resolve, reject) => {
         const idColumn = table === 'comments' ? 'user' :
-                        table === 'data_processing_consents' ? 'user_id' : 'id';
+          table === 'data_processing_consents' ? 'user_id' : 'id';
 
         db.run(
           `DELETE FROM ${table} WHERE ${idColumn} = ?`,
@@ -334,7 +334,7 @@ class GDPRComplianceService {
     // Anonymize comments
     await new Promise((resolve, reject) => {
       db.run(
-        `UPDATE comments SET user = ?, content = '[REDACTED]' WHERE user = ?`,
+        'UPDATE comments SET user = ?, content = \'[REDACTED]\' WHERE user = ?',
         [anonymousId, userId],
         (err) => {
           if (err) reject(err);
@@ -346,7 +346,7 @@ class GDPRComplianceService {
     // Anonymize user record
     await new Promise((resolve, reject) => {
       db.run(
-        `UPDATE users SET username = ?, email = NULL, profile_image = NULL, bio = NULL WHERE id = ?`,
+        'UPDATE users SET username = ?, email = NULL, profile_image = NULL, bio = NULL WHERE id = ?',
         [anonymousId, userId],
         (err) => {
           if (err) reject(err);
@@ -358,7 +358,7 @@ class GDPRComplianceService {
     // Log anonymization
     await new Promise((resolve, reject) => {
       db.run(
-        `INSERT INTO data_anonymization_log (user_id, data_types) VALUES (?, ?)`,
+        'INSERT INTO data_anonymization_log (user_id, data_types) VALUES (?, ?)',
         [userId, 'comments,user_profile'],
         (err) => {
           if (err) reject(err);
@@ -429,15 +429,15 @@ class GDPRComplianceService {
       let deleted = 0;
 
       switch (dataType) {
-        case 'comments':
-          deleted = await this.deleteOldRecords('comments', cutoffDate);
-          break;
-        case 'logs':
-          deleted = await this.deleteOldRecords('audit_logs', cutoffDate);
-          break;
-        case 'sessions':
-          // Handled by session manager
-          break;
+      case 'comments':
+        deleted = await this.deleteOldRecords('comments', cutoffDate);
+        break;
+      case 'logs':
+        deleted = await this.deleteOldRecords('audit_logs', cutoffDate);
+        break;
+      case 'sessions':
+        // Handled by session manager
+        break;
       }
 
       totalDeleted += deleted;
@@ -473,13 +473,13 @@ class GDPRComplianceService {
 const gdprService = new GDPRComplianceService();
 
 // Initialize on startup
-gdprService.initialize().catch(err => {
+gdprService.initialize().catch((err) => {
   logger.error('[GDPR] Initialization failed', { error: err.message });
 });
 
 // Run retention policy enforcement daily
 setInterval(() => {
-  gdprService.enforceRetentionPolicies().catch(err => {
+  gdprService.enforceRetentionPolicies().catch((err) => {
     logger.error('[GDPR] Retention policy enforcement failed', { error: err.message });
   });
 }, 24 * 60 * 60 * 1000);

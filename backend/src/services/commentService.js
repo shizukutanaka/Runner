@@ -520,7 +520,7 @@ const extractVideoIds = (comments) => {
   const videoIdRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/g;
   const videoIds = new Set();
 
-  comments.forEach(comment => {
+  comments.forEach((comment) => {
     if (comment && comment.content) {
       let match;
       while ((match = videoIdRegex.exec(comment.content)) !== null) {
@@ -839,7 +839,7 @@ const updateBatch = async (updates) => {
               }
 
               // Invalidate cache for all updated comments
-              await Promise.all(updatedIds.map(id => invalidateCommentCache(id)));
+              await Promise.all(updatedIds.map((id) => invalidateCommentCache(id)));
               await invalidateCommentListCache();
 
               logger.info('[CommentService] Batch update completed successfully', {

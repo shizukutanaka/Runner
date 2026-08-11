@@ -92,15 +92,15 @@ class MonitoringService extends EventEmitter {
 
     try {
       await Promise.all([
-        this.collectSystemMetrics().catch(err => {
+        this.collectSystemMetrics().catch((err) => {
           logger.warn('[MonitoringService] System metrics collection failed', { error: err.message });
           errors.push({ type: 'system', error: err.message });
         }),
-        this.collectApplicationMetrics().catch(err => {
+        this.collectApplicationMetrics().catch((err) => {
           logger.warn('[MonitoringService] Application metrics collection failed', { error: err.message });
           errors.push({ type: 'application', error: err.message });
         }),
-        this.collectDatabaseMetrics().catch(err => {
+        this.collectDatabaseMetrics().catch((err) => {
           logger.warn('[MonitoringService] Database metrics collection failed', { error: err.message });
           errors.push({ type: 'database', error: err.message });
         })
@@ -189,7 +189,7 @@ class MonitoringService extends EventEmitter {
       try {
         const db = require('../db');
         const tables = await new Promise((resolve, reject) => {
-          db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, rows) => {
+          db.all('SELECT name FROM sqlite_master WHERE type=\'table\'', (err, rows) => {
             if (err) reject(err);
             else resolve(rows || []);
           });
@@ -214,7 +214,7 @@ class MonitoringService extends EventEmitter {
         );
 
         // Merge table statistics
-        tableStats.forEach(stat => {
+        tableStats.forEach((stat) => {
           Object.assign(dbStats.tables, stat);
         });
       } catch (error) {
@@ -463,7 +463,7 @@ class MonitoringService extends EventEmitter {
     // Check failed logins in last 5 minutes
     const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
     const recentFailedLogins = this.metrics.security.failedLogins.filter(
-      timestamp => timestamp > fiveMinutesAgo
+      (timestamp) => timestamp > fiveMinutesAgo
     );
 
     if (recentFailedLogins.length >= 5) { // 5 failed logins in 5 minutes
@@ -494,7 +494,7 @@ class MonitoringService extends EventEmitter {
     // Check rate limit violations in last minute
     const oneMinuteAgo = Date.now() - 60 * 1000;
     const recentViolations = this.metrics.security.rateLimitViolations.filter(
-      timestamp => timestamp > oneMinuteAgo
+      (timestamp) => timestamp > oneMinuteAgo
     );
 
     if (recentViolations.length >= 10) { // 10 violations in 1 minute
@@ -525,15 +525,15 @@ class MonitoringService extends EventEmitter {
     // Clean up old security metrics (older than 1 hour)
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
     this.metrics.security.failedLogins = this.metrics.security.failedLogins.filter(
-      timestamp => timestamp > oneHourAgo
+      (timestamp) => timestamp > oneHourAgo
     );
     this.metrics.security.rateLimitViolations = this.metrics.security.rateLimitViolations.filter(
-      timestamp => timestamp > oneHourAgo
+      (timestamp) => timestamp > oneHourAgo
     );
   }
   isAlertRecentlyFired(alert) {
     const recentTime = Date.now() - (5 * 60 * 1000); // 5 minutes
-    return this.alertHistory.some(historical =>
+    return this.alertHistory.some((historical) =>
       historical.type === alert.type &&
       historical.timestamp > recentTime
     );
@@ -586,7 +586,7 @@ class MonitoringService extends EventEmitter {
 
     // Keep only requests from last minute
     const oneMinuteAgo = now - 60000;
-    this.requestTimestamps = this.requestTimestamps.filter(t => t > oneMinuteAgo);
+    this.requestTimestamps = this.requestTimestamps.filter((t) => t > oneMinuteAgo);
 
     this.metrics.application.requests.rate = this.requestTimestamps.length;
   }
@@ -602,15 +602,15 @@ class MonitoringService extends EventEmitter {
     }
   }
 
-    // Record failed login attempt
-    recordFailedLogin() {
-      this.metrics.security.failedLogins.push(Date.now());
-    }
+  // Record failed login attempt
+  recordFailedLogin() {
+    this.metrics.security.failedLogins.push(Date.now());
+  }
 
-    // Record rate limit violation
-    recordRateLimitViolation() {
-      this.metrics.security.rateLimitViolations.push(Date.now());
-    }
+  // Record rate limit violation
+  recordRateLimitViolation() {
+    this.metrics.security.rateLimitViolations.push(Date.now());
+  }
 
   // Register custom metric collector
   registerCollector(name, collectorFunction) {
@@ -641,8 +641,8 @@ class MonitoringService extends EventEmitter {
   // Get health status
   getHealthStatus() {
     const alerts = this.metrics.alerts || [];
-    const criticalAlerts = alerts.filter(a => a.level === 'critical');
-    const warningAlerts = alerts.filter(a => a.level === 'warning');
+    const criticalAlerts = alerts.filter((a) => a.level === 'critical');
+    const warningAlerts = alerts.filter((a) => a.level === 'warning');
 
     let status = 'healthy';
     if (criticalAlerts.length > 0) {
@@ -694,8 +694,8 @@ class MonitoringService extends EventEmitter {
       },
       alerts: {
         total: this.metrics.alerts.length,
-        critical: this.metrics.alerts.filter(a => a.level === 'critical').length,
-        warnings: this.metrics.alerts.filter(a => a.level === 'warning').length
+        critical: this.metrics.alerts.filter((a) => a.level === 'critical').length,
+        warnings: this.metrics.alerts.filter((a) => a.level === 'warning').length
       },
       timestamp: Date.now()
     };
@@ -761,7 +761,7 @@ class MonitoringService extends EventEmitter {
 
   // Remove alert channel
   removeAlertChannel(channelName) {
-    this.alertChannels = this.alertChannels.filter(ch => ch.name !== channelName);
+    this.alertChannels = this.alertChannels.filter((ch) => ch.name !== channelName);
     logger.info('[MonitoringService] Alert channel removed', { channel: channelName });
   }
 }

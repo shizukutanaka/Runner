@@ -156,10 +156,10 @@ async function setupWebSocket(server, app) {
       const totalComments    = commentStats.reduce((s, r) => s + r.cnt, 0);
       const todayComments    = commentStats.reduce((s, r) => s + r.today_cnt, 0);
       const hourComments     = commentStats.reduce((s, r) => s + r.hour_cnt, 0);
-      const totalModeration  = commentStats.filter(r => r.status !== 'active').reduce((s, r) => s + r.cnt, 0);
-      const todayModeration  = commentStats.filter(r => r.status !== 'active').reduce((s, r) => s + r.today_cnt, 0);
+      const totalModeration  = commentStats.filter((r) => r.status !== 'active').reduce((s, r) => s + r.cnt, 0);
+      const todayModeration  = commentStats.filter((r) => r.status !== 'active').reduce((s, r) => s + r.today_cnt, 0);
       const totalUsers       = userStats.reduce((s, r) => s + r.cnt, 0);
-      const activeUsers      = userStats.find(r => r.status === 'active')?.cnt || 0;
+      const activeUsers      = userStats.find((r) => r.status === 'active')?.cnt || 0;
 
       const stats = {
         total_comments:    totalComments,
@@ -374,7 +374,7 @@ async function setupWebSocket(server, app) {
       });
 
       if (!validation.valid) {
-        logger.warn(`[WebSocket] joinDashboard validation failed:`, validation.error);
+        logger.warn('[WebSocket] joinDashboard validation failed:', validation.error);
         socket.emit('error', { type: 'validation', message: validation.error });
         return;
       }
@@ -414,7 +414,7 @@ async function setupWebSocket(server, app) {
       });
 
       if (!validation.valid) {
-        logger.warn(`[WebSocket] newComment validation failed:`, validation.error);
+        logger.warn('[WebSocket] newComment validation failed:', validation.error);
         socket.emit('error', { type: 'validation', message: validation.error });
         return;
       }
@@ -444,7 +444,7 @@ async function setupWebSocket(server, app) {
           ...comment,
           channelId,
           sentimentScore: comment.sentimentScore ?? 0.5,
-          toxicityScore:  comment.toxicityScore  ?? 0,
+          toxicityScore:  comment.toxicityScore  ?? 0
         });
         if (comment.user) {
           departureDetector.record(comment.platform, channelId, comment.user, comment.timestamp);
@@ -471,7 +471,7 @@ async function setupWebSocket(server, app) {
       });
 
       if (!validation.valid) {
-        logger.warn(`[WebSocket] moderationAction validation failed:`, validation.error);
+        logger.warn('[WebSocket] moderationAction validation failed:', validation.error);
         socket.emit('error', { type: 'validation', message: validation.error });
         return;
       }
@@ -512,7 +512,7 @@ async function setupWebSocket(server, app) {
       const validation = validateInput(data, {
         userId: { required: true,  type: 'string', maxLength: 255 },
         action: { required: true,  type: 'string', enum: ['view', 'comment', 'moderate', 'export', 'login', 'logout'] },
-        metadata: { required: false, type: 'object' },
+        metadata: { required: false, type: 'object' }
       });
 
       if (!validation.valid) {
@@ -566,7 +566,7 @@ async function setupWebSocket(server, app) {
 
     // システム情報リクエスト
     socket.on('requestSystemInfo', () => {
-      getSystemStats().then(systemStats => {
+      getSystemStats().then((systemStats) => {
         socket.emit('systemStats', {
           timestamp: new Date().toISOString(),
           data: systemStats

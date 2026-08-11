@@ -33,7 +33,7 @@ router.get('/channels/:channelId/comments', asyncHandler(async (req, res) => {
   logger.info('[YouTube] Comments fetch requested', { channelId, limit });
 
   const rows = await dbAll(
-    "SELECT id, content, user, status, timestamp FROM comments WHERE platform = 'youtube' ORDER BY timestamp DESC LIMIT ?",
+    'SELECT id, content, user, status, timestamp FROM comments WHERE platform = \'youtube\' ORDER BY timestamp DESC LIMIT ?',
     [limit]
   );
 

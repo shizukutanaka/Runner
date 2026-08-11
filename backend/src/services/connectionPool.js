@@ -97,7 +97,7 @@ class ConnectionPool {
     // No available connection, wait for one
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
-        const index = this.queue.findIndex(item => item.resolve === resolve);
+        const index = this.queue.findIndex((item) => item.resolve === resolve);
         if (index !== -1) {
           this.queue.splice(index, 1);
         }
@@ -115,7 +115,7 @@ class ConnectionPool {
   }
 
   release(conn) {
-    const poolConn = this.pool.find(pc => pc.conn === conn);
+    const poolConn = this.pool.find((pc) => pc.conn === conn);
 
     if (!poolConn) {
       logger.warn('[ConnectionPool] Attempted to release unknown connection');
@@ -263,7 +263,7 @@ class ConnectionPool {
     return {
       poolSize: this.pool.length,
       active: this.activeConnections,
-      available: this.pool.filter(pc => !pc.inUse).length,
+      available: this.pool.filter((pc) => !pc.inUse).length,
       queued: this.queue.length
     };
   }

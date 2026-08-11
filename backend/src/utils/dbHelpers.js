@@ -222,7 +222,7 @@ const safeBatchInsert = async (db, table, rows) => {
         const stmt = db.prepare(sql);
 
         rows.forEach((row) => {
-          const values = columns.map(col => row[col]);
+          const values = columns.map((col) => row[col]);
           stmt.run(values, (err) => {
             if (err) {
               logger.error('[DB] Batch insert row failed', { error: err.message });
@@ -267,7 +267,7 @@ const retryQuery = async (queryFn, maxRetries = 3, delay = 100) => {
 
       if (error.code === 'SQLITE_BUSY' || error.code === 'SQLITE_LOCKED') {
         logger.debug('[DB] Database busy, retrying', { attempt: i + 1, maxRetries });
-        await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+        await new Promise((resolve) => setTimeout(resolve, delay * (i + 1)));
         continue;
       }
 

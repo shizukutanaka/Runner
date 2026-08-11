@@ -76,7 +76,7 @@ class NotificationEventService {
           return reject(err);
         }
 
-        const events = rows.map(row => ({
+        const events = rows.map((row) => ({
           ...row,
           eventData: JSON.parse(row.event_data),
           targetUsers: row.target_users ? JSON.parse(row.target_users) : null
@@ -153,7 +153,7 @@ class NotificationEventService {
    * 配信ログを更新
    */
   static async updateDeliveryLog(deliveryId, updates) {
-    const updateFields = Object.keys(updates).map(key => `${key} = ?`).join(', ');
+    const updateFields = Object.keys(updates).map((key) => `${key} = ?`).join(', ');
     const params = Object.values(updates);
     params.push(deliveryId);
 

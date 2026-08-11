@@ -110,6 +110,7 @@ const TriageLevelSection = memo(({ level, items, defaultOpen = false }) => {
     </Box>
   );
 });
+TriageLevelSection.displayName = 'TriageLevelSection';
 
 // ─── メインコンポーネント ──────────────────────────────────
 function TriageQueue({ platform = 'youtube', channelId = 'default', pendingComments = [] }) {

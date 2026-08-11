@@ -77,7 +77,7 @@ class SilentDepartureDetector {
     const list = this.records.get(key);
     list.push({
       userId,
-      timestamp: timestamp instanceof Date ? timestamp : new Date(timestamp),
+      timestamp: timestamp instanceof Date ? timestamp : new Date(timestamp)
     });
 
     // 古いデータを削除（メモリ管理）
@@ -158,7 +158,7 @@ class SilentDepartureDetector {
           userId,
           lastSeen:    lastSeenTs ? new Date(lastSeenTs).toISOString() : null,
           daysSilent,
-          commentFreq: commentCounts[userId] ?? 0,
+          commentFreq: commentCounts[userId] ?? 0
         });
       }
     }
@@ -195,7 +195,7 @@ class SilentDepartureDetector {
       action:            this._action(departureRisk, trend),
       windowDays:        REGULAR_WINDOW_DAYS,
       silenceThreshold:  SILENCE_THRESHOLD_DAYS,
-      timestamp:         now.toISOString(),
+      timestamp:         now.toISOString()
     };
   }
 
@@ -249,7 +249,7 @@ class SilentDepartureDetector {
       action:           null,
       windowDays:       REGULAR_WINDOW_DAYS,
       silenceThreshold: SILENCE_THRESHOLD_DAYS,
-      timestamp:        new Date().toISOString(),
+      timestamp:        new Date().toISOString()
     };
   }
 

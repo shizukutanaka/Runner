@@ -466,13 +466,13 @@ const localStorageOptimizer = new LocalStorageOptimizer({
 });
 
 // Initialize on startup
-localStorageOptimizer.initialize().catch(err => {
+localStorageOptimizer.initialize().catch((err) => {
   logger.error('[LocalStorage] Initialization failed', { error: err.message });
 });
 
 // Run optimization daily
 setInterval(() => {
-  localStorageOptimizer.optimize().catch(err => {
+  localStorageOptimizer.optimize().catch((err) => {
     logger.error('[LocalStorage] Optimization failed', { error: err.message });
   });
 }, 24 * 60 * 60 * 1000);

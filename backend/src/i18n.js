@@ -19,7 +19,7 @@ const SUPPORTED_LANGUAGES = {
   'th': { name: 'Thai', nativeName: 'ไทย', flag: '🇹🇭', rtl: false },
   'vi': { name: 'Vietnamese', nativeName: 'Tiếng Việt', flag: '🇻🇳', rtl: false },
   'id': { name: 'Indonesian', nativeName: 'Bahasa Indonesia', flag: '🇮🇩', rtl: false },
-  'tr': { name: 'Turkish', nativeName: 'Türkçe', flag: '🇹🇷', rtl: false },
+  'tr': { name: 'Turkish', nativeName: 'Türkçe', flag: '🇹🇷', rtl: false }
 };
 
 // 言語検出関数
@@ -87,7 +87,7 @@ const createI18nResponse = (res, lang) => {
     },
 
     validationError: (errors) => {
-      const translatedErrors = errors.map(error => ({
+      const translatedErrors = errors.map((error) => ({
         field: error.field,
         message: i18n.t(error.message, { lng: lang })
       }));
@@ -148,7 +148,7 @@ const initializeI18n = async () => {
       lng: 'en',
       fallbackLng: 'en',
       backend: {
-        loadPath: path.join(__dirname, 'locales/{{lng}}.json'),
+        loadPath: path.join(__dirname, 'locales/{{lng}}.json')
       },
       interpolation: {
         escapeValue: false
@@ -177,7 +177,7 @@ const translate = (key, options = {}) => {
 // 複数言語対応の翻訳
 const translateMulti = (key, languages = ['en', 'ja']) => {
   const translations = {};
-  languages.forEach(lang => {
+  languages.forEach((lang) => {
     translations[lang] = i18n.t(key, { lng: lang });
   });
   return translations;

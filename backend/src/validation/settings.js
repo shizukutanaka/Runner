@@ -2,19 +2,19 @@
 const Joi = require('joi');
 
 exports.userIdParam = Joi.object({
-  userId: Joi.string().uuid().required(),
+  userId: Joi.string().uuid().required()
 });
 
 exports.commentIdParam = Joi.object({
-  commentId: Joi.string().required(),
+  commentId: Joi.string().required()
 });
 
 exports.setTheme = Joi.object({
-  theme: Joi.string().valid('light', 'dark', 'system').required(),
+  theme: Joi.string().valid('light', 'dark', 'system').required()
 });
 
 exports.setLayout = Joi.object({
-  layout: Joi.string().max(50).required(),
+  layout: Joi.string().max(50).required()
 });
 
 exports.setNotifications = Joi.object({
@@ -33,11 +33,11 @@ exports.setNotifications = Joi.object({
 
 // frontend/src/i18n.jsが実際にサポートする言語のみ許可（D-13で13言語の張りぼてを削除した経緯と対応）
 exports.setDefaultLanguage = Joi.object({
-  language: Joi.string().lowercase().valid('en', 'ja').required(),
+  language: Joi.string().lowercase().valid('en', 'ja').required()
 });
 
 exports.setTimezone = Joi.object({
-  timezone: Joi.string().max(50).required(),
+  timezone: Joi.string().max(50).required()
 });
 
 exports.setDisplay = Joi.object({
@@ -50,24 +50,24 @@ exports.setDisplay = Joi.object({
   showGifs: Joi.boolean(),
   autoPlayMedia: Joi.boolean(),
   reduceAnimations: Joi.boolean(),
-  highContrast: Joi.boolean(),
+  highContrast: Joi.boolean()
 });
 
 exports.setAdminEmail = Joi.object({
-  adminEmail: Joi.string().email().required(),
+  adminEmail: Joi.string().email().required()
 });
 
 exports.manageApiKeys = Joi.object({
   action: Joi.string().valid('create', 'revoke', 'list', 'update').required(),
   keyName: Joi.string().max(100),
   permissions: Joi.array().items(Joi.string().valid('read', 'write', 'admin')),
-  expiresIn: Joi.number().integer().min(1),
+  expiresIn: Joi.number().integer().min(1)
 });
 
 exports.setExternalIntegration = Joi.object({
   service: Joi.string().valid('slack', 'discord', 'google', 'microsoft', 'github', 'twitter').required(),
   action: Joi.string().valid('connect', 'disconnect', 'update').required(),
-  credentials: Joi.object().optional(),
+  credentials: Joi.object().optional()
 });
 
 exports.setUICustomization = Joi.object({
@@ -78,7 +78,7 @@ exports.setUICustomization = Joi.object({
   boxShadow: Joi.string().max(100),
   animationSpeed: Joi.string().max(20),
   customCSS: Joi.string().max(2000),
-  layout: Joi.object(),
+  layout: Joi.object()
 });
 
 exports.setAutoBackup = Joi.object({
@@ -87,22 +87,22 @@ exports.setAutoBackup = Joi.object({
   time: Joi.string().pattern(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/),
   maxBackups: Joi.number().integer().min(1),
   notifyOnSuccess: Joi.boolean(),
-  notifyOnFailure: Joi.boolean(),
+  notifyOnFailure: Joi.boolean()
 });
 
 exports.exportSettings = Joi.object({
   format: Joi.string().valid('json', 'yaml', 'toml'),
-  includeSensitive: Joi.boolean(),
+  includeSensitive: Joi.boolean()
 });
 
 exports.importSettings = Joi.object({
   settings: Joi.object().required(),
-  merge: Joi.boolean(),
+  merge: Joi.boolean()
 });
 
 // コメント最大文字数設定
 exports.setCommentMaxLength = Joi.object({
-  maxLength: Joi.number().integer().min(1).max(10000).required(),
+  maxLength: Joi.number().integer().min(1).max(10000).required()
 });
 
 // コメント自動翻訳設定
@@ -120,17 +120,17 @@ exports.setAutoTranslation = Joi.object({
     .items(Joi.string().valid('ja', 'en', 'zh', 'ko', 'es', 'fr', 'de', 'pt', 'ru', 'ar'))
     .max(5)
     .default([]),
-  notifyOnFailure: Joi.boolean().default(false),
+  notifyOnFailure: Joi.boolean().default(false)
 });
 
 // コメントピン固定数設定
 exports.setPinLimit = Joi.object({
-  limit: Joi.number().integer().min(1).max(100).required(),
+  limit: Joi.number().integer().min(1).max(100).required()
 });
 
 // コメント自動削除時間設定
 exports.setAutoDeleteTime = Joi.object({
-  hours: Joi.number().integer().min(0).max(8760).required(),
+  hours: Joi.number().integer().min(0).max(8760).required()
 });
 
 // NGワード自動追加設定
@@ -138,20 +138,20 @@ exports.setAutoNGWordAddition = Joi.object({
   enabled: Joi.boolean().required(),
   threshold: Joi.number().min(0.1).max(1.0),
   minOccurrences: Joi.number().integer().min(1),
-  excludedWords: Joi.array().items(Joi.string().max(50)),
+  excludedWords: Joi.array().items(Joi.string().max(50))
 });
 
 // AI閾値個別設定
 exports.setIndividualAIThreshold = Joi.object({
   commentId: Joi.string().required(),
-  threshold: Joi.number().min(0).max(1).required(),
+  threshold: Joi.number().min(0).max(1).required()
 });
 
 // ユーザーごとのテーマ設定
 exports.setUserTheme = Joi.object({
   theme: Joi.string().valid('light', 'dark', 'system', 'custom').required(),
   primaryColor: Joi.string().pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/),
-  secondaryColor: Joi.string().pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/),
+  secondaryColor: Joi.string().pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/)
 });
 
 // ユーザーごとのBAN理由記録
@@ -159,45 +159,45 @@ exports.setBanReason = Joi.object({
   targetUserId: Joi.string().required(),
   reason: Joi.string().max(500).required(),
   duration: Joi.string().valid('1h', '6h', '12h', '1d', '3d', '7d', '30d', 'permanent'),
-  moderatorNotes: Joi.string().max(1000),
+  moderatorNotes: Joi.string().max(1000)
 });
 
 // ユーザーごとのミュート期間設定
 exports.setUserMuteDuration = Joi.object({
   targetUserId: Joi.string().required(),
   duration: Joi.string().valid('5m', '15m', '30m', '1h', '6h', '12h', '1d', '3d').required(),
-  reason: Joi.string().max(500),
+  reason: Joi.string().max(500)
 });
 
 // ユーザーごとのコメント色設定
 exports.setUserCommentColor = Joi.object({
   targetUserId: Joi.string().required(),
   color: Joi.string().pattern(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/).required(),
-  applyTo: Joi.string().valid('all', 'youtube', 'twitch'),
+  applyTo: Joi.string().valid('all', 'youtube', 'twitch')
 });
 
 // コメントごとのリアクション設定
 exports.setCommentReaction = Joi.object({
   commentId: Joi.string().required(),
-  reactionType: Joi.string().valid('like', 'dislike', 'love', 'laugh', 'angry', 'sad', 'surprise').required(),
+  reactionType: Joi.string().valid('like', 'dislike', 'love', 'laugh', 'angry', 'sad', 'surprise').required()
 });
 
 // コメントごとのタグ付与
 exports.setCommentTag = Joi.object({
   commentId: Joi.string().required(),
-  tag: Joi.string().max(50).required(),
+  tag: Joi.string().max(50).required()
 });
 
 // AI判定ログ取得
 exports.getAIModerationLogs = Joi.object({
   limit: Joi.number().integer().min(1).max(100).default(50),
-  offset: Joi.number().integer().min(0).default(0),
+  offset: Joi.number().integer().min(0).default(0)
 });
 
 // コメント編集履歴取得
 exports.getCommentEditHistory = Joi.object({
   limit: Joi.number().integer().min(1).max(100).default(50),
-  offset: Joi.number().integer().min(0).default(0),
+  offset: Joi.number().integer().min(0).default(0)
 });
 
 // スローモード設定
@@ -221,7 +221,7 @@ exports.setAutoRestore = Joi.object({
   enabled: Joi.boolean().required(),
   restorePoints: Joi.number().integer().min(1).max(100),
   frequency: Joi.string().valid('manual', 'hourly', 'daily', 'weekly'),
-  maxRestores: Joi.number().integer().min(1).max(50),
+  maxRestores: Joi.number().integer().min(1).max(50)
 });
 
 // 設定ごとのアクセス権限設定

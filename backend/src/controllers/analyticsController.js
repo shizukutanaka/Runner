@@ -14,8 +14,8 @@ exports.getStats = async (req, res, next) => {
     const [commentRow, userRow, bannedRow, activeRow] = await Promise.all([
       dbGet('SELECT COUNT(*) as cnt FROM comments'),
       dbGet('SELECT COUNT(*) as cnt FROM users'),
-      dbGet("SELECT COUNT(*) as cnt FROM users WHERE status = 'banned'"),
-      dbGet("SELECT COUNT(*) as cnt FROM users WHERE status = 'active'")
+      dbGet('SELECT COUNT(*) as cnt FROM users WHERE status = \'banned\''),
+      dbGet('SELECT COUNT(*) as cnt FROM users WHERE status = \'active\'')
     ]);
 
     res.json({
@@ -48,12 +48,12 @@ exports.getGraph = async (req, res, next) => {
       ORDER BY day ASC
     `);
 
-    const bansByDay = Object.fromEntries(banRows.map(r => [r.day, r.banCount]));
+    const bansByDay = Object.fromEntries(banRows.map((r) => [r.day, r.banCount]));
 
     res.json({
-      labels: rows.map(r => r.day),
-      comments: rows.map(r => r.commentCount),
-      bans: rows.map(r => bansByDay[r.day] || 0)
+      labels: rows.map((r) => r.day),
+      comments: rows.map((r) => r.commentCount),
+      bans: rows.map((r) => bansByDay[r.day] || 0)
     });
   } catch (err) {
     logger.error('[Analytics] Error fetching graph data', { error: err.message });
@@ -126,7 +126,7 @@ exports.getCommentStats = async (req, res, next) => {
 exports.getModerationStats = async (req, res, next) => {
   try {
     const rows = await dbAll('SELECT status, COUNT(*) as cnt FROM comments GROUP BY status');
-    const byStatus = Object.fromEntries(rows.map(r => [r.status, r.cnt]));
+    const byStatus = Object.fromEntries(rows.map((r) => [r.status, r.cnt]));
     const flagged = (byStatus.deleted || 0) + (byStatus.hidden || 0) + (byStatus.flagged || 0) + (byStatus.muted || 0);
     const passed = byStatus.visible || 0;
     res.json({ ai: true, stats: { flagged, passed, byStatus } });
@@ -173,7 +173,7 @@ exports.getUsage = async (req, res, next) => {
   try {
     const [totalRow, activeRow] = await Promise.all([
       dbGet('SELECT COUNT(*) as cnt FROM users'),
-      dbGet("SELECT COUNT(*) as cnt FROM users WHERE status = 'active'")
+      dbGet('SELECT COUNT(*) as cnt FROM users WHERE status = \'active\'')
     ]);
     const total = totalRow?.cnt || 0;
     const active = activeRow?.cnt || 0;
@@ -195,7 +195,7 @@ exports.getPeak = async (req, res, next) => {
     res.json({
       peak: top ? `${top.hour}:00` : null,
       peakCount: top?.cnt || 0,
-      distribution: rows.map(r => ({ hour: `${r.hour}:00`, count: r.cnt }))
+      distribution: rows.map((r) => ({ hour: `${r.hour}:00`, count: r.cnt }))
     });
   } catch (err) {
     logger.error('[Analytics] Error fetching peak', { error: err.message });
@@ -207,8 +207,8 @@ exports.getPeak = async (req, res, next) => {
 exports.getTrend = async (req, res, next) => {
   try {
     const [recentRow, priorRow] = await Promise.all([
-      dbGet("SELECT COUNT(*) as cnt FROM comments WHERE timestamp >= datetime('now', '-1 day')"),
-      dbGet("SELECT COUNT(*) as cnt FROM comments WHERE timestamp >= datetime('now', '-2 day') AND timestamp < datetime('now', '-1 day')")
+      dbGet('SELECT COUNT(*) as cnt FROM comments WHERE timestamp >= datetime(\'now\', \'-1 day\')'),
+      dbGet('SELECT COUNT(*) as cnt FROM comments WHERE timestamp >= datetime(\'now\', \'-2 day\') AND timestamp < datetime(\'now\', \'-1 day\')')
     ]);
     const recent = recentRow?.cnt || 0;
     const prior = priorRow?.cnt || 0;
@@ -242,8 +242,8 @@ exports.getRanking = async (req, res, next) => {
 exports.detectAnomaly = async (req, res, next) => {
   try {
     const [lastHourRow, dayRow] = await Promise.all([
-      dbGet("SELECT COUNT(*) as cnt FROM comments WHERE timestamp >= datetime('now', '-1 hour')"),
-      dbGet("SELECT COUNT(*) as cnt FROM comments WHERE timestamp >= datetime('now', '-1 day')")
+      dbGet('SELECT COUNT(*) as cnt FROM comments WHERE timestamp >= datetime(\'now\', \'-1 hour\')'),
+      dbGet('SELECT COUNT(*) as cnt FROM comments WHERE timestamp >= datetime(\'now\', \'-1 day\')')
     ]);
     const lastHour = lastHourRow?.cnt || 0;
     const hourlyAvg = (dayRow?.cnt || 0) / 24;

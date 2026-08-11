@@ -42,7 +42,7 @@ const CULTURE_PRESETS = {
     autoApproveScore:  20,     // このスコア以下で自動承認
     bannedPatternBoost: 2.0,   // 禁止ワードへのペナルティ倍率
     allowedAggression: 0.1,    // 攻撃的表現の許容度（0=ゼロ）
-    flags: ['no_profanity', 'no_violence', 'no_adult'],
+    flags: ['no_profanity', 'no_violence', 'no_adult']
   },
   educational: {
     label: '教育・解説',
@@ -53,7 +53,7 @@ const CULTURE_PRESETS = {
     autoApproveScore:  25,
     bannedPatternBoost: 1.5,
     allowedAggression: 0.2,
-    flags: ['no_misinformation', 'topical_only'],
+    flags: ['no_misinformation', 'topical_only']
   },
   entertainment: {
     label: 'エンタメ・雑談',
@@ -64,7 +64,7 @@ const CULTURE_PRESETS = {
     autoApproveScore:  30,
     bannedPatternBoost: 1.0,
     allowedAggression: 0.35,
-    flags: [],
+    flags: []
   },
   gaming: {
     label: 'ゲーム実況',
@@ -75,7 +75,7 @@ const CULTURE_PRESETS = {
     autoApproveScore:  35,
     bannedPatternBoost: 0.8,
     allowedAggression: 0.60,   // 煽り合いは文化的に許容
-    flags: ['allow_trash_talk'],
+    flags: ['allow_trash_talk']
   },
   mature: {
     label: '成人向け（要年齢確認）',
@@ -86,8 +86,8 @@ const CULTURE_PRESETS = {
     autoApproveScore:  40,
     bannedPatternBoost: 0.7,
     allowedAggression: 0.70,
-    flags: ['adult_verified'],
-  },
+    flags: ['adult_verified']
+  }
 };
 
 const DEFAULT_CULTURE = 'entertainment';
@@ -113,7 +113,7 @@ class CreatorCultureService {
         this.profiles.set(row.channel_key, {
           cultureType: row.culture_type,
           customOverrides: overrides,
-          updatedAt: row.updated_at,
+          updatedAt: row.updated_at
         });
       });
       if (rows.length > 0) {
@@ -146,8 +146,8 @@ class CreatorCultureService {
       availablePresets: Object.entries(CULTURE_PRESETS).map(([id, p]) => ({
         id,
         label: p.label,
-        description: p.description,
-      })),
+        description: p.description
+      }))
     };
   }
 
@@ -164,7 +164,7 @@ class CreatorCultureService {
     this.profiles.set(key, {
       cultureType,
       customOverrides,
-      updatedAt,
+      updatedAt
     });
 
     // DBへ永続化（UPSERT）。読み取りはin-memory Mapが担うため、書き込みは
@@ -226,8 +226,8 @@ class CreatorCultureService {
       culture:    profile.cultureType,
       multiplier: profile.toxicityMultiplier,
       verdict:    score >= profile.autoRejectScore ? 'reject'
-                : score <= profile.autoApproveScore ? 'approve'
-                : 'review',
+        : score <= profile.autoApproveScore ? 'approve'
+          : 'review'
     };
   }
 
@@ -276,22 +276,22 @@ class CreatorCultureService {
       no_misinformation: '事実に反する主張・誤情報の拡散を問題とする。',
       topical_only: '配信の主題から大きく外れた投稿を問題とする。',
       allow_trash_talk: 'ゲーム内の煽り合い・挑発は文化として許容する。',
-      adult_verified: '視聴者は成人であり、成人向けの話題自体は許容される。',
+      adult_verified: '視聴者は成人であり、成人向けの話題自体は許容される。'
     };
     const flagLines = (profile.flags || [])
       .map((f) => flagGuidance[f])
       .filter(Boolean);
 
     const policy = [
-      `# このチャンネルのモデレーション方針`,
-      ``,
+      '# このチャンネルのモデレーション方針',
+      '',
       `チャンネル種別: ${profile.label}（${profile.description}）`,
-      ``,
-      `## 判断基準`,
+      '',
+      '## 判断基準',
       `- ${aggressionGuidance}`,
       ...flagLines.map((l) => `- ${l}`),
-      `- 誹謗中傷・脅迫・個人情報の晒し・執拗な付きまといは、表現が遠回しでも問題として扱う。`,
-      `- 単に否定的な感想や批判であることは、それだけでは問題としない。`,
+      '- 誹謗中傷・脅迫・個人情報の晒し・執拗な付きまといは、表現が遠回しでも問題として扱う。',
+      '- 単に否定的な感想や批判であることは、それだけでは問題としない。'
     ].join('\n');
 
     return {
@@ -300,8 +300,8 @@ class CreatorCultureService {
       // 判定のしきい値（LLMの出力スコアを製品側で解釈するために渡す）
       thresholds: {
         autoRejectScore: profile.autoRejectScore,
-        autoApproveScore: profile.autoApproveScore,
-      },
+        autoApproveScore: profile.autoApproveScore
+      }
     };
   }
 
@@ -313,7 +313,7 @@ class CreatorCultureService {
       id,
       label:       p.label,
       description: p.description,
-      strictness:  this._strictnessLevel(p.toxicityMultiplier),
+      strictness:  this._strictnessLevel(p.toxicityMultiplier)
     }));
   }
 

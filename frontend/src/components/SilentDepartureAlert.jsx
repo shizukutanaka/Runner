@@ -61,6 +61,7 @@ const SilentUserRow = memo(({ user }) => (
     />
   </ListItem>
 ));
+SilentUserRow.displayName = 'SilentUserRow';
 
 // ─── メインコンポーネント ──────────────────────────────────
 function SilentDepartureAlert({ platform = 'youtube', channelId = 'default' }) {

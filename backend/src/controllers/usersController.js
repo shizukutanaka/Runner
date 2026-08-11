@@ -123,7 +123,7 @@ exports.updateUser = (req, res, next) => {
   let muteUntil = null;
   if (action === 'ban') banUntil = new Date(Date.now() + (duration || 3600) * 1000).toISOString();
   if (action === 'mute') muteUntil = new Date(Date.now() + (duration || 300) * 1000).toISOString();
-  const sql = `UPDATE users SET status = ?, ban_until = ?, mute_until = ? WHERE id = ?`;
+  const sql = 'UPDATE users SET status = ?, ban_until = ?, mute_until = ? WHERE id = ?';
   db.run(sql, [status, banUntil, muteUntil, id], function(err) {
     if (err) return next({ status: 500, message: 'Database error', details: err });
     logDataMod(req.user?.id || 'system', 'users', 'status_update', id, { status, banUntil, muteUntil, reason: sanitizeToStorage(reason) });
@@ -157,7 +157,7 @@ exports.setNotificationFrequency = (req, res, next) => {
     return next({ status: 400, message: 'Invalid frequency', details: error.details });
   }
 
-  const sql = `UPDATE users SET notification_frequency = ? WHERE id = ?`;
+  const sql = 'UPDATE users SET notification_frequency = ? WHERE id = ?';
   db.run(sql, [sanitizeToStorage(value), id], function(err) {
     if (err) return next({ status: 500, message: 'Database error', details: err });
     logDataMod(req.user?.id || 'system', 'users', 'notification_frequency', id, { frequency: sanitizeToStorage(value) });
@@ -176,7 +176,7 @@ exports.setExternalIntegration = (req, res, next) => {
     return next({ status: 400, message: 'enabled must be a boolean', details: error.details });
   }
 
-  const sql = `UPDATE users SET external_integration = ? WHERE id = ?`;
+  const sql = 'UPDATE users SET external_integration = ? WHERE id = ?';
   db.run(sql, [value ? 1 : 0, id], function(err) {
     if (err) return next({ status: 500, message: 'Database error', details: err });
     logDataMod(req.user?.id || 'system', 'users', 'external_integration', id, { enabled: value });
@@ -195,7 +195,7 @@ exports.setProfileImage = (req, res, next) => {
     return next({ status: 400, message: 'imageUrl must be a valid absolute URL up to 2048 characters', details: error.details });
   }
 
-  const sql = `UPDATE users SET profile_image = ? WHERE id = ?`;
+  const sql = 'UPDATE users SET profile_image = ? WHERE id = ?';
   db.run(sql, [sanitizeToStorage(value), id], function(err) {
     if (err) return next({ status: 500, message: 'Database error', details: err });
     logDataMod(req.user?.id || 'system', 'users', 'profile_image', id, { imageUrl: sanitizeForResponse(value) });
@@ -214,7 +214,7 @@ exports.setBio = (req, res, next) => {
     return next({ status: 400, message: 'bio must be 2000 characters or fewer', details: error.details });
   }
 
-  const sql = `UPDATE users SET bio = ? WHERE id = ?`;
+  const sql = 'UPDATE users SET bio = ? WHERE id = ?';
   db.run(sql, [value ? sanitizeToStorage(value) : null, id], function(err) {
     if (err) return next({ status: 500, message: 'Database error', details: err });
     logDataMod(req.user?.id || 'system', 'users', 'bio', id, { bio: sanitizeToStorage(value) });
@@ -235,7 +235,7 @@ exports.setLanguage = (req, res, next) => {
 
   const normalized = value.toLowerCase();
 
-  const sql = `UPDATE users SET language = ? WHERE id = ?`;
+  const sql = 'UPDATE users SET language = ? WHERE id = ?';
   db.run(sql, [normalized, id], function(err) {
     if (err) return next({ status: 500, message: 'Database error', details: err });
     logDataMod(req.user?.id || 'system', 'users', 'language', id, { language: normalized });
@@ -254,7 +254,7 @@ exports.setTimezone = (req, res, next) => {
     return next({ status: 400, message: 'timezone must be a non-empty string up to 50 characters', details: error.details });
   }
 
-  const sql = `UPDATE users SET timezone = ? WHERE id = ?`;
+  const sql = 'UPDATE users SET timezone = ? WHERE id = ?';
   db.run(sql, [value, id], function(err) {
     if (err) return next({ status: 500, message: 'Database error', details: err });
     logDataMod(req.user?.id || 'system', 'users', 'timezone', id, { timezone: value });
@@ -274,7 +274,7 @@ exports.setSubscription = (req, res, next) => {
   }
 
   const normalized = value == null || value === '' ? null : value;
-  const sql = `UPDATE users SET subscription = ? WHERE id = ?`;
+  const sql = 'UPDATE users SET subscription = ? WHERE id = ?';
   db.run(sql, [normalized, id], function(err) {
     if (err) return next({ status: 500, message: 'Database error', details: err });
     logDataMod(req.user?.id || 'system', 'users', 'subscription', id, { subscription: normalized });
@@ -314,7 +314,7 @@ exports.setSecurity = (req, res, next) => {
     return next({ status: 400, message: 'twoFactor and emailVerification must both be boolean values', details: error.details });
   }
 
-  const sql = `UPDATE users SET two_factor = ?, email_verified = ? WHERE id = ?`;
+  const sql = 'UPDATE users SET two_factor = ?, email_verified = ? WHERE id = ?';
   db.run(sql, [value.twoFactor ? 1 : 0, value.emailVerification ? 1 : 0, id], function(err) {
     if (err) return next({ status: 500, message: 'Database error', details: err });
     logDataMod(req.user?.id || 'system', 'users', 'security', id, value);
@@ -376,7 +376,7 @@ exports.timeoutUser = (req, res, next) => {
           }
 
           // ユーザーのミュート状態を更新（もし必要な場合）
-          const updateUserSql = `UPDATE users SET mute_until = ? WHERE id = ?`;
+          const updateUserSql = 'UPDATE users SET mute_until = ? WHERE id = ?';
           db.run(updateUserSql, [timeoutUntil, id], function(updateErr) {
             if (updateErr) {
               logger.warn('[Timeout] Failed to update user mute status:', updateErr);
@@ -423,48 +423,48 @@ exports.removeTimeout = (req, res, next) => {
     // アクティブなタイムアウトを取得
     db.get('SELECT * FROM user_timeouts WHERE user_id = ? AND status = ? AND timeout_until > ?',
       [id, 'active', new Date().toISOString()], (selectErr, timeoutRecord) => {
-      if (selectErr) return next({ status: 500, message: 'Database error finding timeout', details: selectErr });
-      if (!timeoutRecord) return next({ status: 404, message: 'No active timeout found for user' });
+        if (selectErr) return next({ status: 500, message: 'Database error finding timeout', details: selectErr });
+        if (!timeoutRecord) return next({ status: 404, message: 'No active timeout found for user' });
 
-      // タイムアウトを解除
-      const updateSql = `UPDATE user_timeouts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`;
-      db.run(updateSql, ['removed', timeoutRecord.id], function(updateErr) {
-        if (updateErr) return next({ status: 500, message: 'Database error removing timeout', details: updateErr });
+        // タイムアウトを解除
+        const updateSql = 'UPDATE user_timeouts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
+        db.run(updateSql, ['removed', timeoutRecord.id], function(updateErr) {
+          if (updateErr) return next({ status: 500, message: 'Database error removing timeout', details: updateErr });
 
-        // 履歴を更新
-        const historySql = `UPDATE user_timeout_history SET status = ?, ended_at = CURRENT_TIMESTAMP, notes = ? WHERE user_id = ? AND status = ?`;
-        db.run(historySql, ['removed', notes || '', id, 'active'], function(historyErr) {
-          if (historyErr) {
-            logger.warn('[Timeout] Failed to update timeout history:', historyErr);
-          }
-
-          // ユーザーのミュート状態を解除
-          const updateUserSql = `UPDATE users SET mute_until = NULL WHERE id = ?`;
-          db.run(updateUserSql, [id], function(userErr) {
-            if (userErr) {
-              logger.warn('[Timeout] Failed to update user mute status:', userErr);
+          // 履歴を更新
+          const historySql = 'UPDATE user_timeout_history SET status = ?, ended_at = CURRENT_TIMESTAMP, notes = ? WHERE user_id = ? AND status = ?';
+          db.run(historySql, ['removed', notes || '', id, 'active'], function(historyErr) {
+            if (historyErr) {
+              logger.warn('[Timeout] Failed to update timeout history:', historyErr);
             }
 
-            logDataMod(moderator, 'users', 'timeout_remove', id, {
-              originalTimeoutId: timeoutRecord.id,
-              reason: reason || 'Manual removal',
-              removedAt: new Date().toISOString()
-            });
+            // ユーザーのミュート状態を解除
+            const updateUserSql = 'UPDATE users SET mute_until = NULL WHERE id = ?';
+            db.run(updateUserSql, [id], function(userErr) {
+              if (userErr) {
+                logger.warn('[Timeout] Failed to update user mute status:', userErr);
+              }
 
-            res.json({
-              status: 200,
-              data: {
-                userId: id,
-                timeoutId: timeoutRecord.id,
-                removedAt: new Date().toISOString(),
-                originalTimeoutUntil: timeoutRecord.timeout_until
-              },
-              message: 'User timeout removed successfully'
+              logDataMod(moderator, 'users', 'timeout_remove', id, {
+                originalTimeoutId: timeoutRecord.id,
+                reason: reason || 'Manual removal',
+                removedAt: new Date().toISOString()
+              });
+
+              res.json({
+                status: 200,
+                data: {
+                  userId: id,
+                  timeoutId: timeoutRecord.id,
+                  removedAt: new Date().toISOString(),
+                  originalTimeoutUntil: timeoutRecord.timeout_until
+                },
+                message: 'User timeout removed successfully'
+              });
             });
           });
         });
       });
-    });
   } catch (error) {
     next({ status: 500, message: 'Failed to remove user timeout', details: error });
   }
@@ -477,31 +477,31 @@ exports.getUserTimeout = (req, res, next) => {
 
   db.get('SELECT * FROM user_timeouts WHERE user_id = ? AND status = ? AND timeout_until > ?',
     [id, 'active', new Date().toISOString()], (err, timeout) => {
-    if (err) return next({ status: 500, message: 'Database error', details: err });
+      if (err) return next({ status: 500, message: 'Database error', details: err });
 
-    if (timeout) {
-      res.json({
-        status: 200,
-        data: {
-          id: timeout.id,
-          userId: timeout.user_id,
-          moderatorId: timeout.moderator_id,
-          platform: timeout.platform,
-          reason: timeout.reason,
-          timeoutDuration: timeout.timeout_duration,
-          timeoutUntil: timeout.timeout_until,
-          createdAt: timeout.created_at
-        },
-        message: 'Active timeout found'
-      });
-    } else {
-      res.json({
-        status: 200,
-        data: null,
-        message: 'No active timeout found'
-      });
-    }
-  });
+      if (timeout) {
+        res.json({
+          status: 200,
+          data: {
+            id: timeout.id,
+            userId: timeout.user_id,
+            moderatorId: timeout.moderator_id,
+            platform: timeout.platform,
+            reason: timeout.reason,
+            timeoutDuration: timeout.timeout_duration,
+            timeoutUntil: timeout.timeout_until,
+            createdAt: timeout.created_at
+          },
+          message: 'Active timeout found'
+        });
+      } else {
+        res.json({
+          status: 200,
+          data: null,
+          message: 'No active timeout found'
+        });
+      }
+    });
 };
 
 // ユーザーのタイムアウト履歴取得
@@ -523,7 +523,7 @@ exports.getUserTimeoutHistory = (req, res, next) => {
     res.json({
       status: 200,
       data: {
-        history: history.map(record => ({
+        history: history.map((record) => ({
           id: record.id,
           moderatorId: record.moderator_id,
           platform: record.platform,
@@ -572,7 +572,7 @@ exports.getAllActiveTimeouts = (req, res, next) => {
     res.json({
       status: 200,
       data: {
-        timeouts: timeouts.map(timeout => ({
+        timeouts: timeouts.map((timeout) => ({
           id: timeout.id,
           userId: timeout.user_id,
           username: timeout.username,
@@ -601,7 +601,7 @@ exports.getTimeoutReasons = (req, res, next) => {
 
     res.json({
       status: 200,
-      data: reasons.map(reason => ({
+      data: reasons.map((reason) => ({
         id: reason.id,
         code: reason.reason_code,
         text: reason.reason_text,
@@ -619,21 +619,21 @@ exports.cleanupExpiredTimeouts = (req, res, next) => {
   const currentTime = new Date().toISOString();
 
   // 期限切れタイムアウトを更新
-  const updateSql = `UPDATE user_timeouts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE status = ? AND timeout_until <= ?`;
+  const updateSql = 'UPDATE user_timeouts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE status = ? AND timeout_until <= ?';
   db.run(updateSql, ['expired', 'active', currentTime], function(updateErr) {
     if (updateErr) return next({ status: 500, message: 'Database error updating expired timeouts', details: updateErr });
 
     const updatedCount = this.changes;
 
     // 対応する履歴も更新
-    const historySql = `UPDATE user_timeout_history SET status = ?, ended_at = CURRENT_TIMESTAMP WHERE status = ? AND timeout_until <= ?`;
+    const historySql = 'UPDATE user_timeout_history SET status = ?, ended_at = CURRENT_TIMESTAMP WHERE status = ? AND timeout_until <= ?';
     db.run(historySql, ['expired', 'active', currentTime], function(historyErr) {
       if (historyErr) {
         logger.warn('[Timeout] Failed to update timeout history:', historyErr);
       }
 
       // ユーザーのミュート状態も解除
-      const userSql = `UPDATE users SET mute_until = NULL WHERE mute_until IS NOT NULL AND mute_until <= ?`;
+      const userSql = 'UPDATE users SET mute_until = NULL WHERE mute_until IS NOT NULL AND mute_until <= ?';
       db.run(userSql, [currentTime], function(userErr) {
         if (userErr) {
           logger.warn('[Timeout] Failed to update user mute status:', userErr);
@@ -709,21 +709,21 @@ exports.getUserChannelActivity = (req, res, next) => {
             lastActivity: null,
             joinDate: userRow.created_at,
             totalModerationActions: modRows.length,
-            banCount: modRows.filter(m => m.action === 'ban').length,
-            muteCount: modRows.filter(m => m.action === 'mute').length
+            banCount: modRows.filter((m) => m.action === 'ban').length,
+            muteCount: modRows.filter((m) => m.action === 'mute').length
           };
 
           // コメント統計を計算
           if (commentRows.length > 0) {
             stats.totalComments = commentRows.length;
-            stats.visibleComments = commentRows.filter(c => c.status === 'visible').length;
-            stats.hiddenComments = commentRows.filter(c => c.status === 'hidden').length;
-            stats.deletedComments = commentRows.filter(c => c.status === 'deleted').length;
-            stats.flaggedComments = commentRows.filter(c => c.status === 'flagged').length;
+            stats.visibleComments = commentRows.filter((c) => c.status === 'visible').length;
+            stats.hiddenComments = commentRows.filter((c) => c.status === 'hidden').length;
+            stats.deletedComments = commentRows.filter((c) => c.status === 'deleted').length;
+            stats.flaggedComments = commentRows.filter((c) => c.status === 'flagged').length;
 
             const validScores = commentRows
-              .filter(c => c.moderation_score !== null)
-              .map(c => c.moderation_score);
+              .filter((c) => c.moderation_score !== null)
+              .map((c) => c.moderation_score);
             if (validScores.length > 0) {
               stats.averageRiskScore = validScores.reduce((a, b) => a + b, 0) / validScores.length;
             }
@@ -733,7 +733,7 @@ exports.getUserChannelActivity = (req, res, next) => {
 
           // プラットフォーム別の統計
           const platformStats = {};
-          commentRows.forEach(comment => {
+          commentRows.forEach((comment) => {
             if (!platformStats[comment.platform]) {
               platformStats[comment.platform] = {
                 total: 0,
@@ -752,7 +752,7 @@ exports.getUserChannelActivity = (req, res, next) => {
 
           // 最近のアクティビティ（コメントとモデレーションを統合）
           const recentActivity = [
-            ...commentRows.slice(0, 10).map(comment => ({
+            ...commentRows.slice(0, 10).map((comment) => ({
               type: 'comment',
               timestamp: comment.timestamp,
               platform: comment.platform,
@@ -760,7 +760,7 @@ exports.getUserChannelActivity = (req, res, next) => {
               status: comment.status,
               riskScore: comment.moderation_score
             })),
-            ...modRows.slice(0, 5).map(mod => ({
+            ...modRows.slice(0, 5).map((mod) => ({
               type: 'moderation',
               timestamp: mod.timestamp,
               action: mod.action,
@@ -783,7 +783,7 @@ exports.getUserChannelActivity = (req, res, next) => {
             },
             statistics: stats,
             platformBreakdown: platformStats,
-            recentComments: commentRows.map(comment => ({
+            recentComments: commentRows.map((comment) => ({
               id: comment.id,
               content: comment.display_content,
               platform: comment.platform,
@@ -1009,17 +1009,17 @@ const getExternalIntegrationStats = asyncHandler(async (req, res, next) => {
     let startDate;
 
     switch (period) {
-      case '24h':
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        break;
-      case '7d':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case '30d':
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      default:
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    case '24h':
+      startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      break;
+    case '7d':
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      break;
+    case '30d':
+      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      break;
+    default:
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     }
 
     const startDateStr = startDate.toISOString().split('T')[0];
@@ -1256,7 +1256,7 @@ const getExternalIntegrationServices = asyncHandler(async (req, res, next) => {
       ORDER BY type, name ASC
     `);
 
-    const formattedServices = services.map(service => ({
+    const formattedServices = services.map((service) => ({
       id: service.id,
       name: service.name,
       type: service.type,
@@ -1328,7 +1328,7 @@ const getExternalIntegrationLogs = asyncHandler(async (req, res, next) => {
 
     const logs = await dbAll(sql, params);
 
-    const formattedLogs = logs.map(log => ({
+    const formattedLogs = logs.map((log) => ({
       id: log.id,
       userId: log.user_id,
       serviceId: log.service_id,
@@ -1510,7 +1510,7 @@ const getUserAuthHistory = asyncHandler(async (req, res, next) => {
 
     const history = await dbAll(sql, params);
 
-    const formattedHistory = history.map(record => ({
+    const formattedHistory = history.map((record) => ({
       id: record.id,
       sessionId: record.session_id,
       action: record.action,
@@ -1572,17 +1572,17 @@ const getAuthHistoryStats = asyncHandler(async (req, res, next) => {
     let startDate;
 
     switch (period) {
-      case '24h':
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        break;
-      case '7d':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case '30d':
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      default:
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    case '24h':
+      startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      break;
+    case '7d':
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      break;
+    case '30d':
+      startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      break;
+    default:
+      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     }
 
     const startDateStr = startDate.toISOString().split('T')[0];
@@ -1836,7 +1836,7 @@ const filterAuthHistory = asyncHandler(async (req, res, next) => {
 
     const history = await dbAll(sql, params);
 
-    const formattedHistory = history.map(record => ({
+    const formattedHistory = history.map((record) => ({
       id: record.id,
       userId: record.user_id,
       username: record.user_username,
@@ -1930,7 +1930,7 @@ const exportAuthHistory = asyncHandler(async (req, res, next) => {
 
     const history = await dbAll(sql, params);
 
-    const formattedHistory = history.map(record => ({
+    const formattedHistory = history.map((record) => ({
       id: record.id,
       sessionId: record.session_id,
       action: record.action,
@@ -1949,7 +1949,7 @@ const exportAuthHistory = asyncHandler(async (req, res, next) => {
     if (format === 'csv') {
       // CSV形式でエクスポート
       const csvHeaders = ['ID', 'Session ID', 'Action', 'IP Address', 'User Agent', 'Device Fingerprint', 'Location', 'Timestamp', 'Success', 'Failure Reason', 'User'];
-      const csvRows = formattedHistory.map(record => [
+      const csvRows = formattedHistory.map((record) => [
         record.id,
         record.sessionId || '',
         record.action,
@@ -1964,7 +1964,7 @@ const exportAuthHistory = asyncHandler(async (req, res, next) => {
       ]);
 
       const csvContent = [csvHeaders, ...csvRows]
-        .map(row => row.map(field => `"${field}"`).join(','))
+        .map((row) => row.map((field) => `"${field}"`).join(','))
         .join('\n');
 
       res.setHeader('Content-Type', 'text/csv');

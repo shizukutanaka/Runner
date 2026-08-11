@@ -75,7 +75,7 @@ class DeviceFingerprintManager {
       return false;
     }
 
-    const device = devices.find(d => d.fingerprint === fingerprint && d.trusted);
+    const device = devices.find((d) => d.fingerprint === fingerprint && d.trusted);
 
     if (device) {
       device.lastUsed = new Date().toISOString();
@@ -102,7 +102,7 @@ class DeviceFingerprintManager {
       return false;
     }
 
-    const device = devices.find(d => d.fingerprint === fingerprint);
+    const device = devices.find((d) => d.fingerprint === fingerprint);
 
     if (device) {
       device.trusted = false;
@@ -135,7 +135,7 @@ class GeolocationAccessControl {
    * Set allowed countries (whitelist)
    */
   setAllowedCountries(countries = []) {
-    this.allowedCountries = new Set(countries.map(c => c.toUpperCase()));
+    this.allowedCountries = new Set(countries.map((c) => c.toUpperCase()));
     logger.info('[GeolocationAccess] Allowed countries set', {
       countries: Array.from(this.allowedCountries)
     });
@@ -145,7 +145,7 @@ class GeolocationAccessControl {
    * Set blocked countries (blacklist)
    */
   setBlockedCountries(countries = []) {
-    this.blockedCountries = new Set(countries.map(c => c.toUpperCase()));
+    this.blockedCountries = new Set(countries.map((c) => c.toUpperCase()));
     logger.info('[GeolocationAccess] Blocked countries set', {
       countries: Array.from(this.blockedCountries)
     });
@@ -272,7 +272,7 @@ class PersonalRateLimiter {
     const requests = this.requestCounts.get(userId);
 
     // Filter requests within window
-    const recentRequests = requests.filter(timestamp => timestamp > windowStart);
+    const recentRequests = requests.filter((timestamp) => timestamp > windowStart);
     this.requestCounts.set(userId, recentRequests);
 
     // Check limit
@@ -357,7 +357,7 @@ class SuspiciousActivityDetector {
     const recent = patterns.slice(-50); // Last 50 activities
 
     // Check for rapid repeated actions
-    const actionTypes = recent.map(a => a.type);
+    const actionTypes = recent.map((a) => a.type);
     const uniqueActions = new Set(actionTypes);
 
     if (uniqueActions.size === 1 && actionTypes.length > 20) {
@@ -365,7 +365,7 @@ class SuspiciousActivityDetector {
     }
 
     // Check for rapid-fire requests
-    const timestamps = recent.map(a => new Date(a.timestamp).getTime());
+    const timestamps = recent.map((a) => new Date(a.timestamp).getTime());
     const timeDiffs = timestamps.slice(1).map((t, i) => t - timestamps[i]);
     const avgTimeDiff = timeDiffs.reduce((a, b) => a + b, 0) / timeDiffs.length;
 
@@ -374,7 +374,7 @@ class SuspiciousActivityDetector {
     }
 
     // Check for failed actions
-    const failedActions = recent.filter(a => a.success === false);
+    const failedActions = recent.filter((a) => a.success === false);
     const failureRate = failedActions.length / recent.length;
 
     if (failureRate > 0.5) {
@@ -382,8 +382,8 @@ class SuspiciousActivityDetector {
     }
 
     // Check for unusual access patterns
-    const hours = recent.map(a => new Date(a.timestamp).getHours());
-    const nightActivity = hours.filter(h => h >= 0 && h <= 5).length;
+    const hours = recent.map((a) => new Date(a.timestamp).getHours());
+    const nightActivity = hours.filter((h) => h >= 0 && h <= 5).length;
 
     if (nightActivity > recent.length * 0.7) {
       suspicionScore += 10; // Unusual time access

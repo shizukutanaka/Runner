@@ -267,6 +267,7 @@ const SignalBar = memo(({ name, value }) => {
     </Box>
   );
 });
+SignalBar.displayName = 'SignalBar';
 
 const SIGNAL_LABELS = {
   sentimentBalance:  'ポジティブ率',

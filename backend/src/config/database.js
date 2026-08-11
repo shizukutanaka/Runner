@@ -1,12 +1,12 @@
 // backend/src/config/database.js
 const { Sequelize } = require('sequelize');
 const path = require('path');
-const logger = require('../utils/logger');
+const logger = require('../logger');
 
 // データベース設定の検証
 const validateConfig = () => {
   const required = ['DB_HOST', 'DB_PORT', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'];
-  const missing = required.filter(key => !process.env[key]);
+  const missing = required.filter((key) => !process.env[key]);
 
   if (missing.length > 0) {
     throw new Error(`必要な環境変数が設定されていません: ${missing.join(', ')}`);

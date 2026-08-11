@@ -165,7 +165,7 @@ router.post('/context-analysis', async (req, res) => {
         verdict: contextScore > 0.5 ? 'safe' : contextScore > 0.3 ? 'uncertain' : 'risky',
         insight: _contextInsight(baseScore, contextScore, contextComments.length),
         contextSize: contextComments.length,
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toISOString()
       }
     });
 
@@ -199,7 +199,7 @@ function _contextAdjustedScore(target, context) {
   const base = _simpleSentimentScore(target.content);
   if (context.length === 0) return base;
 
-  const contextSentiments = context.map(c => _simpleSentimentScore(c.content ?? ''));
+  const contextSentiments = context.map((c) => _simpleSentimentScore(c.content ?? ''));
   const avgContext = contextSentiments.reduce((a, b) => a + b, 0) / contextSentiments.length;
 
   // コンテキストが悪い（炎上中）なら、通常のコメントも低く評価

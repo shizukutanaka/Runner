@@ -97,7 +97,7 @@ class EmotionalContagionDetector {
     const recent = window.slice(-WINDOW_SIZE);
 
     // 1. 平均センチメント（低いほど危険）
-    const avgSentiment = this._mean(recent.map(c => c.sentiment));
+    const avgSentiment = this._mean(recent.map((c) => c.sentiment));
 
     // 2. 感情勾配（急激な低下が危険）
     const gradient = this._sentimentGradient(recent);
@@ -131,7 +131,7 @@ class EmotionalContagionDetector {
         gradient:      Math.round(gradient       * 1000) / 1000,
         toxicitySpike: Math.round(toxicitySpike  * 100) / 100,
         velocity:      Math.round(velocity        * 100) / 100,
-        agitatorScore: Math.round(agitatorScore   * 100) / 100,
+        agitatorScore: Math.round(agitatorScore   * 100) / 100
       },
       recommendation: this._recommend(level, riskScore),
       sampleSize:     recent.length,
@@ -155,18 +155,18 @@ class EmotionalContagionDetector {
     if (!buffer || buffer.length() === 0) return null;
 
     const window = buffer.toArray();
-    const sentiments = window.map(c => c.sentiment);
+    const sentiments = window.map((c) => c.sentiment);
     const now        = new Date();
     const oneMin     = 60 * 1000;
-    const recentMin  = window.filter(c => (now - c.timestamp) < oneMin);
+    const recentMin  = window.filter((c) => (now - c.timestamp) < oneMin);
 
     return {
       totalComments:     window.length,
       commentsPerMinute: recentMin.length,
       avgSentiment:      Math.round(this._mean(sentiments) * 100) / 100,
       trend:             this._sentimentGradient(window.slice(-20)) > 0 ? 'improving' : 'declining',
-      toxicCount:        window.filter(c => c.toxicity > 0.5).length,
-      toxicRate:         Math.round((window.filter(c => c.toxicity > 0.5).length / window.length) * 100),
+      toxicCount:        window.filter((c) => c.toxicity > 0.5).length,
+      toxicRate:         Math.round((window.filter((c) => c.toxicity > 0.5).length / window.length) * 100),
       currentRisk:       this.evaluate(platform, channelId)
     };
   }
@@ -175,8 +175,8 @@ class EmotionalContagionDetector {
   // イベントシステム
   // ─────────────────────────────────────────
   on(event, fn)  { (this.listeners.get(event) ?? this.listeners.set(event, []).get(event)).push(fn); }
-  off(event, fn) { const list = this.listeners.get(event); if (list) this.listeners.set(event, list.filter(f => f !== fn)); }
-  _emit(event, data) { (this.listeners.get(event) ?? []).forEach(fn => { try { fn(data); } catch(e) { logger.error('[ECD] Listener error:', e); } }); }
+  off(event, fn) { const list = this.listeners.get(event); if (list) this.listeners.set(event, list.filter((f) => f !== fn)); }
+  _emit(event, data) { (this.listeners.get(event) ?? []).forEach((fn) => { try { fn(data); } catch(e) { logger.error('[ECD] Listener error:', e); } }); }
 
   // ─────────────────────────────────────────
   // 内部計算メソッド
@@ -193,7 +193,7 @@ class EmotionalContagionDetector {
     if (comments.length < 2) return 0;
     const n  = comments.length;
     const xs = comments.map((_, i) => i);
-    const ys = comments.map(c => c.sentiment);
+    const ys = comments.map((c) => c.sentiment);
     const xm = this._mean(xs);
     const ym = this._mean(ys);
     const num = xs.reduce((sum, x, i) => sum + (x - xm) * (ys[i] - ym), 0);
@@ -205,9 +205,9 @@ class EmotionalContagionDetector {
   _toxicitySpike(allComments) {
     const now     = new Date();
     const oneMin  = 60 * 1000;
-    const recent  = allComments.filter(c => (now - c.timestamp) < oneMin);
+    const recent  = allComments.filter((c) => (now - c.timestamp) < oneMin);
     if (recent.length === 0) return 0;
-    const toxic   = recent.filter(c => c.toxicity > 0.5);
+    const toxic   = recent.filter((c) => c.toxicity > 0.5);
     return toxic.length / Math.max(recent.length, 1);
   }
 
@@ -216,13 +216,13 @@ class EmotionalContagionDetector {
     if (allComments.length < 6) return 0;
     const now       = new Date();
     const oneMin    = 60 * 1000;
-    const recent    = allComments.filter(c => (now - c.timestamp) < oneMin);
-    const older     = allComments.filter(c => {
+    const recent    = allComments.filter((c) => (now - c.timestamp) < oneMin);
+    const older     = allComments.filter((c) => {
       const age = now - c.timestamp;
       return age >= oneMin && age < 2 * oneMin;
     });
     if (recent.length === 0 || older.length === 0) return 0;
-    return this._mean(recent.map(c => c.sentiment)) - this._mean(older.map(c => c.sentiment));
+    return this._mean(recent.map((c) => c.sentiment)) - this._mean(older.map((c) => c.sentiment));
   }
 
   // 煽りユーザー検出（直近で同一ユーザーがネガティブを連投）

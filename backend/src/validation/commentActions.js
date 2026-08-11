@@ -5,7 +5,7 @@ const colorPattern = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
 
 exports.updateStatus = Joi.object({
   action: Joi.string().valid('visible', 'hidden', 'muted', 'deleted', 'flagged').required(),
-  reason: Joi.string().allow('', null).max(500),
+  reason: Joi.string().allow('', null).max(500)
 });
 
 exports.setAvatar = Joi.object({

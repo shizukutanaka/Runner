@@ -672,7 +672,7 @@ export default function ModeratorDashboard({ platform = 'all' }) {
                       }}
                     >
                       <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>
-                        "{sentiment.content.length > 30 ? sentiment.content.substring(0, 30) + '...' : sentiment.content}"
+                        &quot;{sentiment.content.length > 30 ? sentiment.content.substring(0, 30) + '...' : sentiment.content}&quot;
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {sentiment.sentiment === 'positive' && <SentimentSatisfiedIcon color="success" fontSize="small" />}

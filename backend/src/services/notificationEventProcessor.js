@@ -45,10 +45,10 @@ class NotificationEventProcessor {
     while (this.isProcessing) {
       try {
         await this.processPendingEvents();
-        await new Promise(resolve => setTimeout(resolve, this.processInterval));
+        await new Promise((resolve) => setTimeout(resolve, this.processInterval));
       } catch (error) {
         logger.error('[NotificationProcessor] Process loop error', { error: error.message });
-        await new Promise(resolve => setTimeout(resolve, 5000)); // エラー時は5秒待機
+        await new Promise((resolve) => setTimeout(resolve, 5000)); // エラー時は5秒待機
       }
     }
   }
@@ -232,11 +232,11 @@ class NotificationEventProcessor {
    */
   static getPriorityFromLevel(level) {
     switch (level) {
-      case 'urgent': return 10;
-      case 'high': return 8;
-      case 'normal': return 5;
-      case 'low': return 3;
-      default: return 5;
+    case 'urgent': return 10;
+    case 'high': return 8;
+    case 'normal': return 5;
+    case 'low': return 3;
+    default: return 5;
     }
   }
 }

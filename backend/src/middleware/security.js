@@ -169,7 +169,7 @@ const apiRateLimit = buildLimiter(config.rateLimit.api, {
 });
 
 const allowedOrigins = config.security?.allowedOrigins || [];
-const cspConnectSources = Array.from(new Set(["'self'", ...allowedOrigins, 'https:', 'wss:', 'ws:']));
+const cspConnectSources = Array.from(new Set(['\'self\'', ...allowedOrigins, 'https:', 'wss:', 'ws:']));
 
 /**
  * Enhanced Security Middleware with OWASP Compliance
@@ -190,32 +190,32 @@ const securityMiddleware = helmet({
   // Content Security Policy - Strict configuration
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ["'self'"],
+      defaultSrc: ['\'self\''],
 
       // Script sources - Consider adding nonce or hash for inline scripts
       scriptSrc: [
-        "'self'",
+        '\'self\''
         // Add 'nonce-{random}' or specific hashes for inline scripts in production
         // Example: "'sha256-{hash}'" for specific inline scripts
       ],
 
       // Style sources - Allow inline styles for Material-UI
       styleSrc: [
-        "'self'",
-        "'unsafe-inline'", // Required for Material-UI and dynamic styles
+        '\'self\'',
+        '\'unsafe-inline\'', // Required for Material-UI and dynamic styles
         'https://fonts.googleapis.com'
       ],
 
       // Font sources
       fontSrc: [
-        "'self'",
+        '\'self\'',
         'https://fonts.gstatic.com',
         'data:' // For inline font data
       ],
 
       // Image sources
       imgSrc: [
-        "'self'",
+        '\'self\'',
         'data:',
         'https:',
         'blob:'
@@ -225,25 +225,25 @@ const securityMiddleware = helmet({
       connectSrc: cspConnectSources,
 
       // Media sources
-      mediaSrc: ["'self'"],
+      mediaSrc: ['\'self\''],
 
       // Worker sources
-      workerSrc: ["'self'", 'blob:'],
+      workerSrc: ['\'self\'', 'blob:'],
 
       // Child frame sources
-      childSrc: ["'self'"],
+      childSrc: ['\'self\''],
 
       // Frame ancestors - Prevent clickjacking
-      frameAncestors: ["'none'"],
+      frameAncestors: ['\'none\''],
 
       // Object sources - Block plugins
-      objectSrc: ["'none'"],
+      objectSrc: ['\'none\''],
 
       // Base URI restriction
-      baseUri: ["'self'"],
+      baseUri: ['\'self\''],
 
       // Form action restriction
-      formAction: ["'self'"],
+      formAction: ['\'self\''],
 
       // Upgrade insecure requests in production
       upgradeInsecureRequests: config.environment === 'production' ? [] : null,

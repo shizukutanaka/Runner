@@ -460,7 +460,7 @@ class CacheService {
     }
 
     const results = await Promise.all(promises);
-    return results.every(result => result === true);
+    return results.every((result) => result === true);
   }
 
   // Clear all cache

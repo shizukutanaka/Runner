@@ -51,7 +51,7 @@ class HealthChecker {
         }
 
         // Wait before retry
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
       }
     }
   }
@@ -67,12 +67,12 @@ class HealthChecker {
     }
 
     const totalTime = Date.now() - startTime;
-    const healthyCount = results.filter(r => r.status === 'healthy').length;
-    const criticalFailures = results.filter(r => r.status === 'unhealthy' && r.critical);
+    const healthyCount = results.filter((r) => r.status === 'healthy').length;
+    const criticalFailures = results.filter((r) => r.status === 'unhealthy' && r.critical);
 
     return {
       status: criticalFailures.length > 0 ? 'critical' :
-              healthyCount === results.length ? 'healthy' : 'degraded',
+        healthyCount === results.length ? 'healthy' : 'degraded',
       timestamp: new Date().toISOString(),
       totalChecks: results.length,
       healthyChecks: healthyCount,
@@ -158,7 +158,7 @@ class HealthChecker {
   async checkEventLoopLag() {
     const start = process.hrtime.bigint();
 
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
 
     const lag = Number(process.hrtime.bigint() - start) / 1000000; // Convert to milliseconds
     const threshold = 100; // 100ms threshold
@@ -334,7 +334,7 @@ async function main() {
 
     // Print individual check results
     console.log('📋 Individual Check Results:');
-    results.checks.forEach(check => {
+    results.checks.forEach((check) => {
       const emoji = check.status === 'healthy' ? '✅' : '❌';
       const critical = check.critical ? ' [CRITICAL]' : '';
       console.log(`${emoji} ${check.name}${critical}: ${check.message} (${check.responseTime}ms)`);
@@ -364,10 +364,10 @@ async function main() {
 
 function getStatusEmoji(status) {
   switch (status) {
-    case 'healthy': return '🟢';
-    case 'degraded': return '🟡';
-    case 'critical': return '🔴';
-    default: return '⚫';
+  case 'healthy': return '🟢';
+  case 'degraded': return '🟡';
+  case 'critical': return '🔴';
+  default: return '⚫';
   }
 }
 

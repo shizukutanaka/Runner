@@ -335,7 +335,7 @@ class BackupService {
     try {
       const files = await fs.readdir(this.backupDir);
       const backupFiles = files
-        .filter(f => f.startsWith('backup-') && f.endsWith('.tar.gz'))
+        .filter((f) => f.startsWith('backup-') && f.endsWith('.tar.gz'))
         .sort()
         .reverse();
 
@@ -520,7 +520,7 @@ class BackupService {
     const stream = require('fs').createReadStream(filePath);
 
     return new Promise((resolve, reject) => {
-      stream.on('data', data => hash.update(data));
+      stream.on('data', (data) => hash.update(data));
       stream.on('end', () => resolve(hash.digest('hex')));
       stream.on('error', reject);
     });
@@ -530,7 +530,7 @@ class BackupService {
   async getBackupList() {
     try {
       const files = await fs.readdir(this.backupDir);
-      const backupFiles = files.filter(f => f.startsWith('backup-') && f.endsWith('.tar.gz'));
+      const backupFiles = files.filter((f) => f.startsWith('backup-') && f.endsWith('.tar.gz'));
 
       const backups = [];
       for (const file of backupFiles) {

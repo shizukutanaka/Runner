@@ -225,7 +225,7 @@ exports.translateBannedWords = async (req, res, next) => {
     }
     // 実際の実装では翻訳サービスを呼び出す
     const translations = targetLangs.reduce((acc, lang) => {
-      acc[lang] = words.map(word => `${word}_translated_to_${lang}`);
+      acc[lang] = words.map((word) => `${word}_translated_to_${lang}`);
       return acc;
     }, {});
     res.json({ 
@@ -489,7 +489,7 @@ exports.createCustomFilter = (req, res, next) => {
       id: `custom-${Date.now()}`,
       name,
       description: description || '',
-      patterns: patterns.map(p => typeof p === 'string' ? p : p.toString()),
+      patterns: patterns.map((p) => typeof p === 'string' ? p : p.toString()),
       action,
       severity,
       enabled: true,
@@ -663,13 +663,13 @@ exports.analyzeSentiment = (req, res, next) => {
     let positiveScore = 0;
     let negativeScore = 0;
 
-    sentimentKeywords.positive.forEach(keyword => {
+    sentimentKeywords.positive.forEach((keyword) => {
       const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
       const matches = lowerContent.match(regex);
       if (matches) positiveScore += matches.length;
     });
 
-    sentimentKeywords.negative.forEach(keyword => {
+    sentimentKeywords.negative.forEach((keyword) => {
       const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
       const matches = lowerContent.match(regex);
       if (matches) negativeScore += matches.length;
@@ -833,7 +833,7 @@ exports.generateChatbotResponse = (req, res, next) => {
     } else if (lowerContent.match(/^(thanks?|thank you|ありがとう)/i)) {
       const thanks = [
         'どういたしまして！引き続き楽しんでくださいね！',
-        "You're welcome! Glad you're enjoying the stream!",
+        'You\'re welcome! Glad you\'re enjoying the stream!',
         'こちらこそありがとう！あなたのサポートが力になります！'
       ];
       response = thanks[Math.floor(Math.random() * thanks.length)];
@@ -1336,15 +1336,15 @@ exports.performMultiProviderAIModeration = async (req, res, next) => {
       };
     }));
 
-    const availableResults = results.filter(r => r.available);
+    const availableResults = results.filter((r) => r.available);
     const aggregatedResult = {
       content,
       providers: results,
       aggregatedScore: availableResults.length
         ? availableResults.reduce((sum, r) => sum + r.score, 0) / availableResults.length
         : 0,
-      overallFlagged: availableResults.some(r => r.flagged),
-      consensusLevel: availableResults.length && availableResults.filter(r => r.flagged).length >= availableResults.length / 2 ? 'medium' : 'low',
+      overallFlagged: availableResults.some((r) => r.flagged),
+      consensusLevel: availableResults.length && availableResults.filter((r) => r.flagged).length >= availableResults.length / 2 ? 'medium' : 'low',
       timestamp: new Date().toISOString()
     };
 
@@ -1699,7 +1699,7 @@ exports.getHeldMessages = async (req, res, next) => {
     const countsByStatus = await dbAll(
       'SELECT status, COUNT(*) as cnt FROM held_messages GROUP BY status'
     );
-    const counts = Object.fromEntries(countsByStatus.map(r => [r.status, r.cnt]));
+    const counts = Object.fromEntries(countsByStatus.map((r) => [r.status, r.cnt]));
 
     const messages = rows.map(mapHeldMessageRow);
 
@@ -1862,13 +1862,13 @@ exports.getMessageHoldStats = async (req, res, next) => {
     ]);
 
     const queueStatus = { total: 0, pending: 0, approved: 0, rejected: 0, escalated: 0, expired: 0 };
-    statusRows.forEach(r => { queueStatus[r.status] = r.cnt; queueStatus.total += r.cnt; });
+    statusRows.forEach((r) => { queueStatus[r.status] = r.cnt; queueStatus.total += r.cnt; });
 
     const holdReasons = {};
-    reasonRows.forEach(r => { holdReasons[r.hold_reason || 'unknown'] = r.cnt; });
+    reasonRows.forEach((r) => { holdReasons[r.hold_reason || 'unknown'] = r.cnt; });
 
     const riskLevels = { low: 0, medium: 0, high: 0 };
-    levelRows.forEach(r => { if (r.hold_level in riskLevels) riskLevels[r.hold_level] = r.cnt; });
+    levelRows.forEach((r) => { if (r.hold_level in riskLevels) riskLevels[r.hold_level] = r.cnt; });
 
     const approvalRate = (queueStatus.approved + queueStatus.rejected) > 0
       ? queueStatus.approved / (queueStatus.approved + queueStatus.rejected)
@@ -2205,74 +2205,74 @@ exports.batchUpdateAIThreshold = (req, res, next) => {
       // 現在の設定を取得
       db.get('SELECT ai_threshold_score, ai_threshold_enabled, ai_threshold_custom_settings FROM comments WHERE id = ?',
         [update.commentId], (err, current) => {
-        if (err || !current) {
-          failed++;
-          results.push({ commentId: update.commentId, success: false, error: 'Comment not found' });
-          return resolve();
-        }
+          if (err || !current) {
+            failed++;
+            results.push({ commentId: update.commentId, success: false, error: 'Comment not found' });
+            return resolve();
+          }
 
-        // 更新を実行
-        const updateFields = [];
-        const params = [];
+          // 更新を実行
+          const updateFields = [];
+          const params = [];
 
-        if (update.threshold !== undefined) {
-          updateFields.push('ai_threshold_score = ?');
-          params.push(update.threshold);
-        }
+          if (update.threshold !== undefined) {
+            updateFields.push('ai_threshold_score = ?');
+            params.push(update.threshold);
+          }
 
-        if (update.enabled !== undefined) {
-          updateFields.push('ai_threshold_enabled = ?');
-          params.push(update.enabled ? 1 : 0);
-        }
+          if (update.enabled !== undefined) {
+            updateFields.push('ai_threshold_enabled = ?');
+            params.push(update.enabled ? 1 : 0);
+          }
 
-        if (update.customSettings !== undefined) {
-          updateFields.push('ai_threshold_custom_settings = ?');
-          params.push(JSON.stringify(update.customSettings));
-        }
+          if (update.customSettings !== undefined) {
+            updateFields.push('ai_threshold_custom_settings = ?');
+            params.push(JSON.stringify(update.customSettings));
+          }
 
-        updateFields.push('ai_override_moderator_id = ?');
-        params.push(moderatorId);
+          updateFields.push('ai_override_moderator_id = ?');
+          params.push(moderatorId);
 
-        updateFields.push('ai_override_timestamp = CURRENT_TIMESTAMP');
-        params.push(update.commentId);
+          updateFields.push('ai_override_timestamp = CURRENT_TIMESTAMP');
+          params.push(update.commentId);
 
-        if (updateFields.length > 2) { // moderator_idとtimestamp以外に更新がある場合
-          const sql = `UPDATE comments SET ${updateFields.join(', ')} WHERE id = ?`;
+          if (updateFields.length > 2) { // moderator_idとtimestamp以外に更新がある場合
+            const sql = `UPDATE comments SET ${updateFields.join(', ')} WHERE id = ?`;
 
-          db.run(sql, params, function(err) {
-            if (err) {
-              failed++;
-              results.push({ commentId: update.commentId, success: false, error: err.message });
-            } else {
-              completed++;
-              results.push({ commentId: update.commentId, success: true });
+            db.run(sql, params, function(err) {
+              if (err) {
+                failed++;
+                results.push({ commentId: update.commentId, success: false, error: err.message });
+              } else {
+                completed++;
+                results.push({ commentId: update.commentId, success: true });
 
-              // 履歴を記録
-              const historySql = `
+                // 履歴を記録
+                const historySql = `
                 INSERT INTO ai_threshold_history
                 (comment_id, moderator_id, action, old_threshold, new_threshold, old_settings, new_settings, reason)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
               `;
 
-              db.run(historySql, [
-                update.commentId,
-                moderatorId,
-                'batch_update',
-                current.ai_threshold_score,
-                update.threshold !== undefined ? update.threshold : current.ai_threshold_score,
-                current.ai_threshold_custom_settings,
-                update.customSettings !== undefined ? JSON.stringify(update.customSettings) : current.ai_threshold_custom_settings,
-                reason || 'Batch threshold update'
-              ]);
-            }
+                db.run(historySql, [
+                  update.commentId,
+                  moderatorId,
+                  'batch_update',
+                  current.ai_threshold_score,
+                  update.threshold !== undefined ? update.threshold : current.ai_threshold_score,
+                  current.ai_threshold_custom_settings,
+                  update.customSettings !== undefined ? JSON.stringify(update.customSettings) : current.ai_threshold_custom_settings,
+                  reason || 'Batch threshold update'
+                ]);
+              }
+              resolve();
+            });
+          } else {
+            failed++;
+            results.push({ commentId: update.commentId, success: false, error: 'No changes to update' });
             resolve();
-          });
-        } else {
-          failed++;
-          results.push({ commentId: update.commentId, success: false, error: 'No changes to update' });
-          resolve();
-        }
-      });
+          }
+        });
     });
   };
 
@@ -2290,7 +2290,7 @@ exports.batchUpdateAIThreshold = (req, res, next) => {
       },
       message: `Batch update completed: ${completed} succeeded, ${failed} failed`
     });
-  }).catch(err => {
+  }).catch((err) => {
     next({ status: 500, message: 'Batch update failed', details: err });
   });
 };

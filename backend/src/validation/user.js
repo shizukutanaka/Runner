@@ -10,5 +10,5 @@ const Joi = require('joi');
 exports.update = Joi.object({
   action: Joi.string().valid('active', 'ban', 'mute', 'warn').required(),
   duration: Joi.number().integer().min(1).optional(),
-  reason: Joi.string().trim().max(500).allow('', null).optional(),
+  reason: Joi.string().trim().max(500).allow('', null).optional()
 });

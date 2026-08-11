@@ -12,7 +12,7 @@ exports.list = Joi.object({
 exports.create = Joi.object({
   content: Joi.string().trim().min(1).max(500).required(),
   user: Joi.string().trim().min(1).max(100).required(),
-  platform: Joi.string().trim().valid('youtube', 'twitch').required(),
+  platform: Joi.string().trim().valid('youtube', 'twitch').required()
 });
 
 exports.summary = Joi.object({

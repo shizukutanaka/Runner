@@ -360,7 +360,7 @@ const validate = (schema, property = 'body') => {
     });
 
     if (error) {
-      const errors = error.details.map(detail => ({
+      const errors = error.details.map((detail) => ({
         field: detail.path.join('.'),
         message: detail.message,
         type: detail.type
@@ -395,7 +395,7 @@ const sanitizeInput = (value, schema) => {
   return {
     valid: !error,
     value: error ? null : sanitized,
-    error: error ? error.details.map(d => d.message).join(', ') : null
+    error: error ? error.details.map((d) => d.message).join(', ') : null
   };
 };
 
