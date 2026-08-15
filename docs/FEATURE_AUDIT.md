@@ -181,6 +181,16 @@ D-8（文化プロファイル/文脈分析UI）実装後、指示通り実際�
 - **検証**: 単体テスト新規（`tests/middleware/rateLimit.test.js`、2件: enabled=falseで素通し／enabled=trueで上限超過時429）。実サーバーでも`RATE_LIMIT_ENABLED=true RATE_LIMIT_GENERAL_MAX=5`起動時に6回目以降が429、既定dev起動時は15連打でも全200を確認。フルスイートはベースライン（4 failed / 445 passed）維持
 - **再検証**: `grep -n "enabled:" -A1 backend/src/config.js | grep -A1 rateLimit` 相当で`rateLimit.enabled`が定義されていること。`NODE_ENV=test npx jest tests/middleware/rateLimit.test.js` → 2件合格
 
+### E-15. ★★ ダッシュボードがホワイトスクリーンでクラッシュする（2026-08-15発見・未修正）
+
+- **証拠**: ログイン後のダッシュボードが**何も描画されない**（`document.body` のテキストが空、タブ要素0個）。ブラウザコンソールに2種のエラー:
+  1. `Objects are not valid as a React child (found: object with keys {summary, statistics})` — `POST /api/comments/summary` のレスポンス `data` は `{summary, statistics}` という**オブジェクト**（`commentsController.js` の `summarizeComments`）だが、フロントのどこかがこれを直接 React の子として描画している
+  2. `t is not a function` — i18n（react-i18next）の初期化に失敗している可能性
+- **切り分け済み**: 本セッションのR-25変更を `git stash` した状態でも**同一エラーが再現**するため、R-25起因ではない。`{summary, statistics}` を返すコードは本セッション以前のコミット（`13477a1`）から存在する。なお、本セッション前半（R-14b等）のブラウザ検証時には描画できていたため、`frontend/node_modules` の再インストール後に顕在化した可能性がある（依存バージョンの差異）
+- **影響**: **フロントエンド全体が利用不能**。UIを伴う変更の実ブラウザ検証ができない（R-25のバッジ検証は純粋関数の直接評価と `vite build` 成功で代替した）
+- **推奨アクション**: (1) `t is not a function` の発生箇所を特定しi18n初期化を修正 → (2) `summarizeComments` のレスポンスを描画している箇所を特定し、オブジェクトではなく `data.summary` 等の文字列を描画するよう修正
+- **再検証**: フロントを起動しログイン後、`document.body.innerText` が空でなくタブが描画されること
+
 ---
 
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
