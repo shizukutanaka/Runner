@@ -125,4 +125,93 @@ describe('RaidDetector（協調攻撃検知・R-22）', () => {
       expect(det.checkForAlert('twitch', 'a4')).toBeNull();
     });
   });
+
+  // R-25: 検知後の自動防御（moderation-by-design）。
+  // 根拠: Han et al. CSCW 2023 — レイドはモデレーターを圧倒するため人力対応は
+  // スケールしない。ただし自動処罰はせず「隔離（保留）」に留める。
+  describe('防御モードと自動隔離（R-25）', () => {
+    const raidBurst = (d, ch, text = '死ね消えろ', n = 12) => {
+      for (let i = 0; i < n; i++) d.record('twitch', ch, `bot_${i}`, text, new Date());
+    };
+
+    it('レイド検知で防御モードが起動し、アラートに有効期限が付く', () => {
+      raidBurst(det, 'd1');
+      const alert = det.checkForAlert('twitch', 'd1');
+      expect(alert).not.toBeNull();
+      expect(alert.defense.activated).toBe(true);
+      expect(det.isUnderDefense('twitch', 'd1')).toBe(true);
+    });
+
+    it('防御中はレイドと同一内容のメッセージを隔離する', () => {
+      raidBurst(det, 'd2');
+      det.checkForAlert('twitch', 'd2');
+      const q = det.shouldQuarantine('twitch', 'd2', 'newbot_x', '死ね消えろ');
+      expect(q.quarantine).toBe(true);
+      expect(q.trigger).toBe('cluster');
+    });
+
+    it('防御中は「防御開始後に現れた新規アカウント」を隔離する', () => {
+      raidBurst(det, 'd3');
+      det.checkForAlert('twitch', 'd3');
+      const q = det.shouldQuarantine('twitch', 'd3', 'brand_new_user', '全く別の内容です');
+      expect(q.quarantine).toBe(true);
+      expect(q.trigger).toBe('first_seen');
+    });
+
+    it('【誤爆ガード】防御前からいた既知ユーザーの無関係な発言は隔離しない', () => {
+      // レイド開始よりも前から存在する常連
+      det.record('twitch', 'd4', 'regular_fan', 'いつも見てます', new Date(Date.now() - 30000));
+      raidBurst(det, 'd4');
+      det.checkForAlert('twitch', 'd4');
+      const q = det.shouldQuarantine('twitch', 'd4', 'regular_fan', '今日もおつかれさま');
+      expect(q.quarantine).toBe(false);
+    });
+
+    it('防御モードは期限切れで自動的に解除される', () => {
+      raidBurst(det, 'd5');
+      det.checkForAlert('twitch', 'd5');
+      expect(det.isUnderDefense('twitch', 'd5')).toBe(true);
+      // 期限を過去にする
+      const state = det.alertState.get('twitch:d5');
+      state.defenseUntil = Date.now() - 1000;
+      det.alertState.set('twitch:d5', state);
+      expect(det.isUnderDefense('twitch', 'd5')).toBe(false);
+      expect(det.shouldQuarantine('twitch', 'd5', 'anyone', '死ね消えろ').quarantine).toBe(false);
+    });
+
+    it('モデレーターによる手動解除ができる（人間のオーバーライド）', () => {
+      raidBurst(det, 'd6');
+      det.checkForAlert('twitch', 'd6');
+      expect(det.getDefenseStatus('twitch', 'd6').active).toBe(true);
+      const r = det.deactivateDefense('twitch', 'd6');
+      expect(r.deactivated).toBe(true);
+      expect(det.getDefenseStatus('twitch', 'd6').active).toBe(false);
+      expect(det.shouldQuarantine('twitch', 'd6', 'newbot', '死ね消えろ').quarantine).toBe(false);
+    });
+
+    it('手動解除後は、レイド判定が継続していても自動再起動しない（人間の判断が優先）', () => {
+      raidBurst(det, 'd8');
+      det.checkForAlert('twitch', 'd8');
+      expect(det.isUnderDefense('twitch', 'd8')).toBe(true);
+
+      det.deactivateDefense('twitch', 'd8');
+
+      // 解析の間引きを抜けさせ、レイドが依然として検知される状態で再チェック
+      const state = det.alertState.get('twitch:d8');
+      state.lastCheckAt = 0;
+      state.inRaid = false; // 遷移条件も満たす状態にする
+      det.alertState.set('twitch:d8', state);
+      det.checkForAlert('twitch', 'd8');
+
+      // 抑止期間中なので防御は再起動しない
+      expect(det.isUnderDefense('twitch', 'd8')).toBe(false);
+      expect(det.shouldQuarantine('twitch', 'd8', 'newbot', '死ね消えろ').quarantine).toBe(false);
+    });
+
+    it('防御モードでない通常時は何も隔離しない', () => {
+      det.record('youtube', 'd7', 'u1', 'こんにちは', new Date());
+      expect(det.isUnderDefense('youtube', 'd7')).toBe(false);
+      expect(det.shouldQuarantine('youtube', 'd7', 'u2', '何でも').quarantine).toBe(false);
+    });
+  });
 });

@@ -34,6 +34,11 @@ const RATE_SPIKE_THRESHOLD = 30;      // ウィンドウ内メッセージ数の
 const RAID_SCORE_THRESHOLD = 0.6;     // これ以上でレイド判定
 const ALERT_COOLDOWN_MS = 2 * 60 * 1000; // 同一チャンネルへの再通知間隔（通知の洪水を防ぐ）
 const CHECK_MIN_INTERVAL_MS = 2000;      // 解析の実行間隔（毎メッセージでの再計算を避ける）
+const DEFENSE_DURATION_MS = 5 * 60 * 1000; // 防御モードの継続時間（R-25）
+// 手動解除後、自動再起動を抑止する時間（R-25）。これが無いと、レイド判定が
+// ウィンドウ内で継続している限り解除した直後に再起動してしまい、
+// 「人間のオーバーライド」が実質的に機能しない（E2E検証で発見）
+const DEFENSE_SUPPRESS_MS = 5 * 60 * 1000;
 
 // 類似判定用の正規化: 記号/空白/連続同一文字を圧縮し、表記ゆれを吸収する。
 // 「死ね!!!」「しね～」「死ね」を同一クラスタに寄せるのが狙い
@@ -48,10 +53,89 @@ class RaidDetector {
   constructor() {
     // channelKey → [{ userId, normalized, timestamp }]
     this.records = new Map();
-    // channelKey → Set(userId)  これまでに観測したユーザー（初出判定用）
+    // channelKey → Map(userId → firstSeenAt)  初出判定＋「レイド開始後に現れたか」の判定用（R-25）
     this.seenUsers = new Map();
-    // channelKey → { lastAlertAt, lastCheckAt, inRaid } 通知の状態管理
+    // channelKey → { lastAlertAt, lastCheckAt, inRaid, defenseUntil, defenseStartedAt, defenseClusters }
     this.alertState = new Map();
+  }
+
+  // ─────────────────────────────────────────
+  // 防御モード（R-25）
+  //
+  // Han et al. (CSCW 2023, arXiv:2305.16248) は、レイドが「短時間に大量に押し寄せて
+  // モデレーターを圧倒する」性質を持ち、1件ずつの人力対応ではスケールしないこと、
+  // そして **moderation-by-design**（防御をシステム設計自体に織り込む）を
+  // 推奨することを示している。検知した瞬間からシステム自身が攻撃メッセージを
+  // 自動隔離することで、人間は事後にまとめてレビューできる。
+  //
+  // ガバナンス上の制約（arXiv:2607.12149 と整合。R-24から継続）:
+  //   - 自動で **拒否（削除）はしない**。保留（人間レビュー行き）に留める
+  //   - モデレーターがいつでも手動解除できる（deactivateDefense）
+  //   - 隔離理由（trigger）を記録し監査可能にする
+  // ─────────────────────────────────────────
+  isUnderDefense(platform, channelId) {
+    const state = this.alertState.get(this._key(platform, channelId));
+    return Boolean(state?.defenseUntil && Date.now() < state.defenseUntil);
+  }
+
+  getDefenseStatus(platform, channelId) {
+    const key = this._key(platform, channelId);
+    const state = this.alertState.get(key);
+    const active = this.isUnderDefense(platform, channelId);
+    return {
+      platform,
+      channelId,
+      active,
+      activatedAt: active ? new Date(state.defenseStartedAt).toISOString() : null,
+      expiresAt: active ? new Date(state.defenseUntil).toISOString() : null,
+      quarantinedClusters: active ? [...(state.defenseClusters || [])].length : 0,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  // モデレーターによる手動解除（人間のオーバーライドを必ず用意する）
+  deactivateDefense(platform, channelId) {
+    const key = this._key(platform, channelId);
+    const state = this.alertState.get(key);
+    if (!state) return { deactivated: false, reason: 'no_state' };
+    const wasActive = this.isUnderDefense(platform, channelId);
+    state.defenseUntil = 0;
+    state.defenseClusters = new Set();
+    // 人間の判断を機械が即座に上書きしないよう、一定時間は自動再起動を抑止する。
+    // 検知とアラート自体は継続する（モデレーターには知らせ続ける）
+    state.defenseSuppressedUntil = Date.now() + DEFENSE_SUPPRESS_MS;
+    this.alertState.set(key, state);
+    logger.info('[RaidDetector] Defense mode manually deactivated', {
+      platform, channelId, wasActive, suppressedForMs: DEFENSE_SUPPRESS_MS,
+    });
+    return { deactivated: true, wasActive, suppressedUntil: new Date(state.defenseSuppressedUntil).toISOString() };
+  }
+
+  /**
+   * 防御モード中に、このメッセージを隔離すべきかを判定する。
+   * 判定根拠(trigger)も返して監査可能にする。
+   *  - 'cluster'    : レイドを構成した類似内容と一致
+   *  - 'first_seen' : レイド開始後に初めて現れたアカウント（使い捨てアカウント対策）
+   */
+  shouldQuarantine(platform, channelId, userId, content) {
+    if (!this.isUnderDefense(platform, channelId)) {
+      return { quarantine: false, trigger: null };
+    }
+    const key = this._key(platform, channelId);
+    const state = this.alertState.get(key);
+
+    const normalized = normalizeForSimilarity(content);
+    if (normalized && state.defenseClusters?.has(normalized)) {
+      return { quarantine: true, trigger: 'cluster' };
+    }
+
+    // 防御開始以降に初めて観測されたユーザーか（既知の常連は巻き込まない）
+    const firstSeenAt = this.seenUsers.get(key)?.get(userId);
+    if (firstSeenAt === undefined || firstSeenAt >= state.defenseStartedAt) {
+      return { quarantine: true, trigger: 'first_seen' };
+    }
+
+    return { quarantine: false, trigger: null };
   }
 
   /**
@@ -78,6 +162,22 @@ class RaidDetector {
     const wasInRaid = state.inRaid;
     state.inRaid = result.raidDetected;
 
+    // R-25: レイド検知中は、防御対象の類似内容クラスタを更新し続ける。
+    // 攻撃文面が途中で変わっても追随できるようにするため、遷移時だけでなく
+    // 継続中も集合へ追加する（防御ウィンドウ自体は遷移時に開始する）
+    const suppressed = state.defenseSuppressedUntil && now < state.defenseSuppressedUntil;
+    if (result.raidDetected && !suppressed) {
+      if (!state.defenseUntil || now >= state.defenseUntil) {
+        state.defenseStartedAt = now;
+        state.defenseClusters = new Set();
+        logger.warn('[RaidDetector] Defense mode activated (auto-quarantine)', {
+          platform, channelId, durationMs: DEFENSE_DURATION_MS, score: result.score,
+        });
+      }
+      state.defenseUntil = now + DEFENSE_DURATION_MS;
+      result.similarClusters.forEach((c) => state.defenseClusters.add(c.content));
+    }
+
     // 遷移時のみ、かつクールダウンを過ぎている場合だけ通知する
     const isNewRaid = result.raidDetected && !wasInRaid;
     const cooledDown = now - state.lastAlertAt >= ALERT_COOLDOWN_MS;
@@ -86,7 +186,13 @@ class RaidDetector {
     if (isNewRaid && cooledDown) {
       state.lastAlertAt = now;
       this.alertState.set(key, state);
-      return result;
+      return {
+        ...result,
+        defense: {
+          activated: true,
+          expiresAt: new Date(state.defenseUntil).toISOString(),
+        },
+      };
     }
     return null;
   }
@@ -95,7 +201,7 @@ class RaidDetector {
     const key = this._key(platform, channelId);
     if (!this.records.has(key)) {
       this.records.set(key, []);
-      this.seenUsers.set(key, new Set());
+      this.seenUsers.set(key, new Map());
     }
 
     const list = this.records.get(key);
@@ -108,7 +214,10 @@ class RaidDetector {
       timestamp: ts,
       isFirstSeen: !seen.has(userId)
     });
-    seen.add(userId);
+    // R-25: 初出時刻を保持する（防御モード開始後に現れたアカウントの判定に使う）
+    if (!seen.has(userId)) {
+      seen.set(userId, ts.getTime());
+    }
 
     if (list.length > MAX_ENTRIES_PER_CHANNEL) {
       list.splice(0, list.length - MAX_ENTRIES_PER_CHANNEL);

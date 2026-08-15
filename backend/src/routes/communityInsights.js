@@ -385,4 +385,38 @@ router.get('/raid-detection/:platform/:channelId', (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────
+//    レイド防御モード — R-25
+//    GET    /api/insights/raid-defense/:platform/:channelId  状態確認
+//    DELETE /api/insights/raid-defense/:platform/:channelId  手動解除
+//
+//    防御モード中は、レイドを構成した類似内容および防御開始後に現れた
+//    新規アカウントの投稿を自動的に保留キューへ隔離する（拒否はしない）。
+//    DELETE は **人間によるオーバーライド** であり、自動判定に人が介入できる
+//    経路を必ず用意するというガバナンス制約（R-24）に対応する
+// ─────────────────────────────────────────
+router.get('/raid-defense/:platform/:channelId', (req, res) => {
+  try {
+    const { platform, channelId } = req.params;
+    res.json({ status: 200, data: raid.getDefenseStatus(platform, channelId) });
+  } catch (err) {
+    logger.error('[CommunityInsights] Raid defense status error:', err);
+    res.status(500).json({ status: 500, message: 'レイド防御状態の取得に失敗しました' });
+  }
+});
+
+router.delete('/raid-defense/:platform/:channelId', (req, res) => {
+  try {
+    const { platform, channelId } = req.params;
+    const result = raid.deactivateDefense(platform, channelId);
+    logger.info('[CommunityInsights] Raid defense deactivated by moderator', {
+      platform, channelId, user: req.user?.username,
+    });
+    res.json({ status: 200, data: { ...result, ...raid.getDefenseStatus(platform, channelId) } });
+  } catch (err) {
+    logger.error('[CommunityInsights] Raid defense deactivation error:', err);
+    res.status(500).json({ status: 500, message: 'レイド防御の解除に失敗しました' });
+  }
+});
+
 module.exports = router;

@@ -382,6 +382,61 @@ const ingestComment = async ({ content, user, platform, timestamp, platformMessa
     };
   }
 
+  // R-25: レイド検知への記録と防御判定は **モデレーションより前** に行う。
+  // 理由は2つ:
+  //  (1) 防御モード中の攻撃メッセージを、個別モデレーションを待たずに即座に隔離するため
+  //  (2) 個別モデレーションで拒否されるメッセージも検知器へ寄与させるため
+  //      （従来は記録がINSERT後にあり、拒否された攻撃は協調攻撃の証拠として
+  //        カウントされていなかった）
+  try {
+    raidDetector.record(platform, 'default', normalizedUser, normalizedContent, ts);
+    const raidAlert = raidDetector.checkForAlert(platform, 'default');
+    if (raidAlert && io) {
+      io.to('dashboard').emit('raidAlert', raidAlert);
+      io.to(`platform:${platform}`).emit('raidAlert', raidAlert);
+    }
+  } catch (raidErr) {
+    logger.warn('[Comments] Failed to record activity for raid detection', { error: raidErr.message });
+  }
+
+  // 防御モード中の自動隔離。**拒否ではなく保留**（人間のレビューへ回す）に留める。
+  // 根拠: Han et al. (CSCW 2023) の moderation-by-design。ガバナンス制約により
+  // 自動処罰はせず、モデレーターは防御モードをいつでも手動解除できる
+  try {
+    const quarantine = raidDetector.shouldQuarantine(platform, 'default', normalizedUser, normalizedContent);
+    if (quarantine.quarantine) {
+      const raidStatus = raidDetector.analyze(platform, 'default');
+      const holdResult = await holdMessage({
+        content: normalizedContent,
+        user: normalizedUser,
+        platform,
+        // holdMessage が参照するのは .score のみ（risk_score列へ格納）
+        moderationResult: { score: raidStatus.score },
+        holdReason: 'raid_defense',
+        holdLevel: 'high',
+        reasons: [{
+          type: 'raid_defense',
+          severity: 'high',
+          trigger: quarantine.trigger,
+          raidScore: raidStatus.score,
+        }],
+      });
+      logger.warn('[Comments] Comment quarantined by raid defense', {
+        user: normalizedUser, platform, trigger: quarantine.trigger,
+      });
+      return {
+        outcome: 'held',
+        holdId: holdResult.holdId,
+        holdUntil: holdResult.holdUntil,
+        holdLevel: holdResult.holdLevel,
+        reasons: holdResult.reasons,
+      };
+    }
+  } catch (defErr) {
+    // 防御の失敗が通常の取込を妨げてはならない（フェイルセーフ規約）
+    logger.warn('[Comments] Raid defense check failed', { error: defErr.message });
+  }
+
   const moderation = await moderationService.analyzeComment(normalizedContent, platform, normalizedUser, ts);
   const rejectionScore = getRejectionScore();
   const shouldReject = moderation.isSpam || moderation.isOffensive || (moderation.score ?? 0) >= rejectionScore;
@@ -442,22 +497,8 @@ const ingestComment = async ({ content, user, platform, timestamp, platformMessa
     logger.warn('[Comments] Failed to record activity for departure detection', { error: recordErr.message });
   }
 
-  // R-22: ヘイトレイド（協調攻撃）検知へ記録する。1コメント単位の判定では
-  // 「多数のアカウントが同時に類似内容を投稿する」というライブ配信固有の
-  // 攻撃パターンを捉えられないため、横断シグナルを別途蓄積する
-  try {
-    raidDetector.record(platform, 'default', normalizedUser, normalizedContent, ts);
-    // R-22b: レイド状態へ遷移した瞬間だけダッシュボードへリアルタイム通知する。
-    // レイドは短時間で押し寄せるため、モデレーターがエンドポイントをポーリングして
-    // 気づくのでは遅い。通知の洪水は検知器側のクールダウンで抑止している
-    const raidAlert = raidDetector.checkForAlert(platform, 'default');
-    if (raidAlert && io) {
-      io.to('dashboard').emit('raidAlert', raidAlert);
-      io.to(`platform:${platform}`).emit('raidAlert', raidAlert);
-    }
-  } catch (raidErr) {
-    logger.warn('[Comments] Failed to record activity for raid detection', { error: raidErr.message });
-  }
+  // R-25: レイド検知への記録・通知は ingestComment の冒頭（モデレーション前）へ移動した。
+  // 拒否されたメッセージも協調攻撃の証拠としてカウントするためで、ここでは何もしない。
 
   const created = await dbGet('SELECT * FROM comments WHERE id = ?', [commentId]);
   await commentService.invalidateCommentCache(commentId);

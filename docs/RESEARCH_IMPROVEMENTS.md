@@ -350,6 +350,25 @@ R-5bの実測で `indirect`（NG語を含まない遠回しな攻撃）が**0%**
 - **再検証**: `grep -n "buildPolicyPrompt" backend/src/services/creatorCultureService.js` / `NODE_ENV=test npx jest tests/services/policyAsPrompt.test.js` → 8件合格
 - **出典**: https://arxiv.org/abs/2502.18695 (FAccT 2025) / https://arxiv.org/abs/2607.12149 (MuC 2026 Workshop)
 
+### R-25. レイド自動防御（検知→自動隔離）の実装（2026-08-15）
+
+R-22/R-22b で検知とリアルタイム通知までは実装したが、対応は依然として**人間の手動操作頼み**だった。
+
+- **根拠となる研究**:
+  - Han et al., "Hate Raids on Twitch: Understanding Real-Time Human-Bot Coordinated Attacks in Live Streaming Communities"（CSCW 2023, arXiv:2305.16248）— レイドは**短時間に大量のメッセージでモデレーターを圧倒する**性質を持ち、1件ずつの人力対応はスケールしない。同研究は **moderation-by-design**（防御をシステム設計自体に織り込む）というレンズを推奨する
+  - Jhaver et al., "Hate Raids on Twitch: Echoes of the Past, New Modalities, and Implications for Platform Governance"（CSCW 2023, arXiv:2301.03946）— **フォロワー限定チャット・メール認証・高度なモデレーション・ボット排除を全て設定していた配信者が2度攻撃された**実例を報告。攻撃者は既存の防御を回避する術を知っているため、**単一の防御策に依存せず、かつ自動処罰は避けるべき**という設計判断の根拠になる
+- **実装**: `raidDetector` に防御モード（5分）を追加。レイド検知の瞬間に起動し、防御中は次を**保留キューへ自動隔離**する:
+  1. `cluster` — レイドを構成した類似内容と一致する投稿
+  2. `first_seen` — **防御開始後に初めて現れたアカウント**（使い捨てアカウント対策）。既知の常連は巻き込まない
+  - 隔離は `holdMessage()` の再利用（`holdReason: 'raid_defense'`、trigger を `reasons` に記録し監査可能）。フロントの保留キューに「レイド防御(同一内容/新規アカウント)」バッジを表示
+- **ガバナンス制約（R-24から継続・arXiv:2607.12149）**: **自動で拒否（削除）はしない。保留＝人間のレビュー行きに留める。** モデレーターは `DELETE /api/insights/raid-defense/:platform/:channelId` でいつでも手動解除できる
+- **副次的改善**: レイド検知への記録を取込の**冒頭（モデレーション前）へ移動**した。従来は記録がINSERT後にあったため、**個別モデレーションで拒否された攻撃メッセージが協調攻撃の証拠としてカウントされていなかった**
+- **E2E検証で発見・修正した欠陥**: 当初実装では、手動解除してもレイド判定がウィンドウ内で継続している限り**1秒後には自動で再起動**してしまい、「人間のオーバーライド」が実質的に機能していなかった。これは自ら課したガバナンス制約に反するため、手動解除後は5分間、自動再起動を抑止する（検知とアラート自体は継続し、モデレーターには知らせ続ける）よう修正
+- **実サーバーE2E**: 13アカウントのレイド→防御起動。**新規攻撃者の同一文=202隔離(cluster) / 全く新規のアカウント=202隔離(first_seen) / レイド前から居た常連の通常発言=201（誤爆なし）**。保留キューに trigger 付きで3件記録。手動解除後は同じ攻撃文が201で通り、防御は再起動しないことを確認
+- **未実施**: プラットフォーム側のスローモード/フォロワー限定の自動有効化とクラスタ単位の一括BAN（いずれもW-12のOAuth待ち。本実装のローカル隔離はその代替として、少なくとも自社の表示・配信経路から攻撃を除去する）
+- **再検証**: `NODE_ENV=test npx jest tests/services/raidDetector.test.js` → 20件合格
+- **出典**: https://arxiv.org/pdf/2305.16248 (CSCW 2023) / https://arxiv.org/pdf/2301.03946 (CSCW 2023)
+
 ---
 
 ## 検証（本ブランチで実施済みの R-1/R-3/R-5a/R-5補足/R-10/R-11/R-12/R-14/R-18/R-19）

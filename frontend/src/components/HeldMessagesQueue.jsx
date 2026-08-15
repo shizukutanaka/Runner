@@ -45,6 +45,10 @@ const extractReasonBadges = (reasons) => {
         const meta = NG_CATEGORY_META[cat] || { label: cat, color: 'default' };
         badges.push({ key: `ng-${cat}`, label: meta.label, color: meta.color });
       });
+    } else if (r.type === 'raid_defense') {
+      // R-25: レイド防御による自動隔離。trigger で理由を区別する
+      const detail = r.trigger === 'first_seen' ? '新規アカウント' : '同一内容';
+      badges.push({ key: 'raid', label: `レイド防御(${detail})`, color: 'error' });
     } else if (r.type === 'multiple_links') {
       badges.push({ key: 'links', label: 'リンク多数', color: 'warning' });
     } else if (r.type === 'negative_sentiment') {
