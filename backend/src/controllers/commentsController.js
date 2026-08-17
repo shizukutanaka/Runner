@@ -453,7 +453,7 @@ const ingestComment = async ({ content, user, platform, timestamp, platformMessa
   }
 
   // メッセージ保留チェック（保留判定）
-  const shouldHold = await checkMessageHold(normalizedContent, moderation, platform);
+  const shouldHold = await checkMessageHold(normalizedContent, moderation, platform, normalizedUser);
   if (shouldHold.hold) {
     // 保留メッセージとして保存
     const holdResult = await holdMessage({
@@ -881,7 +881,51 @@ const autoAnswer = asyncHandler(async (req, res) => {
 });
 
 // メッセージ保留判定関数
-const checkMessageHold = async (content, moderationResult, platform) => {
+// R-26: 累犯エスカレーション
+//
+// 関連ソフトウェア（Nightbot / Moobot / StreamElements 等の主要モデレーションBot）は
+// いずれも「警告 → タイムアウト → BAN」という**段階的な処罰**を標準機能として持つ。
+// 一方、本製品の自動判定は**初犯と常習犯をまったく同じに扱っていた**（同じコメントなら
+// 過去に何度フラグされていても結果は同一）。同一の発言でも、繰り返す相手には
+// より強い対応を取るのがモデレーションの基本であり、この層が欠けていた。
+//
+// 直近ウィンドウ内の違反回数を数えて重大度を上げる。**BANは自動で行わず**、
+// 保留（人間レビュー）とモデレーターへの推奨提示に留める（R-24/R-25と同じガバナンス制約）。
+const VIOLATION_WINDOW_HOURS = 24;
+
+const countRecentViolations = async (user, platform) => {
+  try {
+    const since = new Date(Date.now() - VIOLATION_WINDOW_HOURS * 3600 * 1000).toISOString();
+    const [commentRow, heldRow] = await Promise.all([
+      dbGet(
+        `SELECT COUNT(*) as cnt FROM comments
+         WHERE user = ? AND platform = ? AND timestamp >= ?
+           AND status IN ('deleted','hidden','flagged','muted')`,
+        [user, platform, since]
+      ),
+      dbGet(
+        `SELECT COUNT(*) as cnt FROM held_messages
+         WHERE user = ? AND platform = ? AND created_at >= ? AND status IN ('pending','rejected')`,
+        [user, platform, since]
+      )
+    ]);
+    return (commentRow?.cnt || 0) + (heldRow?.cnt || 0);
+  } catch (err) {
+    // 履歴が引けなくても通常のモデレーションは続行する（フェイルセーフ規約）
+    logger.warn('[Comments] Failed to count recent violations', { user, error: err.message });
+    return 0;
+  }
+};
+
+// 違反回数から推奨アクションを決める。実際の処罰は人間が行う
+const escalationFor = (violations) => {
+  if (violations >= 5) return { level: 'ban_recommended', severity: 'high', action: 'BANを検討してください' };
+  if (violations >= 3) return { level: 'timeout_recommended', severity: 'high', action: 'タイムアウトを検討してください' };
+  if (violations >= 1) return { level: 'warned', severity: 'medium', action: '経過を注視してください' };
+  return { level: 'first_offense', severity: 'low', action: null };
+};
+
+const checkMessageHold = async (content, moderationResult, platform, user) => {
   try {
     // 保留設定が有効かチェック（実際の実装ではDBから取得）
     const holdSettings = {
@@ -958,6 +1002,27 @@ const checkMessageHold = async (content, moderationResult, platform) => {
         negativity: Math.round(negativity * 100) / 100,
         threshold: holdSettings.negativeSentimentThreshold
       });
+    }
+
+    // R-26: 累犯エスカレーション。**エスカレーションは既存の疑いを強めるものであって、
+    // それ単体で保留を発生させてはならない**。当初これを無条件に追加したところ、
+    // 過去に1件でも違反のあるユーザーの「無害なコメントまで全て保留」される
+    // 過剰な挙動になり既存テストが12件失敗した（実測）。主要Bot（Nightbot等）でも
+    // エスカレーションは「フィルタに引っかかったとき」に段階が上がる設計である。
+    // よって他の理由が1つ以上ある場合にのみ、重大度と推奨アクションを付与する
+    if (user && reasons.length > 0) {
+      const violations = await countRecentViolations(user, platform);
+      if (violations >= 1) {
+        const esc = escalationFor(violations);
+        reasons.push({
+          type: 'repeat_offender',
+          severity: esc.severity,
+          violations,
+          windowHours: VIOLATION_WINDOW_HOURS,
+          escalation: esc.level,
+          recommendedAction: esc.action
+        });
+      }
     }
 
     // R-14: NGワードのカテゴリ（abuse/threat/spam）が判明している場合は

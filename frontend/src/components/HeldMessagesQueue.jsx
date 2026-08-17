@@ -49,6 +49,12 @@ const extractReasonBadges = (reasons) => {
       // R-25: レイド防御による自動隔離。trigger で理由を区別する
       const detail = r.trigger === 'first_seen' ? '新規アカウント' : '同一内容';
       badges.push({ key: 'raid', label: `レイド防御(${detail})`, color: 'error' });
+    } else if (r.type === 'repeat_offender') {
+      // R-26: 累犯エスカレーション。モデレーターに推奨アクションまで見せる
+      const label = r.escalation === 'ban_recommended' ? 'BAN推奨'
+        : r.escalation === 'timeout_recommended' ? 'タイムアウト推奨'
+          : '要注視';
+      badges.push({ key: 'repeat', label: `累犯${r.violations}回・${label}`, color: 'error' });
     } else if (r.type === 'multiple_links') {
       badges.push({ key: 'links', label: 'リンク多数', color: 'warning' });
     } else if (r.type === 'negative_sentiment') {

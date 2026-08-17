@@ -701,6 +701,20 @@ exports.analyzeComment = async (content, platform, user, timestamp, contextComme
     openaiWarningIssued = true;
   }
 
+  // R-26: 大文字乱用（CAPS）検知。Nightbot/Moobot/StreamElements 等の主要
+  // モデレーションBotが例外なく備える基本フィルタだが、本製品には存在しなかった。
+  // 日本語主体のチャットでは英字が少ないため、**英字が一定数以上ある場合のみ**判定して
+  // 「OK」「www」等の短い英字表現を誤検知しないようにする
+  const letters = content.replace(/[^A-Za-z]/g, '');
+  if (letters.length >= 8) {
+    const upperRatio = letters.replace(/[^A-Z]/g, '').length / letters.length;
+    if (upperRatio >= 0.7) {
+      result.excessiveCaps = true;
+      result.capsRatio = Math.round(upperRatio * 100) / 100;
+      result.score += 15; // 単体では拒否に至らない軽度のシグナル
+    }
+  }
+
   // リンク分析
   const linkAnalysis = analyzeLinks(content);
   result.links = linkAnalysis.links;
