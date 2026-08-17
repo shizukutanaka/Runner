@@ -622,6 +622,39 @@ function analyzeSentiment(content) {
   };
 }
 
+// R-27: シンボル/エモート連投の検出。
+// 日本語配信の文化的表現（顔文字/www/8888/絵文字リアクション）を潰さないよう、
+// 「同一文字・同一絵文字が異常に長く連打されている」ケースに限定して検出する。
+function detectSymbolSpam(text) {
+  const content = String(text || '');
+  if (content.length < 12) {
+    return { isSpam: false, kind: null }; // 短文は対象外（www, 8888 等を守る）
+  }
+
+  // 同一の記号/絵文字が10回以上連続するか（「!!!!!!!!!!!!」「🔥🔥🔥🔥…」）
+  // 文字ではなくコードポイント単位で見る（絵文字はサロゲートペアのため）
+  const chars = [...content];
+  let run = 1;
+  for (let i = 1; i < chars.length; i++) {
+    if (chars[i] === chars[i - 1]) {
+      run += 1;
+      if (run >= 10 && !/[\p{L}\p{N}]/u.test(chars[i])) {
+        return { isSpam: true, kind: 'repeated_symbol' };
+      }
+    } else {
+      run = 1;
+    }
+  }
+
+  // 文字（日本語/英字/数字）をほとんど含まず、記号・絵文字だけで構成された長文
+  const meaningful = chars.filter((c) => /[\p{L}\p{N}]/u.test(c)).length;
+  if (meaningful / chars.length < 0.1) {
+    return { isSpam: true, kind: 'symbol_only' };
+  }
+
+  return { isSpam: false, kind: null };
+}
+
 // R-24: contextComments は直近の文脈コメント（時系列順）。Policy-as-Prompt の
 // 文脈込み判定に使う。省略時は文脈なしで判定する（既存呼び出し元は変更不要）
 exports.analyzeComment = async (content, platform, user, timestamp, contextComments = []) => {
@@ -699,6 +732,23 @@ exports.analyzeComment = async (content, platform, user, timestamp, contextComme
   } else if (!openaiWarningIssued) {
     logger.warn('[ModerationService] OPENAI_API_KEY is not set. Using rule-based analysis only.');
     openaiWarningIssued = true;
+  }
+
+  // R-27: シンボル/エモート連投スパム検知。Nightbot/Moobot/StreamElements 等が
+  // 標準で備えるフィルタだが本製品には無かった。
+  //
+  // **日本語配信チャット特有の誤検知リスク**に注意して設計している。英語圏Botの
+  // 素朴な「記号比率」フィルタをそのまま持ち込むと、日本語圏で日常的に使われる
+  // 顔文字「(´・ω・｀)」、笑い「www」、拍手「88888」、絵文字リアクションを
+  // 軒並みスパム判定してしまう。これらは荒らしではなく**文化そのもの**なので、
+  // 次の2条件を課して誤検知を避ける:
+  //   1. 一定長（12文字以上）に達している場合のみ判定する
+  //   2. 顔文字に多用される括弧・記号列は、**同一文字の長い連打**である場合に限り数える
+  const symbolSpam = detectSymbolSpam(content);
+  if (symbolSpam.isSpam) {
+    result.symbolSpam = true;
+    result.symbolSpamKind = symbolSpam.kind;
+    result.score += 20; // 軽度シグナル（単体では拒否しない）
   }
 
   // R-26: 大文字乱用（CAPS）検知。Nightbot/Moobot/StreamElements 等の主要
