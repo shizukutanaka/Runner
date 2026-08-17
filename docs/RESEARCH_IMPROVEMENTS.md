@@ -289,7 +289,7 @@ Web調査で確認した事実と、実コードでの参照ゼロをgrepで確�
   - `advancedAIServices.js`(58行) — `"configure OPENAI_API_KEY for full functionality"` を返すだけ。**実際のAI判定は `moderationService`/`openaiService` が担っており完全な重複surface**
   - `integratedAnalysis.js`(52行) — `"combine multiple insight APIs..."` を返すだけ
 - **実施**: 3ファイルと `app.js` のマウント（`/api/analysis`, `/api/ai`, `/api/innovative`）を削除（前例: R-3/R-10、E-9〜E-12のデッドコード削除）
-- **残課題**: `papers.js`(56行)は学術論文検索で**常に空配列**を返すが、`CommentItem.js` に「関連論文」ボタン、`RelatedPapersDialog.js` というUIが存在する。**ユーザーから見える偽の約束**であり、削除かUI側での「未設定」明示のいずれかが必要（未着手）
+- **✅ 残課題も解消（2026-08-15・W-13）**: `papers.js` は学術論文検索で**常に 200 + 空配列**を返し、フロントはそれを成功として扱って「関連論文が見つかりませんでした」と表示していた。つまり**検索が実行された上で0件だった、とユーザーに嘘をついていた**。さらに調査すると、案内していた `SEMANTIC_SCHOLAR_API_KEY` を**読むコードはリポジトリのどこにも存在せず**、キーを設定しても何も起こらない（＝実現不可能な約束）ことが判明した。W-4のanalytics export/import/external と同じ規約で **501 + `implemented:false`** を返すよう変更。フロントは既存のエラー経路がそのメッセージを表示するため**コンポーネント改修は不要**だった。**実ブラウザで確認**: ダイアログに「コメントからの関連論文提案は未実装です（学術論文検索の外部連携は本製品にまだ組み込まれていません）」と表示され、「見つかりませんでした」は表示されない。不正入力の400は従来どおり維持
 - **再検証**: `grep -rn "innovativeTechnologies\|advancedAIServices\|integratedAnalysis" backend/src frontend/src` → 0件
 
 ### R-22. ✅ ヘイトレイド（協調攻撃）検知の実装（2026-08-08）
