@@ -296,7 +296,12 @@ export default function CommentTimeline({ platform = 'youtube' }) {
       if (effectiveComments && effectiveComments.length > 0) {
         try {
           const summary = await fetchCommentsSummary(effectiveComments.slice(-30)); // 直近30件
-          setSummaryText(summary);
+          // E-15: fetchCommentsSummary は `res.data.data` すなわち
+          // `{ summary, statistics }` という**オブジェクト**を返す。これをそのまま
+          // state に入れると JSX の {summaryText} でオブジェクトを子として描画しようとし、
+          // "Objects are not valid as a React child" でツリー全体がクラッシュ→
+          // ダッシュボードがホワイトスクリーンになっていた。文字列だけを取り出す
+          setSummaryText(typeof summary === 'string' ? summary : (summary?.summary ?? ''));
         } catch (e) {
           setSummaryText(t('comment_summary_fetch_error'));
         }

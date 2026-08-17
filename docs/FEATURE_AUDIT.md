@@ -181,14 +181,16 @@ D-8（文化プロファイル/文脈分析UI）実装後、指示通り実際�
 - **検証**: 単体テスト新規（`tests/middleware/rateLimit.test.js`、2件: enabled=falseで素通し／enabled=trueで上限超過時429）。実サーバーでも`RATE_LIMIT_ENABLED=true RATE_LIMIT_GENERAL_MAX=5`起動時に6回目以降が429、既定dev起動時は15連打でも全200を確認。フルスイートはベースライン（4 failed / 445 passed）維持
 - **再検証**: `grep -n "enabled:" -A1 backend/src/config.js | grep -A1 rateLimit` 相当で`rateLimit.enabled`が定義されていること。`NODE_ENV=test npx jest tests/middleware/rateLimit.test.js` → 2件合格
 
-### E-15. ★★ ダッシュボードがホワイトスクリーンでクラッシュする（2026-08-15発見・未修正）
+### E-15. ✅ 解決済み（2026-08-15） — ダッシュボードがホワイトスクリーンでクラッシュしていた
 
 - **証拠**: ログイン後のダッシュボードが**何も描画されない**（`document.body` のテキストが空、タブ要素0個）。ブラウザコンソールに2種のエラー:
   1. `Objects are not valid as a React child (found: object with keys {summary, statistics})` — `POST /api/comments/summary` のレスポンス `data` は `{summary, statistics}` という**オブジェクト**（`commentsController.js` の `summarizeComments`）だが、フロントのどこかがこれを直接 React の子として描画している
   2. `t is not a function` — i18n（react-i18next）の初期化に失敗している可能性
 - **切り分け済み**: 本セッションのR-25変更を `git stash` した状態でも**同一エラーが再現**するため、R-25起因ではない。`{summary, statistics}` を返すコードは本セッション以前のコミット（`13477a1`）から存在する。なお、本セッション前半（R-14b等）のブラウザ検証時には描画できていたため、`frontend/node_modules` の再インストール後に顕在化した可能性がある（依存バージョンの差異）
 - **影響**: **フロントエンド全体が利用不能**。UIを伴う変更の実ブラウザ検証ができない（R-25のバッジ検証は純粋関数の直接評価と `vite build` 成功で代替した）
-- **推奨アクション**: (1) `t is not a function` の発生箇所を特定しi18n初期化を修正 → (2) `summarizeComments` のレスポンスを描画している箇所を特定し、オブジェクトではなく `data.summary` 等の文字列を描画するよう修正
+- **根本原因（特定済み）**: `frontend/src/api/comments.js` の `fetchCommentsSummary()` は `res.data.data` すなわち **`{summary, statistics}` というオブジェクト**を返す。`CommentTimeline.js` がこれをそのまま `setSummaryText(summary)` で state に格納し、JSX の `{summaryText}` で子として描画していた（`CommentTimeline.js:395`）。React はオブジェクトを子として描画できず例外を投げ、エラーバウンダリが無いため**ツリー全体がアンマウントされてホワイトスクリーン**になっていた。`t is not a function` はこのクラッシュに伴う二次的症状で、i18n初期化自体は正常（ログイン画面は `t()` を使って正しく描画されていた）
+- **実施した修正**: `setSummaryText(typeof summary === 'string' ? summary : (summary?.summary ?? ''))` として文字列だけを取り出す（APIが将来文字列を返すようになっても壊れない防御的な形）
+- **検証**: 実ブラウザ（Playwright + Chromium）でログイン後、**タブ11個が描画され、ページエラー0件**であることを確認（修正前は body が空・タブ0個）。これによりブロックされていたR-25のバッジ検証も完了し、「レイド防御(同一内容)」「レイド防御(新規アカウント)」両バッジの描画をスクリーンショットで確認済み
 - **再検証**: フロントを起動しログイン後、`document.body.innerText` が空でなくタブが描画されること
 
 ---
