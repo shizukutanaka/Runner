@@ -2175,42 +2175,8 @@ exports.executeAutoRestore = (req, res, next) => {
 };
 
 // アクセス権限チェック
-exports.checkAccessPermission = (req, res, next) => {
-  const { userId } = req.params;
-  const { action, resource } = req.body;
-
-  // 権限チェックロジック
-  const hasPermission = true; // 実際の実装では詳細なチェックを行う
-
-  if (!hasPermission) {
-    return next({
-      status: 403,
-      message: 'この操作を実行する権限がありません'
-    });
-  }
-
-  res.json({
-    status: 200,
-    data: { hasPermission: true, action, resource },
-    message: '権限チェック完了'
-  });
-};
 
 // 設定の有効期限チェック
-exports.checkExpirationStatus = (req, res, next) => {
-  const { userId } = req.params;
-  const { category } = req.query;
-
-  // 有効期限チェックロジック
-  const expirationStatus = {
-    settings: { expired: false, daysUntilExpiry: 30 },
-    password: { expired: false, daysUntilExpiry: 15 },
-    session: { expired: false, minutesUntilExpiry: 120 },
-    tokens: { expired: false, daysUntilExpiry: 30 }
-  };
-
-  res.json({ status: 200, data: expirationStatus, message: 'Expiration status checked' });
-};
 
 // スローモード設定の取得
 const getSlowModeSettings = asyncHandler(async (req, res, next) => {

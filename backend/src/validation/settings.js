@@ -281,12 +281,5 @@ exports.executeAutoRestore = Joi.object({
 });
 
 // アクセス権限チェック
-exports.checkAccessPermission = Joi.object({
-  action: Joi.string().required(),
-  resource: Joi.string().required()
-});
 
 // 設定の有効期限チェック
-exports.checkExpirationStatus = Joi.object({
-  category: Joi.string().valid('settings', 'password', 'session', 'tokens')
-});

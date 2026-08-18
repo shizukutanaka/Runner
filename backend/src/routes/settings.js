@@ -93,7 +93,6 @@ router.put('/user/:userId/expiration-settings', requireRole('admin'), validateUs
 // 設定の自動復元実行
 router.post('/user/:userId/execute-restore', requireRole('admin'), validateUserBody(settingsSchema.executeAutoRestore), ctrl.executeAutoRestore);
 // アクセス権限チェック
-router.post('/user/:userId/check-permission', requireRole('admin'), validateUserBody(settingsSchema.checkAccessPermission), ctrl.checkAccessPermission);
 // スローモード設定
 router.get('/user/:userId/slow-mode', requireRole('admin'), requireUserParam, ctrl.getSlowModeSettings);
 router.put('/user/:userId/slow-mode', requireRole('admin'), requireUserParam, ctrl.updateSlowModeSettings);

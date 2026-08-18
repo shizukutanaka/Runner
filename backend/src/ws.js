@@ -185,8 +185,11 @@ async function setupWebSocket(server, app) {
         },
         moderation: {
           total: stats.total_moderation || 0,
-          today: stats.today_moderation || 0,
-          accuracy: 95.5 // 実際の実装では計算する
+          today: stats.today_moderation || 0
+          // accuracy は削除した。旧実装は 95.5 という**測定していない数値**を
+          // ダッシュボードへ配信しており、閲覧者はこれを実測値と受け取る。
+          // モデレーション精度の測定には正解ラベルが必要で、オフラインの
+          // 評価ハーネス（src/scripts/evaluateModeration.js・R-5b）が担う
         }
       };
 

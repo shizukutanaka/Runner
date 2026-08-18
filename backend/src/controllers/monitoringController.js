@@ -600,7 +600,6 @@ exports.getHealthStatus = async (req, res, next) => {
     const checks = {
       database: false,
       websocket: false,
-      external_apis: false,
       disk_space: false,
       memory: false
     };
@@ -622,9 +621,19 @@ exports.getHealthStatus = async (req, res, next) => {
     const io = req.app.get('io');
     checks.websocket = io !== undefined;
 
-    // 外部APIチェック（OpenAIなど）
-    // 実際の実装ではAPIのヘルスチェックを行う
-    checks.external_apis = true;
+    // 外部API（OpenAI等）の状態。
+    // 旧実装は `checks.external_apis = true` を無条件に代入しており、
+    // それが overallHealth の算出にも入っていた。つまり **OpenAIが完全に落ちていても
+    // ヘルスチェックは「健全」と報告する**という、監視として最も危険な嘘だった。
+    // 実際にpingする実装はレイテンシとコストを伴うため、ここでは
+    // **「設定されているか」という検証可能な事実のみ**を報告し、
+    // 未検証の項目を健全性の判定に混ぜない（別フィールドに分離する）
+    // eslint-disable-next-line global-require
+    const openaiService = require('../services/openaiService');
+    const externalServices = {
+      openai: openaiService.isAvailable() ? 'configured' : 'not_configured',
+      note: 'liveness is not probed; this reports configuration only'
+    };
 
     // ディスク容量チェック
     const fsInfo = await si.fsSize();
@@ -643,6 +652,8 @@ exports.getHealthStatus = async (req, res, next) => {
       data: {
         healthy: overallHealth,
         checks,
+        // 実際に検証した項目(checks)と、設定状態のみを報告する項目を分けて返す
+        externalServices,
         timestamp: new Date().toISOString()
       },
       message: overallHealth ? 'システムは正常です' : 'システムに問題があります'
