@@ -113,6 +113,10 @@ const config = {
     twitch: {
       clientId: process.env.TWITCH_CLIENT_ID,
       clientSecret: process.env.TWITCH_CLIENT_SECRET,
+      // R-29: EventSub の channel.chat.message 購読には **ユーザーアクセストークン**
+      // （chat:read スコープ）が必要。アプリトークンでは購読できない
+      userAccessToken: process.env.TWITCH_USER_ACCESS_TOKEN,
+      userId: process.env.TWITCH_USER_ID,
       pollingInterval: parseInt(process.env.TWITCH_POLLING_INTERVAL) || 3000,
       maxResults: parseInt(process.env.TWITCH_MAX_RESULTS) || 50
     }

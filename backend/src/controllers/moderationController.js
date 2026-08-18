@@ -96,31 +96,6 @@ exports.getExplanation = (req, res, next) => {
   }
 };
 
-// AI判定結果のエクスポート
-exports.exportResults = async (req, res, next) => {
-  try {
-    const { startDate, endDate, format = 'csv' } = req.query;
-    // 実際の実装では指定期間の判定結果をエクスポート
-    const exportUrl = `/exports/ai_results_${new Date().toISOString()}.${format}`;
-    const exportData = {
-      startDate,
-      endDate,
-      format,
-      recordCount: 100, // ダミー値
-      fileSize: '1.2MB' // ダミー値
-    };
-    res.json({ 
-      status: 200, 
-      data: { 
-        downloadUrl: exportUrl,
-        ...exportData
-      }, 
-      message: 'AI判定結果のエクスポートが完了しました' 
-    });
-  } catch (err) {
-    next({ status: 500, message: 'エクスポート処理中にエラーが発生しました', details: err });
-  }
-};
 
 // NGワード自動収集API
 exports.collectBannedWords = async (req, res, next) => {
@@ -161,35 +136,6 @@ exports.setWordWeights = (req, res, next) => {
   }
 };
 
-// NGワードの履歴取得
-exports.getBannedWordHistory = (req, res, next) => {
-  try {
-    const { page = 1, limit = 50 } = req.query;
-    const offset = (page - 1) * limit;
-    // 実際の実装ではデータベースから履歴を取得
-    const history = Array(10).fill(0).map((_, i) => ({
-      id: offset + i + 1,
-      word: `word${offset + i + 1}`,
-      action: i % 3 === 0 ? 'added' : (i % 3 === 1 ? 'removed' : 'modified'),
-      timestamp: new Date(Date.now() - i * 3600000).toISOString(),
-      modifiedBy: `user${i % 5 + 1}@example.com`
-    }));
-    res.json({ 
-      status: 200, 
-      data: { 
-        history,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total: 100 // ダミーの総件数
-        }
-      }, 
-      message: 'NGワードの履歴を取得しました' 
-    });
-  } catch (err) {
-    next({ status: 500, message: '履歴の取得中にエラーが発生しました', details: err });
-  }
-};
 
 // NGワードの外部連携API
 exports.externalBannedWords = async (req, res, next) => {

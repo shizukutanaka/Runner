@@ -5,6 +5,7 @@ const config = require('./config');
 const logger = require('./logger');
 const backupService = require('./services/backupService');
 const youtubeIngestionService = require('./services/youtubeIngestionService');
+const twitchIngestionService = require('./services/twitchIngestionService');
 
 const PORT = config.server.port;
 const server = http.createServer(app);
@@ -59,6 +60,7 @@ const shutdown = async (signal) => {
 
       // YouTube取り込みのポーリングを停止
       youtubeIngestionService.stopAll();
+      twitchIngestionService.stopAll();
 
       // WebSocketの接続を閉じる
       const io = app.get('io');

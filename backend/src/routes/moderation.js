@@ -21,13 +21,11 @@ router.post('/retrain', requireRole('admin'), moderationController.retrainModel)
 // AI判定の説明表示
 router.get('/explanation', requireRole('moderator'), moderationController.getExplanation);
 // AI判定結果のエクスポート
-router.get('/export', requireRole('moderator'), moderationController.exportResults);
 // NGワード自動収集API
 router.get('/collect-banned-words', requireRole('moderator'), moderationController.collectBannedWords);
 // NGワードごとの重み付け設定
 router.put('/word-weights', requireRole('admin'), moderationController.setWordWeights);
 // NGワードの履歴取得
-router.get('/banned-word-history', requireRole('moderator'), moderationController.getBannedWordHistory);
 // NGワードの外部連携API
 router.post('/external-banned-words', requireRole('admin'), moderationController.externalBannedWords);
 // NGワードの自動翻訳API

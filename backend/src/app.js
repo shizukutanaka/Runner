@@ -13,6 +13,7 @@ const analyticsRouter = require('./routes/analytics');
 const settingsRouter = require('./routes/settings');
 const billingRouter = require('./routes/billing');
 const youtubeRouter = require('./routes/youtube');
+const twitchRouter = require('./routes/twitch');
 const communityInsightsRouter = require('./routes/communityInsights');
 const billingController = require('./controllers/billingController');
 const config = require('./config');
@@ -248,6 +249,7 @@ app.use('/api/analytics', analyticsRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/youtube', youtubeRouter);
+app.use('/api/twitch', twitchRouter);
 app.use('/api/insights',   communityInsightsRouter);
 app.use('/api/monitoring', require('./routes/monitoring'));
 
