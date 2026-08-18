@@ -147,9 +147,13 @@ export const updateComment = async (id, data) => {
   }
 };
 
-export const deleteComment = async (id) => {
+// バックエンドの DELETE /comments/:id は reason と reasonCategory を必須とする
+// （Joiバリデーション）。ボディを送らないと 400 になるため、必ず渡す
+export const deleteComment = async (id, { reason = 'moderator action', reasonCategory = 'other', evidence } = {}) => {
   try {
-    const res = await axios.delete(`${API_BASE_URL}/comments/${id}`);
+    const res = await axios.delete(`${API_BASE_URL}/comments/${id}`, {
+      data: { reason, reasonCategory, ...(evidence ? { evidence } : {}) }
+    });
     return res.data;
   } catch (error) {
     handleAPIError(error, 'コメントの削除に失敗しました');

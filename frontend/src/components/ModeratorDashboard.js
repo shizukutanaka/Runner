@@ -59,6 +59,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useComments } from '../hooks/useComments';
 import HeldMessagesQueue from './HeldMessagesQueue';
+import { updateUser } from '../api/users';
+import { updateComment, deleteComment } from '../api/comments';
 
 export default function ModeratorDashboard({ platform = 'all' }) {
   const theme = useTheme();
@@ -69,6 +71,8 @@ export default function ModeratorDashboard({ platform = 'all' }) {
   const [activeTab, setActiveTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
+  // BAN/ミュートの失敗をモデレーターに見せるための状態（失敗を握りつぶさない）
+  const [actionError, setActionError] = useState(null);
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [moderationStats, setModerationStats] = useState({
     totalComments: 1247,
@@ -142,32 +146,62 @@ export default function ModeratorDashboard({ platform = 'all' }) {
     comment.content.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // ユーザーアクション
-  const handleUserAction = (action, userId, reason = '') => {
+  // ユーザーアクション（BAN / ミュート）
+  //
+  // 旧実装は **APIを一切呼ばず**、ローカルの「最近のアクション」配列に
+  // 実行済みの見た目だけを追加していた。モデレーターは「BANした」と表示を見るが
+  // 実際には何も起きておらず、当人は発言し続けられる——モデレーションUIが
+  // モデレーションしていない状態だった。実APIを呼び、結果に応じて表示する。
+  const handleUserAction = async (action, userId, reason = '') => {
+    setActionError(null);
+    try {
+      const result = await updateUser(userId, {
+        action,
+        reason: reason || `${action} by moderator`,
+        duration: action === 'ban' ? 3600 : 300
+      });
 
-    // モック: 最近のアクションに追加
-    const newAction = {
-      id: Date.now(),
-      type: action,
-      user: userId,
-      reason: reason || `${action} by moderator`,
-      moderator: 'current_mod',
-      timestamp: new Date(),
-      platform: platform === 'all' ? 'YouTube' : platform,
-    };
-
-    setRecentActions(prev => [newAction, ...prev.slice(0, 9)]); // 最新10件保持
+      // 成功したものだけを履歴に載せる
+      setRecentActions(prev => [{
+        id: Date.now(),
+        type: action,
+        user: userId,
+        reason: reason || `${action} by moderator`,
+        moderator: 'current_mod',
+        timestamp: new Date(),
+        platform: platform === 'all' ? 'YouTube' : platform,
+        // プラットフォーム側へ反映できたかを併記する（できていなければ隠さない）
+        platformApplied: result?.platformBan?.ok === true
+      }, ...prev.slice(0, 9)]);
+    } catch (err) {
+      // 失敗を成功に見せかけない
+      setActionError(err?.message || `${action} に失敗しました`);
+    }
   };
 
-  // コメントアクション
-  const handleCommentAction = (action, commentId) => {
-    setRecentComments(prev =>
-      prev.map(comment =>
-        comment.id === commentId
-          ? { ...comment, status: action === 'delete' ? 'deleted' : 'hidden' }
-          : comment
-      )
-    );
+  // コメントアクション（削除 / 非表示）
+  //
+  // handleUserAction と同様、旧実装は **APIを呼ばずローカル状態だけを書き換えて**
+  // いた。画面上はコメントが消えるが、DBにもプラットフォームにも何も起きない。
+  // 実APIを呼び、成功した場合のみ表示を更新する。
+  const handleCommentAction = async (action, commentId) => {
+    setActionError(null);
+    try {
+      if (action === 'delete') {
+        await deleteComment(commentId, { reason: 'moderator action', reasonCategory: 'other' });
+      } else {
+        await updateComment(commentId, { action: 'hidden' });
+      }
+      setRecentComments(prev =>
+        prev.map(comment =>
+          comment.id === commentId
+            ? { ...comment, status: action === 'delete' ? 'deleted' : 'hidden' }
+            : comment
+        )
+      );
+    } catch (err) {
+      setActionError(err?.message || `コメントの${action === 'delete' ? '削除' : '非表示'}に失敗しました`);
+    }
   };
 
   // リスクスコアの色分け
@@ -204,6 +238,18 @@ export default function ModeratorDashboard({ platform = 'all' }) {
 
   return (
     <Box sx={{ maxWidth: 1400, mx: 'auto', p: 3 }}>
+      {/* BAN/ミュートの失敗をモデレーターへ明示する。旧実装は失敗も成功も
+          区別せず「実行済み」の見た目だけを出していた */}
+      <Snackbar
+        open={Boolean(actionError)}
+        autoHideDuration={6000}
+        onClose={() => setActionError(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert severity="error" onClose={() => setActionError(null)}>
+          {actionError}
+        </Alert>
+      </Snackbar>
       <Typography variant="h4" gutterBottom sx={{
         display: 'flex',
         alignItems: 'center',
