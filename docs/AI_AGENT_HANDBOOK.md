@@ -76,7 +76,7 @@
 - dev環境は JWT/SESSION シークレットが**サーバー再起動ごとに再生成**される → 再起動後は旧トークンが無効。検証時は再ログインする
 - ログインエンドポイントに**ブルートフォース保護**あり → curl検証を繰り返すと429。バックエンド再起動でカウンタがリセットされる
 - ネットワーク: arxiv.org / dl.acm.org / developers.google.com / npmjs.com（ページ）等への WebFetch は**プロキシ403**（WebSearch・`npm view`は可）。**GitHub APIはセッションで無効**（PR/Release作成・可視性変更は不可）。**git の tag push も403**（ブランチ push は可）
-- `npm run dev` の predev スクリプト（`checkEnv.js`）が壊れている → devサーバーは `NODE_ENV=development PORT=3000 node src/server.js` で直接起動する
+- ~~`npm run dev` の predev が壊れている~~ → **2026-08-15に修正済み。`npm run dev` がそのまま使える**（`.env` 未作成でも警告のみで起動する。CIで厳格に検査したい場合は `CHECK_ENV_STRICT=true`）
 
 ## 5. 検証プロトコル（変更種別ごとの必須手順）
 

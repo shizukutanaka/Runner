@@ -142,7 +142,16 @@ targets.forEach((target) => {
       status: 'missing',
       message: `${file} が見つかりません。コピー元: ${path.basename(file)}.example`,
       missingRequired: required,
-      missingOptional: optional
+      missingOptional: optional,
+      // .env が無い場合もこのキーを含めないと、描画側の
+      // result.checkedKeys.hasValidations が undefined 参照でクラッシュし、
+      // predev ごと落ちて `npm run dev` がサーバーを起動できなくなる
+      // （新規cloneでこのスクリプトが最も役立つはずの場面で必ず落ちていた）
+      checkedKeys: {
+        required,
+        optional,
+        hasValidations: false
+      }
     });
     return;
   }
@@ -219,7 +228,7 @@ results.forEach((result) => {
       console.log(`   ${key}: ${message}`);
     });
   }
-  if (result.checkedKeys.hasValidations) {
+  if (result.checkedKeys?.hasValidations) {
     console.log(`   チェック対象: 必須 ${result.checkedKeys.required.join(', ')} / 任意 ${result.checkedKeys.optional.join(', ')}`);
   }
   console.log('');
@@ -241,8 +250,19 @@ console.log(
 );
 
 if (hasErrors) {
-  console.log('❌ 一部の環境変数が未設定です。`.env.example` を参照して補完してください。');
-  process.exit(1);
+  console.log('⚠️ 一部の環境変数が未設定です。`.env.example` を参照して補完してください。');
+  // 開発時は **警告に留めて起動を止めない**。
+  // このスクリプトは predev として実行されるため、非ゼロ終了すると
+  // `npm run dev` がサーバーを起動できなくなる。一方でアプリ自体は
+  // キー未設定でも警告のみで動作する設計（フェイルセーフ規約）であり、
+  // 「.envが無いと開発を始められない」のは規約と矛盾していた。
+  // CI等で厳格に検査したい場合は CHECK_ENV_STRICT=true を指定する
+  if (process.env.CHECK_ENV_STRICT === 'true') {
+    console.log('   (CHECK_ENV_STRICT=true のため異常終了します)');
+    process.exit(1);
+  }
+  console.log('   (開発を止めないため警告のみで続行します。厳格化するには CHECK_ENV_STRICT=true)');
+  process.exit(0);
 }
 
 console.log('🎉 すべての必須環境変数が設定されています。');
