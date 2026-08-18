@@ -61,7 +61,9 @@
 
 ## 3. 絶対規約（Non-negotiables）
 
-- **テストベースライン**: `cd backend && rm -f data/test.db && NODE_ENV=test npx jest --runInBand` → **0 failed / 529 passed / 539 total（10 skipped）** が基準（2026-08-15時点。この数値は増分ごとに更新すること）。**長らく据え置かれていた `tests/api/settings.test.js` の4件はリポジトリオーナーの `5209f8e fix(settings)` で解消され、全件グリーンになった。以後は「失敗0」が基準であり、1件でも失敗させる変更は禁止**。並列実行は避け、**`--runInBand` + 事前の `rm -f data/test.db`** を使うこと（オーナーの `04f8914` で実行ごと一意なテストDB名が導入されたが、規約は維持する）
+- **テストベースライン**: `cd backend && rm -f data/test.db && NODE_ENV=test npx jest --runInBand` → **0 failed / 529 passed / 539 total（10 skipped）** が基準（2026-08-15時点。増分ごとに更新すること）。**失敗0が基準であり、1件でも失敗させる変更は禁止**
+- **CIは実際にグリーンであること（2026-08-15に復旧）**: CIは `npm run lint` と `npm run test:coverage` を実行する。**両方とも長らく失敗しており、CIは恒常的にレッドだった**（lint 12エラー／カバレッジ閾値90%に対し実測37.9%）。落ちっぱなしのCIは無いCIより悪い（誰も見なくなる）ため両方を修正済み。**カバレッジ閾値は現状値の直下に設定したラチェット**なので、カバレッジを下げる変更はCIで落ちる。改善したら閾値も引き上げること
+- **並列実行について**: オーナーの `04f8914` で実行ごと一意なテストDB名が導入され、**並列実行でも529件全通過することを確認済み**（CIは並列で実行される）。`--runInBand` は再現性重視の推奨に留まり、必須ではなくなった
 - **フェイルセーフ**: 外部キー/サービス未設定でもクラッシュせず警告のみで全機能動作させる（例: `openaiService.isAvailable()` チェック→ルールベース続行、`ng-words.json` 読込失敗→空リスト+警告）
 - **UI変更は実ブラウザ検証必須**: frontend/ ディレクトリから `require('playwright-core')`（トップレベルの `playwright` は無い）、実行ファイルは `/opt/pw-browsers/chromium`、スクリプトは **`.cjs` 拡張子**（frontend は `"type":"module"`）。検証不能な場合は成果報告にその旨を明記する
 - **スキーマ変更**: `CREATE TABLE IF NOT EXISTS` は**既存テーブルに対してno-op**（列は追加されない）。既存テーブルへの列追加は `db.js` の `ensureColumnDefinitions()` パターン（`PRAGMA table_info` 照合→`ALTER TABLE ADD COLUMN`）を使用

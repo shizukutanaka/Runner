@@ -137,7 +137,7 @@ exports.updateUser = (req, res, next) => {
       return res.json({ status: 200, data: null, message: 'User updated' });
     }
     db.get(
-      "SELECT author_channel_id FROM comments WHERE (user = ? OR user = (SELECT username FROM users WHERE id = ?)) AND platform = 'youtube' AND author_channel_id IS NOT NULL ORDER BY timestamp DESC LIMIT 1",
+      'SELECT author_channel_id FROM comments WHERE (user = ? OR user = (SELECT username FROM users WHERE id = ?)) AND platform = \'youtube\' AND author_channel_id IS NOT NULL ORDER BY timestamp DESC LIMIT 1',
       [id, id],
       async (lookupErr, row) => {
         let platformBan = { attempted: false, ok: false, reason: 'author_channel_id_unknown' };

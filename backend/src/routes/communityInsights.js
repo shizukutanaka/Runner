@@ -410,7 +410,7 @@ router.delete('/raid-defense/:platform/:channelId', (req, res) => {
     const { platform, channelId } = req.params;
     const result = raid.deactivateDefense(platform, channelId);
     logger.info('[CommunityInsights] Raid defense deactivated by moderator', {
-      platform, channelId, user: req.user?.username,
+      platform, channelId, user: req.user?.username
     });
     res.json({ status: 200, data: { ...result, ...raid.getDefenseStatus(platform, channelId) } });
   } catch (err) {

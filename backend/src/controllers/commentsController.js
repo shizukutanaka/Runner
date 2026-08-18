@@ -420,18 +420,18 @@ const ingestComment = async ({ content, user, platform, timestamp, platformMessa
           type: 'raid_defense',
           severity: 'high',
           trigger: quarantine.trigger,
-          raidScore: raidStatus.score,
-        }],
+          raidScore: raidStatus.score
+        }]
       });
       logger.warn('[Comments] Comment quarantined by raid defense', {
-        user: normalizedUser, platform, trigger: quarantine.trigger,
+        user: normalizedUser, platform, trigger: quarantine.trigger
       });
       return {
         outcome: 'held',
         holdId: holdResult.holdId,
         holdUntil: holdResult.holdUntil,
         holdLevel: holdResult.holdLevel,
-        reasons: holdResult.reasons,
+        reasons: holdResult.reasons
       };
     }
   } catch (defErr) {

@@ -89,7 +89,7 @@ class RaidDetector {
       activatedAt: active ? new Date(state.defenseStartedAt).toISOString() : null,
       expiresAt: active ? new Date(state.defenseUntil).toISOString() : null,
       quarantinedClusters: active ? [...(state.defenseClusters || [])].length : 0,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     };
   }
 
@@ -106,7 +106,7 @@ class RaidDetector {
     state.defenseSuppressedUntil = Date.now() + DEFENSE_SUPPRESS_MS;
     this.alertState.set(key, state);
     logger.info('[RaidDetector] Defense mode manually deactivated', {
-      platform, channelId, wasActive, suppressedForMs: DEFENSE_SUPPRESS_MS,
+      platform, channelId, wasActive, suppressedForMs: DEFENSE_SUPPRESS_MS
     });
     return { deactivated: true, wasActive, suppressedUntil: new Date(state.defenseSuppressedUntil).toISOString() };
   }
@@ -171,7 +171,7 @@ class RaidDetector {
         state.defenseStartedAt = now;
         state.defenseClusters = new Set();
         logger.warn('[RaidDetector] Defense mode activated (auto-quarantine)', {
-          platform, channelId, durationMs: DEFENSE_DURATION_MS, score: result.score,
+          platform, channelId, durationMs: DEFENSE_DURATION_MS, score: result.score
         });
       }
       state.defenseUntil = now + DEFENSE_DURATION_MS;
@@ -190,8 +190,8 @@ class RaidDetector {
         ...result,
         defense: {
           activated: true,
-          expiresAt: new Date(state.defenseUntil).toISOString(),
-        },
+          expiresAt: new Date(state.defenseUntil).toISOString()
+        }
       };
     }
     return null;

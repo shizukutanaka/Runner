@@ -488,7 +488,7 @@ const initializeDB = async () => {
 
     ensureCommentColumns();
     ensureUserColumns();
-  ensureHeldMessageColumns();
+    ensureHeldMessageColumns();
     ensureNotificationColumns();
     ensureAccountColumns();
   } catch (err) {
