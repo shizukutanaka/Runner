@@ -1764,6 +1764,25 @@ exports.processHeldMessage = async (req, res, next) => {
       [newStatus, processedAt, moderatorId, reason || '', notes || '', holdId]
     );
 
+    // R-28c: 却下したメッセージをプラットフォーム側からも削除する。
+    // 保留経路だけ書き戻しの対象外だと「モデレーターが却下したのに視聴者には
+    // 見えたまま」という穴が残る。OAuth未設定・識別子なしでもローカルの却下は維持する
+    let platformDeletion = { attempted: false, ok: false, reason: 'not_applicable' };
+    if (action === 'reject' && held.platform === 'youtube') {
+      if (held.platform_message_id) {
+        // eslint-disable-next-line global-require
+        const youtubeIngestionService = require('../services/youtubeIngestionService');
+        platformDeletion = { attempted: true, ...(await youtubeIngestionService.deleteLiveChatMessage(held.platform_message_id)) };
+        if (!platformDeletion.ok) {
+          logger.warn('[Moderation] Held message rejected locally but platform write-back did not', {
+            holdId, reason: platformDeletion.reason
+          });
+        }
+      } else {
+        platformDeletion.reason = 'missing_platform_message_id';
+      }
+    }
+
     res.json({
       status: 200,
       data: {
@@ -1772,6 +1791,7 @@ exports.processHeldMessage = async (req, res, next) => {
         reason: reason || '',
         notes: notes || '',
         moderator: moderatorId,
+        platformDeletion,
         processedAt
       },
       message: `メッセージを${action === 'approve' ? '承認' : action === 'reject' ? '拒否' : 'エスカレート'}しました`

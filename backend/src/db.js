@@ -185,6 +185,16 @@ const ensureCommentColumns = () => {
   ]);
 };
 
+// R-28c: 保留メッセージにもプラットフォーム識別子を持たせる。
+// これが無いと「保留 → 却下」したメッセージをYouTube上から消せない
+// （保留経路だけ書き戻しの対象外という穴が残る）
+const ensureHeldMessageColumns = () => {
+  ensureColumnDefinitions('held_messages', [
+    { name: 'platform_message_id', definition: 'TEXT' },
+    { name: 'author_channel_id', definition: 'TEXT' }
+  ]);
+};
+
 const ensureNotificationColumns = () => {
   ensureColumnDefinitions('notifications', [
     { name: 'user_id', definition: 'TEXT' },
@@ -478,6 +488,7 @@ const initializeDB = async () => {
 
     ensureCommentColumns();
     ensureUserColumns();
+  ensureHeldMessageColumns();
     ensureNotificationColumns();
     ensureAccountColumns();
   } catch (err) {

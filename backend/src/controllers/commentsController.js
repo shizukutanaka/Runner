@@ -412,6 +412,8 @@ const ingestComment = async ({ content, user, platform, timestamp, platformMessa
         platform,
         // holdMessage が参照するのは .score のみ（risk_score列へ格納）
         moderationResult: { score: raidStatus.score },
+        platformMessageId,
+        authorChannelId,
         holdReason: 'raid_defense',
         holdLevel: 'high',
         reasons: [{
@@ -461,6 +463,8 @@ const ingestComment = async ({ content, user, platform, timestamp, platformMessa
       user: normalizedUser,
       platform,
       moderationResult: moderation,
+      platformMessageId,
+      authorChannelId,
       holdReason: shouldHold.primaryReason,
       holdLevel: shouldHold.holdLevel,
       reasons: shouldHold.reasons
@@ -1097,7 +1101,10 @@ const holdMessage = async (holdData) => {
       moderationResult,
       holdReason,
       holdLevel,
-      reasons
+      reasons,
+      // R-28c: 却下時にプラットフォームへ書き戻すための識別子
+      platformMessageId,
+      authorChannelId
     } = holdData;
 
     // 保留期間計算
@@ -1108,9 +1115,10 @@ const holdMessage = async (holdData) => {
 
     const insertResult = await dbRun(
       `INSERT INTO held_messages
-        (message_id, content, user, platform, hold_reason, risk_score, hold_level, reasons, status, hold_until)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-      [messageId, content, user, platform, holdReason, moderationResult.score, holdLevel, JSON.stringify(reasons), holdUntil]
+        (message_id, content, user, platform, hold_reason, risk_score, hold_level, reasons, status, hold_until, platform_message_id, author_channel_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+      [messageId, content, user, platform, holdReason, moderationResult.score, holdLevel, JSON.stringify(reasons), holdUntil,
+        platformMessageId || null, authorChannelId || null]
     );
 
     // ログ記録
