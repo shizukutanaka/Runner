@@ -127,7 +127,42 @@ exports.updateUser = (req, res, next) => {
   db.run(sql, [status, banUntil, muteUntil, id], function(err) {
     if (err) return next({ status: 500, message: 'Database error', details: err });
     logDataMod(req.user?.id || 'system', 'users', 'status_update', id, { status, banUntil, muteUntil, reason: sanitizeToStorage(reason) });
-    res.json({ status: 200, data: null, message: 'User updated' });
+
+    // R-28b: BAN をプラットフォーム側へ書き戻す。
+    // これが無いと「ダッシュボードではBAN済みだが、当人は配信で発言し続けられる」
+    // という状態になる（R-20の第一原理分析で発見した欠落の後半）。
+    // 対象ユーザーのチャンネルIDは users には無いため、直近コメントから引く。
+    // OAuth未設定/チャンネルID不明/配信監視なしのいずれでもローカルBANは維持する
+    if (action !== 'ban') {
+      return res.json({ status: 200, data: null, message: 'User updated' });
+    }
+    db.get(
+      "SELECT author_channel_id FROM comments WHERE (user = ? OR user = (SELECT username FROM users WHERE id = ?)) AND platform = 'youtube' AND author_channel_id IS NOT NULL ORDER BY timestamp DESC LIMIT 1",
+      [id, id],
+      async (lookupErr, row) => {
+        let platformBan = { attempted: false, ok: false, reason: 'author_channel_id_unknown' };
+        if (!lookupErr && row?.author_channel_id) {
+          try {
+            // eslint-disable-next-line global-require
+            const youtubeIngestionService = require('../services/youtubeIngestionService');
+            platformBan = await youtubeIngestionService.banUserOnActiveChats(row.author_channel_id, {
+              type: banUntil ? 'temporary' : 'permanent',
+              durationSeconds: duration || 3600
+            });
+          } catch (banErr) {
+            platformBan = { attempted: true, ok: false, reason: 'error', error: banErr.message };
+          }
+        }
+        if (!platformBan.ok) {
+          logger.warn('[Users] Local ban applied but platform write-back did not', { id, reason: platformBan.reason });
+        }
+        res.json({
+          status: 200,
+          data: { platformBan },
+          message: platformBan.ok ? 'User banned locally and on the platform' : 'User updated (platform ban not applied)'
+        });
+      }
+    );
   });
 };
 

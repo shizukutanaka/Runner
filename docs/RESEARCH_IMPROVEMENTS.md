@@ -413,7 +413,8 @@ R-22/R-22b で検知とリアルタイム通知までは実装したが、対応
   | 識別子なし（HTTP投稿） | `attempted:false, reason:missing_platform_message_id` | ✅ deleted |
   | 識別子あり（YouTube取込相当） | `attempted:true, ok:false, reason:oauth_not_configured` | ✅ deleted |
 - **残るのは資格情報のみ**: `YOUTUBE_CLIENT_ID`/`SECRET`/`REFRESH_TOKEN`（`youtube.force-ssl` スコープ）を設定すれば、コード変更なしに書き戻しが有効化される。**コード側の欠落は解消済み**
-- **未配線（次段）**: BANの書き戻し（`banUser`）は実装済みだが `usersController` のBAN経路からはまだ呼んでいない。保留却下経路も同様
+- **✅ R-28b BAN書き戻しも配線完了（同日）**: `banUserOnActiveChats(authorChannelId, options)` を追加し、`usersController.updateUser` のBAN経路から呼ぶようにした。BANには対象の**チャンネルID**が必要だが `users` テーブルには存在しないため、**直近のコメントから `author_channel_id` を引く**。監視中のライブチャット全てに適用し、チャットごとの結果を返す（実運用では同時配信は1本のことが多い）。レスポンスに `platformBan {attempted, ok, reason, results}` を含め、メッセージも「ローカルのみ」「プラットフォームにも反映」を区別。**実サーバー検証**: 管理者権限でBAN実行 → `platformBan: {attempted:false, reason:'oauth_not_configured'}`（＝チャンネルID検索は成功。失敗なら `author_channel_id_unknown` が返る）、`users.status='ban'` とローカルBANは維持
+- **残る未配線**: 保留メッセージ却下時の書き戻し（`held_messages` は `platform_message_id` を持たないため、保留時に識別子を保存する変更が先に必要）
 - **検証**: 単体テスト5件（OAuth未設定時に例外を投げずフェイルセーフに振る舞うこと）。フルスイート **0 failed / 520 passed**
 
 ---

@@ -83,6 +83,29 @@ class YouTubeIngestionService {
     return this.writeClient;
   }
 
+  // R-28b: 監視中の全ライブチャットに対してBANを適用する。
+  // BANは「どのライブチャットか」を指定する必要があるが、モデレーターは通常
+  // 「このユーザーをBAN」としか指示しない。実運用では配信は同時に1本のことが多いため、
+  // 監視中のチャット全てに適用し、チャットごとの結果を返す
+  async banUserOnActiveChats(authorChannelId, options = {}) {
+    if (!this.canWriteBack()) {
+      return { attempted: false, ok: false, reason: 'oauth_not_configured', results: [] };
+    }
+    if (!authorChannelId) {
+      return { attempted: false, ok: false, reason: 'missing_author_channel_id', results: [] };
+    }
+    const chats = Array.from(this.watches.values()).map((w) => w.liveChatId).filter(Boolean);
+    if (chats.length === 0) {
+      return { attempted: false, ok: false, reason: 'no_active_live_chat', results: [] };
+    }
+    const results = [];
+    for (const liveChatId of chats) {
+      // eslint-disable-next-line no-await-in-loop
+      results.push({ liveChatId, ...(await this.banUser(liveChatId, authorChannelId, options)) });
+    }
+    return { attempted: true, ok: results.some((r) => r.ok), results };
+  }
+
   canWriteBack() {
     return Boolean(this._getWriteClient());
   }
