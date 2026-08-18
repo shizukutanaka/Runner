@@ -13,11 +13,3 @@ const handleYoutubeAPIError = (error, defaultMessage) => {
   throw new APIError(error.message || defaultMessage, 500);
 };
 
-export const findRelatedVideosFromComments = async (comments) => {
-  try {
-    const res = await axios.post('/api/youtube/related-videos', { comments });
-    return res.data;
-  } catch (error) {
-    handleYoutubeAPIError(error, '関連動画の取得に失敗しました');
-  }
-};

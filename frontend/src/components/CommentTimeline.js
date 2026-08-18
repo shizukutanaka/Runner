@@ -27,8 +27,6 @@ import { useRealtimeComments } from '../hooks/useRealtimeComments';
 import { postComment, updateComment, fetchAutoAnswer, fetchCommentsSummary, fetchComments } from '../api/comments';
 import { useTranslation } from 'react-i18next';
 import CommentItem from './CommentItem'; // 新しくインポート
-import RelatedVideosDialog from './RelatedVideosDialog';
-import RelatedPapersDialog from './RelatedPapersDialog';
 
 const STATUS_VALUES = ['all', 'visible', 'hidden', 'flagged', 'deleted'];
 
@@ -150,8 +148,6 @@ export default function CommentTimeline({ platform = 'youtube' }) {
   const [searchRefreshKey, setSearchRefreshKey] = useState(0);
   const [statusMenu, setStatusMenu] = useState({ anchor: null, commentId: null });
   const [statusError, setStatusError] = useState(null);
-  const [relatedVideosDialog, setRelatedVideosDialog] = useState({ open: false, comment: null });
-  const [relatedPapersDialog, setRelatedPapersDialog] = useState({ open: false, comment: null });
   const { t, i18n } = useTranslation();
 
   const {
@@ -353,21 +349,9 @@ export default function CommentTimeline({ platform = 'youtube' }) {
     }
   }, [refetch]);
 
-  const handleSuggestRelatedVideos = useCallback((comment) => {
-    setRelatedVideosDialog({ open: true, comment });
-  }, []);
 
-  const handleCloseRelatedVideosDialog = useCallback(() => {
-    setRelatedVideosDialog({ open: false, comment: null });
-  }, []);
 
-  const handleSuggestRelatedPapers = useCallback((comment) => {
-    setRelatedPapersDialog({ open: true, comment });
-  }, []);
 
-  const handleCloseRelatedPapersDialog = useCallback(() => {
-    setRelatedPapersDialog({ open: false, comment: null });
-  }, []);
 
   const handleGenerateReply = useCallback(async (commentId, content) => {
     setAnsweringId(commentId);
@@ -715,8 +699,6 @@ export default function CommentTimeline({ platform = 'youtube' }) {
                     onDelete={handleDelete}
                     onStatusChange={handleStatusUpdate}
                     onGenerateReply={handleGenerateReply}
-                    onSuggestRelatedVideos={handleSuggestRelatedVideos}
-                    onSuggestRelatedPapers={handleSuggestRelatedPapers}
                     isReplying={answeringId === c.id}
                     aiReply={aiAnswer[c.id]}
                     formatTimestamp={formatTimestamp}
@@ -728,26 +710,6 @@ export default function CommentTimeline({ platform = 'youtube' }) {
           />
         ) : null}
       </Box>
-
-      {/* 関連動画ダイアログ */}
-      <RelatedVideosDialog
-        open={relatedVideosDialog.open}
-        onClose={handleCloseRelatedVideosDialog}
-        comment={relatedVideosDialog.comment}
-        onVideoSelect={(_video) => {
-          // 選択後の追加処理はここで実装
-        }}
-      />
-
-      {/* 関連論文ダイアログ */}
-      <RelatedPapersDialog
-        open={relatedPapersDialog.open}
-        onClose={handleCloseRelatedPapersDialog}
-        comment={relatedPapersDialog.comment}
-        onPaperSelect={(_paper) => {
-          // 選択後の追加処理はここで実装
-        }}
-      />
     </Box>
   );
 }

@@ -42,8 +42,6 @@ export default function CommentItem({
   onDelete,
   onStatusChange,
   onGenerateReply,
-  onSuggestRelatedVideos,
-  onSuggestRelatedPapers,
   isReplying,
   aiReply,
   formatTimestamp,
@@ -139,22 +137,7 @@ export default function CommentItem({
               >
                 {t('ai_reply', 'AI Reply')}
               </Button>
-              <Button 
-                size="small" 
-                startIcon={<VideoLibraryIcon />}
-                onClick={() => onSuggestRelatedVideos(comment)}
-                title={t('suggest_related_videos', 'Suggest Related Videos')}
-              >
-                {t('related_videos', 'Related Videos')}
-              </Button>
-              <Button 
-                size="small" 
-                startIcon={<ArticleIcon />}
-                onClick={() => onSuggestRelatedPapers(comment)}
-                title={t('suggest_related_papers', 'Suggest Related Papers')}
-              >
-                {t('related_papers', 'Related Papers')}
-              </Button>
+              
             </Stack>
           </Box>
 
