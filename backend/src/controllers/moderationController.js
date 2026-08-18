@@ -32,24 +32,6 @@ exports.updateSettings = (req, res, next) => {
 
 
 
-// AI判定の再学習API
-exports.retrainModel = async (req, res, next) => {
-  try {
-    const { trainingData } = req.body;
-    if (!trainingData || !Array.isArray(trainingData)) {
-      return next({ status: 400, message: '有効なトレーニングデータを指定してください' });
-    }
-    // 実際の実装ではモデルの再学習処理を実装
-    // const modelInfo = await moderationService.retrainModel(trainingData);
-    res.json({ 
-      status: 200, 
-      data: { /* modelInfo */ }, 
-      message: 'AIモデルの再学習が完了しました' 
-    });
-  } catch (err) {
-    next({ status: 500, message: 'モデルの再学習中にエラーが発生しました', details: err });
-  }
-};
 
 
 

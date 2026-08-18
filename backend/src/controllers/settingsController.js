@@ -1015,11 +1015,14 @@ exports.exportSettings = (req, res, next) => {
           message: '設定をエクスポートしました' 
         });
       } else {
-        // YAMLやTOMLの場合は文字列に変換して返す
-        // 実際の実装では、yamlやtomlのパッケージを使用する
-        res.setHeader('Content-Type', 'text/plain');
-        res.setHeader('Content-Disposition', `attachment; filename=settings.${format}`);
-        res.send(JSON.stringify(exportData, null, 2));
+        // 旧実装は YAML/TOML を要求されると **中身はJSONのまま** `settings.yaml` という
+        // ファイル名で返していた。利用者は拡張子どおりの形式だと信じてパースし失敗する。
+        // 変換ライブラリを導入していない以上、対応していないと明示するのが正しい
+        res.status(400).json({
+          status: 400,
+          message: `形式 '${format}' には対応していません（現在サポートするのは json のみです）`,
+          supportedFormats: ['json']
+        });
       }
       
     } catch (parseErr) {

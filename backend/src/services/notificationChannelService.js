@@ -344,7 +344,7 @@ class NotificationChannelService {
    * チャネル別のレート制限をチェック（静的メソッド）
    */
   static async checkRateLimit(channelId, userId) {
-    // 実際の実装ではDBからレート制限を取得
+    // 配信数は下記のとおり実際にDBから集計する。上限値のみコード内定数
     const sql = `
       SELECT COUNT(*) as count FROM notification_deliveries
       WHERE channel_id = ? AND user_id = ? AND created_at > datetime('now', '-1 minute')

@@ -960,7 +960,9 @@ const escalationFor = (violations) => {
 
 const checkMessageHold = async (content, moderationResult, platform, user) => {
   try {
-    // 保留設定が有効かチェック（実際の実装ではDBから取得）
+    // 保留のしきい値。現状はコード内定数（実際に判定へ使われる実値であり
+    // プレースホルダではない）。運用者がUIから調整できるようにする場合は
+    // 設定テーブルからの読み込みに置き換える
     const holdSettings = {
       enabled: true,
       aiScoreThreshold: 0.6,

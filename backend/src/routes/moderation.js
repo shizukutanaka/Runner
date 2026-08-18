@@ -14,7 +14,6 @@ router.put('/settings', requireRole('admin'), validate(moderationSchema.updateSe
 // AI判定自動学習ON/OFF
 // AI判定モデル切替
 // AI判定の再学習API
-router.post('/retrain', requireRole('admin'), moderationController.retrainModel);
 // AI判定の説明表示
 // AI判定結果のエクスポート
 // NGワード自動収集API
