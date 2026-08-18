@@ -101,6 +101,12 @@ const config = {
     },
     youtube: {
       apiKey: process.env.YOUTUBE_API_KEY,
+      // R-28: 書き戻し（削除/BAN）用のOAuth2認証情報。読み取りはAPIキーで足りるが、
+      // liveChatMessages.delete / liveChatBans.insert には youtube.force-ssl スコープの
+      // OAuth2が必須。未設定なら書き込み機能のみ無効化される（取り込みは通常動作）
+      clientId: process.env.YOUTUBE_CLIENT_ID,
+      clientSecret: process.env.YOUTUBE_CLIENT_SECRET,
+      refreshToken: process.env.YOUTUBE_REFRESH_TOKEN,
       pollingInterval: parseInt(process.env.YOUTUBE_POLLING_INTERVAL) || 5000,
       maxResults: parseInt(process.env.YOUTUBE_MAX_RESULTS) || 100
     },

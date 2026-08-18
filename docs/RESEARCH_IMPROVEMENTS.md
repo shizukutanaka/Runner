@@ -395,6 +395,27 @@ R-22/R-22b で検知とリアルタイム通知までは実装したが、対応
 - **関連ソフトウェアとの残差（未実装）**: リンクの `permit` 一時許可コマンド（モデレーターが特定ユーザーに一時的にリンク投稿を許可する機能）。コマンド体系と一時状態の設計が必要なため次段
 - **出典**: R-26と同じ比較記事（https://streamingequip.com/en/blog/best-streaming-chatbot/ 他）
 
+### R-28. プラットフォーム書き戻しの実装（2026-08-15・R-20の中核欠落をコード側で解消）
+
+**イーロン・マスク式アルゴリズムのステップ1「要求を疑え」を適用した結果の着手**。R-20で「OAuth資格情報が無いから実装できない」として保留していたが、要求を分解すると **「資格情報が無い」ことと「コードが無い」ことは別問題**だった。資格情報は運用judgmentだが、コードは今書ける。
+
+- **実装内容**:
+  - `config.services.youtube` に `clientId`/`clientSecret`/`refreshToken` を追加（`.env.example` にも解説付きで追記）
+  - `youtubeIngestionService` に **認証の用途分離**を導入: 読み取りは従来どおりAPIキー、書き込みは OAuth2 クライアント（`_getWriteClient()`）。**APIキーでは `liveChatMessages.delete` / `liveChatBans.insert` は原理的に実行できない**ため
+  - `deleteLiveChatMessage(platformMessageId)` / `banUser(liveChatId, authorChannelId, {type,durationSeconds})` を実装
+  - **クォータ会計**: 書き込みは50ユニット/回として `QUOTA_COST` に追加し、取り込みと**同一の日次カウンタ**で管理（書き込みが取り込み予算を食い潰さないように）
+  - `commentsController` の削除経路から呼び出し。**循環参照（commentsController ⇄ youtubeIngestionService）を避けるため遅延require**を使用
+- **透明性の設計（重要）**: 削除レスポンスに `platformDeletion: {attempted, ok, reason}` を必ず含め、メッセージも「ローカルのみ」か「プラットフォームにも反映」かを区別する。**「ダッシュボードでは消えたがYouTubeでは残っている」状態を黙って作らない**ことが目的
+- **フェイルセーフ規約の遵守**: OAuth未設定/識別子なし/クォータ超過のいずれでも**ローカル削除は必ず維持**し、取り込みも通常動作する
+- **実サーバーで判定木を全経路検証**:
+  | ケース | platformDeletion | ローカル削除 |
+  |---|---|---|
+  | 識別子なし（HTTP投稿） | `attempted:false, reason:missing_platform_message_id` | ✅ deleted |
+  | 識別子あり（YouTube取込相当） | `attempted:true, ok:false, reason:oauth_not_configured` | ✅ deleted |
+- **残るのは資格情報のみ**: `YOUTUBE_CLIENT_ID`/`SECRET`/`REFRESH_TOKEN`（`youtube.force-ssl` スコープ）を設定すれば、コード変更なしに書き戻しが有効化される。**コード側の欠落は解消済み**
+- **未配線（次段）**: BANの書き戻し（`banUser`）は実装済みだが `usersController` のBAN経路からはまだ呼んでいない。保留却下経路も同様
+- **検証**: 単体テスト5件（OAuth未設定時に例外を投げずフェイルセーフに振る舞うこと）。フルスイート **0 failed / 520 passed**
+
 ---
 
 ## 検証（本ブランチで実施済みの R-1/R-3/R-5a/R-5補足/R-10/R-11/R-12/R-14/R-18/R-19）

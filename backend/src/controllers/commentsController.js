@@ -777,6 +777,29 @@ const deleteComment = asyncHandler(async (req, res, next) => {
       throw notFoundError();
     }
 
+    // R-28: プラットフォーム側へ削除を書き戻す。
+    // これが無いと「ダッシュボードでは削除済み・YouTube上では見えたまま」という
+    // 製品の中核価値が成立しない状態になる（R-20の第一原理分析で発見した欠落）。
+    // OAuth未設定・識別子なし・クォータ超過のいずれでも**ローカル削除は維持**し、
+    // 結果を platformDeletion としてレスポンスに含めて透明性を担保する
+    let platformDeletion = { attempted: false, ok: false, reason: 'not_attempted' };
+    if (existing.platform === 'youtube' && existing.platform_message_id) {
+      // 遅延require: youtubeIngestionService は commentsController を require するため、
+      // トップレベルで読むと循環参照になり一方が未初期化のまま解決される
+      // eslint-disable-next-line global-require
+      const youtubeIngestionService = require('../services/youtubeIngestionService');
+      platformDeletion = { attempted: true, ...(await youtubeIngestionService.deleteLiveChatMessage(existing.platform_message_id)) };
+      if (!platformDeletion.ok) {
+        logger.warn('[Comments] Local delete succeeded but platform write-back did not', {
+          id, reason: platformDeletion.reason
+        });
+      }
+    } else if (existing.platform === 'youtube') {
+      platformDeletion.reason = 'missing_platform_message_id';
+    } else {
+      platformDeletion.reason = 'unsupported_platform';
+    }
+
     // 削除履歴を記録
     await dbRun(`
       INSERT INTO comment_deletion_history
@@ -804,9 +827,15 @@ const deleteComment = asyncHandler(async (req, res, next) => {
         reasonCategory: value.reasonCategory,
         moderatorId,
         deletedAt: timestamp,
-        evidence: value.evidence
+        evidence: value.evidence,
+        // R-28: プラットフォーム側へ実際に反映できたかを必ず返す。
+        // 「ダッシュボードでは消えたがYouTubeでは残っている」状態を
+        // モデレーターが検知できるようにするため（黙って失敗させない）
+        platformDeletion
       },
-      message: 'Comment deleted with reason recorded'
+      message: platformDeletion.ok
+        ? 'Comment deleted locally and on the platform'
+        : 'Comment deleted locally (platform write-back not applied)'
     });
 
   } catch (err) {

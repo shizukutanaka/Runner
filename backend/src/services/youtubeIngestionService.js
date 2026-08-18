@@ -6,7 +6,11 @@ const commentsController = require('../controllers/commentsController');
 // YouTube Data API v3 の公式クォータコスト（ユニット単位）
 const QUOTA_COST = {
   VIDEOS_LIST: 1,
-  LIVE_CHAT_MESSAGES_LIST: 5
+  LIVE_CHAT_MESSAGES_LIST: 5,
+  // R-28: 書き込み操作。YouTube Data API では作成/更新/削除は概ね50ユニット。
+  // 読み取り用の予算を食い潰さないよう、読み取りと同じ日次カウンタで管理する
+  LIVE_CHAT_MESSAGES_DELETE: 50,
+  LIVE_CHAT_BANS_INSERT: 50
 };
 
 const DAILY_QUOTA_LIMIT = 10_000;
@@ -47,6 +51,99 @@ class YouTubeIngestionService {
       this.client = google.youtube({ version: 'v3', auth: this.apiKey });
     }
     return this.client;
+  }
+
+  // ─────────────────────────────────────────
+  // R-28: 書き戻し（モデレーション判断をYouTubeへ反映する）
+  //
+  // 読み取り（videos.list / liveChatMessages.list）はAPIキーで足りるが、
+  // **削除・BANはAPIキーでは不可能**で、OAuth2 + `youtube.force-ssl` スコープの
+  // ユーザー認証が必須である。したがって認証を用途別に分ける:
+  //   - 読み取り: APIキー（従来どおり）
+  //   - 書き込み: OAuth2クライアント（未設定なら書き込み機能のみ無効）
+  //
+  // フェイルセーフ規約: OAuth未設定でもサービスは通常どおり起動し取り込みを続ける。
+  // 書き込みを要求された場合のみ「未設定」を返し、呼び出し側はローカル更新に留める。
+  // ─────────────────────────────────────────
+  _getWriteClient() {
+    if (this.writeClient !== undefined) {
+      return this.writeClient;
+    }
+    const { clientId, clientSecret, refreshToken } = config.services.youtube;
+    if (!clientId || !clientSecret || !refreshToken) {
+      logger.warn('[YouTubeIngestion] OAuth not configured - platform write-back is disabled '
+        + '(set YOUTUBE_CLIENT_ID / YOUTUBE_CLIENT_SECRET / YOUTUBE_REFRESH_TOKEN)');
+      this.writeClient = null;
+      return null;
+    }
+    const oauth2 = new google.auth.OAuth2(clientId, clientSecret);
+    oauth2.setCredentials({ refresh_token: refreshToken });
+    this.writeClient = google.youtube({ version: 'v3', auth: oauth2 });
+    logger.info('[YouTubeIngestion] OAuth configured - platform write-back enabled');
+    return this.writeClient;
+  }
+
+  canWriteBack() {
+    return Boolean(this._getWriteClient());
+  }
+
+  /**
+   * ライブチャットのメッセージをYouTube上から削除する。
+   * @param {string} platformMessageId 取込時に保存した YouTube 側のメッセージID
+   */
+  async deleteLiveChatMessage(platformMessageId) {
+    const client = this._getWriteClient();
+    if (!client) return { ok: false, reason: 'oauth_not_configured' };
+    if (!platformMessageId) return { ok: false, reason: 'missing_platform_message_id' };
+
+    if (!this._consumeQuota(QUOTA_COST.LIVE_CHAT_MESSAGES_DELETE)) {
+      return { ok: false, reason: 'quota_exceeded' };
+    }
+    try {
+      await client.liveChatMessages.delete({ id: platformMessageId });
+      logger.info('[YouTubeIngestion] Deleted live chat message on platform', { platformMessageId });
+      return { ok: true };
+    } catch (err) {
+      logger.error('[YouTubeIngestion] Failed to delete live chat message', {
+        platformMessageId, error: err.message
+      });
+      return { ok: false, reason: 'api_error', error: err.message };
+    }
+  }
+
+  /**
+   * ユーザーをライブチャットからBAN（またはタイムアウト）する。
+   * @param {string} liveChatId  対象ライブチャットID
+   * @param {string} authorChannelId 取込時に保存した著者のチャンネルID
+   * @param {{type?:string, durationSeconds?:number}} options
+   */
+  async banUser(liveChatId, authorChannelId, options = {}) {
+    const client = this._getWriteClient();
+    if (!client) return { ok: false, reason: 'oauth_not_configured' };
+    if (!liveChatId || !authorChannelId) {
+      return { ok: false, reason: 'missing_identifiers' };
+    }
+
+    if (!this._consumeQuota(QUOTA_COST.LIVE_CHAT_BANS_INSERT)) {
+      return { ok: false, reason: 'quota_exceeded' };
+    }
+    const banType = options.type === 'temporary' ? 'temporary' : 'permanent';
+    const snippet = {
+      liveChatId,
+      type: banType,
+      bannedUserDetails: { channelId: authorChannelId }
+    };
+    if (banType === 'temporary') {
+      snippet.banDurationSeconds = String(options.durationSeconds || 300);
+    }
+    try {
+      await client.liveChatBans.insert({ part: ['snippet'], requestBody: { snippet } });
+      logger.info('[YouTubeIngestion] Banned user on platform', { authorChannelId, banType });
+      return { ok: true, banType };
+    } catch (err) {
+      logger.error('[YouTubeIngestion] Failed to ban user', { authorChannelId, error: err.message });
+      return { ok: false, reason: 'api_error', error: err.message };
+    }
   }
 
   _resetQuotaIfNewDay() {
