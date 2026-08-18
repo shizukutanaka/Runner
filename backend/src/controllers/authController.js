@@ -6,6 +6,7 @@ const validator = require('validator');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const logger = require('../logger');
+const config = require('../config');
 const { generateToken } = require('../middleware/auth');
 
 // bcryptコスト。本番は12だが、テスト環境では1ハッシュ約1秒かかり
@@ -249,9 +250,11 @@ exports.refresh = async (req, res, next) => {
   }
 };
 
-// パスワードリセット要求（メール送信は未設定のため、トークン発行のみ実施）
+// パスワードリセット要求
 exports.forgotPassword = async (req, res, next) => {
   const { email } = req.body;
+  // SMTPが設定されていて実際に送信できた場合のみ true。応答文言をこれで切り替える
+  let emailDelivered = false;
 
   try {
     const account = await dbGet('SELECT id FROM accounts WHERE email = ?', [email]);
@@ -268,10 +271,51 @@ exports.forgotPassword = async (req, res, next) => {
       );
 
       logger.info('[Auth] Password reset token issued', { id: account.id });
-      // 実際の実装ではここでメール送信サービスを呼び出す
+
+      // リセットメールを実際に送信する。
+      // 旧実装はトークンを発行するだけでメールを送らないのに
+      // 「メールを送信しました」と応答しており、**ユーザーは永遠に届かないメールを待つ**
+      // ことになっていた（アカウント復旧が黙って壊れている状態）。
+      // SMTP未設定時は notificationChannelService 側がシミュレーションに
+      // フォールバックするため、その場合は応答メッセージも正直な文言に変える
+      // SMTP_HOST が設定されている場合のみ実際に送信する。
+      // 通知サービス(notificationChannelService)は通知チャネル設定テーブルに
+      // 依存しており、パスワードリセットには不要な結合なので nodemailer を直接使う
+      const smtpHost = config.getEnv('SMTP_HOST');
+      if (smtpHost) {
+        try {
+          // eslint-disable-next-line global-require
+          const nodemailer = require('nodemailer');
+          const transporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: parseInt(config.getEnv('SMTP_PORT', '587'), 10),
+            secure: config.getEnv('SMTP_SECURE') === 'true',
+            auth: config.getEnv('SMTP_USER')
+              ? { user: config.getEnv('SMTP_USER'), pass: config.getEnv('SMTP_PASS') }
+              : undefined
+          });
+          await transporter.sendMail({
+            from: config.getEnv('SMTP_FROM', 'no-reply@localhost'),
+            to: email,
+            subject: 'パスワードリセットのご案内',
+            text: `以下のトークンでパスワードを再設定してください（有効期限 ${Math.round(RESET_TOKEN_TTL_MS / 60000)} 分）:\n\n${rawToken}`
+          });
+          emailDelivered = true;
+          logger.info('[Auth] Password reset email sent', { id: account.id });
+        } catch (mailErr) {
+          // 送信失敗でリセット要求自体を失敗させない（トークンは発行済み）
+          logger.error('[Auth] Failed to send password reset email', { error: mailErr.message });
+        }
+      }
     }
 
-    res.json({ success: true, message: 'パスワードリセット手順を記載したメールを送信しました（該当アカウントが存在する場合）' });
+    res.json({
+      success: true,
+      emailDelivered,
+      message: emailDelivered
+        ? 'パスワードリセット手順を記載したメールを送信しました（該当アカウントが存在する場合）'
+        : 'パスワードリセットを受け付けました。※メール送信が未設定のため、管理者にお問い合わせください'
+    });
   } catch (err) {
     logger.error('[Auth] Forgot-password failed', { error: err.message });
     next({ status: 500, message: 'パスワードリセット要求の処理中にエラーが発生しました', details: err });
