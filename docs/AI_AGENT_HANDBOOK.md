@@ -80,6 +80,7 @@
 
 ## 4. 環境の罠（リモート実行環境固有・実測済み）
 
+- **`node_modules` が予告なく消える**（本セッションで3回発生。ディスク回収と推定）。テストが「全suite失敗・0 tests」や `Cannot find module 'joi'` になったらまずこれを疑う。復旧: `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --nodedir=/opt/node22 --no-audit --no-fund`（nodejs.orgヘッダDLとChromium DLがプロキシ403のため両オプション必須）。frontend側は `.bin` シンリンクが欠けて `npx eslint` が**リモートの最新v10へフォールバックしてクラッシュ**することがある→ `npm install` で復元
 - `pkill` が **exit 144** を返し `&&` チェーンを壊す → kill と後続確認を**別々のコマンド**に分割する
 - Edit ツールが日本語/`\uXXXX` エスケープ混在ファイルで「not found」を起こすことがある → **python3 ヒアドキュメント**による置換にフォールバック
 - バックグラウンド起動は `nohup <cmd> > <log> 2>&1 &` + `disown` を**単独コマンド**で実行し、ログファイルを直接 tail する（ツールの自動出力キャプチャは空になることがある）
