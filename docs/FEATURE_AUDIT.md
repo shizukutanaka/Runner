@@ -130,11 +130,12 @@ D-8（文化プロファイル/文脈分析UI）実装後、指示通り実際�
 - **検証**: 3テスト全て合格
 - **再検証**: `test -f backend/tests/services/encryptionService.test.js` → 存在すれば修正済み
 
-### E-8. 正直なスタブルート群（低優先）
+### E-8. ✅ 解決済み（2026-08-15/18） — 「正直なスタブ」は正直ではなかった
 
-- **ファイル**: `backend/src/routes/youtube.js`, `papers.js`, `advancedAIServices.js`, `innovativeTechnologies.js`, `integratedAnalysis.js`
-- **証拠**: 「configure YOUTUBE_API_KEY to enable」等と明記して空データを返す誠実なスタブ。認証は追加済み
-- **推奨アクション**: 現状維持可。youtube.js は不足D-2の実装時に本実装へ置換
+- **元の記述**: `papers.js` 等を「空データを返す誠実なスタブ」と評価し **現状維持可** としていた。この評価が誤りだった
+- **なぜ誤りか**: これらは **200 + 空配列** を返しており、フロントはそれを成功として扱って「関連論文が見つかりませんでした」と表示していた。つまり利用者には「検索した結果0件」に見え、**検索が一度も実行されていない事実が隠れていた**。さらに案内していた `SEMANTIC_SCHOLAR_API_KEY` を読むコードはリポジトリに存在せず、キーを設定しても何も起こらない（実現不可能な約束）
+- **実施した対応**: `papers.js` と `youtube.js` の `related-videos` は **UI/APIごと削除**（R-21/W-13）。`advancedAIServices.js` `innovativeTechnologies.js` `integratedAnalysis.js` はフロント参照ゼロのプレースホルダのため削除（R-21）。`youtube.js` 本体は D-2 実装済みで**実取込が動作**し、R-28で書き戻しも実装済み
+- **教訓（次のセッションへ）**: 「未実装だが正直に空を返す」は、**HTTPステータスが成功のままなら正直ではない**。未実装は 501 + `implemented:false` を返すか、機能ごと削除すること
 
 ### E-9. ✅ 解決済み（2026-07-07） — uiController.js自認ダミーAPI群を全削除（フロントも含め二重に無効だった）
 
