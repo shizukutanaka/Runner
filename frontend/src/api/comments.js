@@ -74,14 +74,30 @@ axios.interceptors.request.use(
 
 // レスポンスインターセプター:
 // 401受信時、まだ再試行していないリクエストに限り一度だけリフレッシュを試み、
-// 成功すれば元のリクエストを新しいトークンで再実行する。失敗時のみログイン画面へ。
+// 成功すれば元のリクエストを再実行する。失敗時のみログイン画面へ。
+//
+// **D-7 で踏んだ無限ループ**: Cookie方式では未ログインか否かをJSから判定できないため、
+// `useAuth` は起動時に必ず `GET /users/me` を投げる。ログイン画面では当然401になり、
+// このインターセプタが「リフレッシュ→失敗→/login へ遷移」を実行し、
+// 遷移先で再び `useAuth` が走って**リロードが永久に繰り返される**（実測で確認）。
+// 対策は2つ:
+//   1. セッション確認の問い合わせは `_isSessionProbe` を立てて再試行対象から外す
+//   2. 既に /login にいる場合は遷移しない（そもそもループの余地を無くす）
+const redirectToLogin = () => {
+  if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+    window.location.href = '/login';
+  }
+};
+
 axios.interceptors.response.use(
   (response) => response,
   async (error) => {
     const { config, response } = error;
     const isAuthEndpoint = config?.url?.includes('/users/login') || config?.url?.includes('/users/refresh');
+    const isSessionProbe = Boolean(config?._isSessionProbe);
 
-    if (response?.status === 401 && config && !config._retriedAfterRefresh && !isAuthEndpoint) {
+    if (response?.status === 401 && config && !config._retriedAfterRefresh
+        && !isAuthEndpoint && !isSessionProbe) {
       config._retriedAfterRefresh = true;
       // 循環import回避のため動的import（auth.jsはcomments.jsのAPIErrorを参照するため）
       const { refreshAccessToken } = await import('./auth');
@@ -94,12 +110,13 @@ axios.interceptors.response.use(
       }
 
       // D-7: Cookieの失効はサーバー側で行われる。クライアントは遷移するだけ
-      window.location.href = '/login';
+      redirectToLogin();
       return Promise.reject(error);
     }
 
-    if (response?.status === 401) {
-      window.location.href = '/login';
+    // セッション確認の401は「未ログイン」を意味するだけなので、遷移も再試行もしない
+    if (response?.status === 401 && !isSessionProbe) {
+      redirectToLogin();
     }
     return Promise.reject(error);
   }

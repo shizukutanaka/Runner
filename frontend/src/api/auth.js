@@ -62,9 +62,14 @@ export const register = async (username, email, password) => {
   }
 };
 
-export const fetchCurrentAccount = async () => {
+// D-7: Cookie方式では「ログイン済みか」をJSから判定できないため、
+// これが唯一の判定手段になる。起動時に必ず呼ばれ、未ログインなら401が返る。
+// `_isSessionProbe` を立てるのは、その401をインターセプタが
+// 「リフレッシュ→失敗→/loginへ遷移」と解釈して無限ループになるのを防ぐため
+// （sessionProbe: false を渡すと通常のAPI呼び出しと同じ扱いになる）
+export const fetchCurrentAccount = async ({ sessionProbe = true } = {}) => {
   try {
-    const res = await axios.get(`${API_BASE_URL}/users/me`);
+    const res = await axios.get(`${API_BASE_URL}/users/me`, { _isSessionProbe: sessionProbe });
     return res.data;
   } catch (error) {
     handleAuthAPIError(error, 'アカウント情報の取得に失敗しました');

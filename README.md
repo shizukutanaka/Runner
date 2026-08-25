@@ -226,7 +226,7 @@ npm run dev
 #### Docker Composeを使用したデプロイ
 
 `backend` / `frontend` / `redis` の3コンテナ構成です。フロントエンドのnginxが
-`/api` と `/socket.io` をバックエンドへプロキシするため、外部に開くポートは1つだけです。
+TLSを終端し、`/api` と `/socket.io` をバックエンドへプロキシします。
 
 ```bash
 # 環境変数設定
@@ -243,7 +243,14 @@ docker compose logs -f
 docker compose ps
 ```
 
-起動後は `http://localhost:8080`（`FRONTEND_PORT` で変更可）でアクセスします。
+起動後は **`https://localhost:8443`**（`FRONTEND_PORT` で変更可）でアクセスします。
+80番（`FRONTEND_HTTP_PORT`、既定8080）はヘルスチェック用で、それ以外はHTTPSへリダイレクトします。
+
+**HTTPSが必須である理由**: 認証トークンは `Secure` 属性付きの httpOnly Cookie で持たせているため、
+平文HTTPではブラウザがCookieを保存せず**ログインできません**。
+証明書を用意していない場合、フロントエンドのコンテナが起動時に自己署名証明書を生成するので
+そのままでも動作確認はできます（ブラウザの警告を承認する必要があります）。
+**本番では `./certs/` に `fullchain.pem` と `privkey.pem` を置いて差し替えてください。**
 
 #### スケーリングについて
 
