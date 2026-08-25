@@ -81,19 +81,20 @@ D-8（文化プロファイル/文脈分析UI）実装後、指示通り実際�
 
 ## 第1部: 過剰（作られたが機能していない・重複・偽装）
 
-### E-1. moderationController の大量スタブ関数 【アプリ最大の偽装面】
+### E-1. ✅ 解決済み（2026-08-18） — moderationController の大量スタブ関数
 
 - **ファイル**: `backend/src/controllers/moderationController.js`
 - **証拠**: 35箇所の「実際の実装では〜」コメント。`setThresholds`, `getCustomFilters`, `analyzeSentiment`(統計側), `getChatbotSettings`, `translateText`, `getLinkBlockStats` など約35関数が静的ハードコードデータを返す。ルートは `routes/moderation.js` で認証付き公開済みのため、UIから呼べば**本物のAPIレスポンスの形をした偽データ**が返る
 - **推奨アクション**: 関数単位でトリアージ。(a) 対応するUIが存在しない・計画もないもの → ルートごと削除、(b) 必要なもの → moderationService / openaiService / 実DBに接続して本実装
-- **再検証**: `grep -c "実際の実装では" backend/src/controllers/moderationController.js` → 35前後なら未対応
+- **実施した対応**: UI側の利用有無で個別判断し、対応するUIが無く実装予定も無い32関数をルートごと削除（2,262行→934行）。残した関数は実DB・実サービスに接続済み
+- **再検証**: `grep -c "実際の実装では" backend/src/controllers/moderationController.js` → **現在0件**（35→0）
 
-### E-2. analyticsController の13ダミーエンドポイント
+### E-2. ✅ 解決済み（2026-08-18） — analyticsController の13ダミーエンドポイント
 
 - **ファイル**: `backend/src/controllers/analyticsController.js`
 - **証拠**: `getStats` / `getGraph` のみ実DB集計（修正済み）。残り13関数（`getPeriodStats`=100件固定, `getUserStats`, `getCommentStats`, `getModerationStats`, `exportAnalytics`("エクスポートダミー"), `importAnalytics`, `getHistory`, `externalIntegration`, `getUsage`=0.8固定, `getPeak`="12:00"固定, `getTrend`="up"固定, `getRanking`, `detectAnomaly`）は全てハードコード
-- **推奨アクション**: 実DB集計への置換、またはルート削除（`routes/analytics.js` の該当行も併せて削除）
-- **再検証**: `grep -c "ダミー" backend/src/controllers/analyticsController.js` → 9前後なら未対応（"ダミー"文言なしの固定値関数も含め計13）
+- **実施した対応**: 固定値を返していた関数は全て実DB集計に置換した（例: `getPeak` は `strftime('%H', timestamp)` で時間帯別に集計、`getTrend` は直近24時間とその前24時間のコメント数比較）。実装できない3つ（`exportAnalytics` / `importAnalytics` / `externalIntegration`）は**成功を装わず** `notImplemented()` として 501 を返す
+- **再検証**: `grep -n "^exports\." backend/src/controllers/analyticsController.js` で各関数を開き、固定値を返しているものが無いこと。ハードコードだった `getUsage`=0.8 / `getPeak`="12:00" / `getTrend`="up" が実集計になっていること
 
 ### E-3. △ 一部対応済み（2026-07-04） — tenantController危険機能の即時ガード + 追加発見
 
@@ -430,17 +431,48 @@ E-16（デプロイ資材）に続けて、`npm run` で叩ける経路とセッ
 | **D-4 保留メッセージキューUI新規実装** + **未発見だったルート欠落の修正**（`getHeldMessages`等はコントローラーのみ実装済みで`routes/moderation.js`に一度もルート登録されておらず404だった） | 2026-07-04 |
 | **E-4/E-6/E-7 クイックウィン削除・修正**（死角WebSocketクライアント削除、装飾的エンドポイント削除、壊れたテストを実サービスに向けて修正）・**D-11 ユーザー一覧API新規実装 + UserPanel実データ連動化 + api/users.jsのレスポンス封筒展開バグ修正（HTTPステータスコードがユーザー状態として表示されていた等）** | 2026-07-04 |
 
-## 推奨着手順（2026-07-10時点で最新）
+## 推奨着手順（2026-08-25時点で最新）
 
-**D-1/D-3/D-4/D-5/D-8/D-9/D-10〜D-14・E-3(部分)/E-4/E-6/E-7/E-9〜E-12は解決済み。D-9はテスト142件失敗→4件失敗まで到達し実質完了。D-8はUI2画面の実装に加え、実地ブラウザ検証で発覚した12件の重大バグ（追記5参照）も修正済み。**
-残るのは全て**製品判断が必要な大型項目**か、**明確に安全側に倒すために意図的に手を付けていない項目**のみ:
+**解決済み**: D-1/D-2/D-3/D-4/D-5/D-8〜D-14、E-1/E-2/E-4/E-6/E-7/E-9〜E-12/E-14/E-15/E-16/E-17、E-3は部分対応。
 
-1. **D-6 アカウント⇔チャンネル担当制 + E-3残課題（マルチテナント本実装）**: 両方ともスキーマ設計（`account_channels`/`tenant_id`をどこまで配線するか）の製品判断が必要。`routes/tenants.js`は危険な削除ロジックをガード済みだが意図的に未マウントのまま
-2. **D-7 httpOnly Cookie移行**: D-5（リフレッシュトークン）で足場は整っているが、CORS設定・フロント全体のトークン管理に影響する規模のため計画的に着手すること
-3. **Twitch連携**（D-2でYouTubeのみ実装、Twitch部分は未着手）。実装経路は EventSub WebSocket + `channel.chat.message` が現行の公式路線（IRCは不要）— 詳細は `docs/RESEARCH_IMPROVEMENTS.md` R-7 参照
-4. ~~**E-14 レート制限の有効化**~~ → **解決済み（2026-07-18・W-1）**。`config.rateLimit`に`enabled`（既定=本番のみ有効）等を追加。詳細はE-14の節を参照
-5. **E-1/E-2 の大量スタブ関数のトリアージ**: `moderationController.js`（約35関数）・`analyticsController.js`（13関数）がハードコード値を返す。UI側の利用有無で「本実装」か「削除」かを個別判断
-6. **D-9残り4件（`tests/api/settings.test.js`）**: `存在しないユーザー`404・`不正なユーザーID形式`400・`空の更新データ`400・`不正なテーマ値`400 — いずれもテストが期待する仕様が製品として未確定なため意図的に据え置き。製品として仕様を決めてから着手
-8. **E-5 Stripe課金**: バックエンド実装済みだがフロント接続ゼロ。課金機能を製品に含めるかの判断待ち
+残っているのは次の3種類だけである。**「まだ実装していない機能」はもう無く、
+残りは製品判断・環境制約・外部検証のいずれか**という状態になっている。
 
-**なお、AI/モデレーション機構の技術的な近代化（OpenAI omni-moderationへの更新、Policy-as-Prompt化、日本語有害性カバレッジ+回避対策、Twitch EventSub/Conduits、エモート認識、依存関係クリーンアップ、規制対応/DSA・情プラ法等）は最新論文・API動向にもとづき `docs/RESEARCH_IMPROVEMENTS.md`（R-1〜R-17）に分離して整理した。R-1/R-3/R-5a/R-10/R-11/R-12 は本ブランチで実施済み（この過程でカスタムフィルタ全滅バグ・NGワード回避可能な脆弱性を新規発見・修正）。**
+### A. 製品として決めないと着手できないもの（オーナー判断待ち）
+
+1. **D-6 アカウント⇔チャンネル担当制 + E-3残課題（マルチテナント本実装）**
+   `account_channels` / `tenant_id` をどこまで配線するかというスキーマ設計の判断が要る。
+   `routes/tenants.js` は危険な削除ロジックをガード済みだが意図的に未マウント
+2. **D-7 httpOnly Cookie移行**
+   D-5（リフレッシュトークン）で足場は整っている。**着手時はCSRF対策の導入が必須**
+   （現在CSRF対策が無いのは認証がBearerヘッダーのみだから。詳細はD-7の節）
+3. **E-5 Stripe課金**: バックエンド実装済み・フロント接続ゼロ。課金を製品に含めるかの判断待ち
+4. **D-9残り4件（`tests/api/settings.test.js`）**: テストが期待する仕様が製品として未確定
+
+### B. この実行環境では原理的に確認できないもの（手順と測定器は用意済み）
+
+5. **コンテナイメージのビルド**
+   Dockerデーモンは起動できるが、`registry-1.docker.io` / `auth.docker.io` /
+   `mirror.gcr.io` / `ghcr.io` / `quay.io` / `public.ecr.aws` のいずれもゲートウェイに
+   403で遮断されており、ベースイメージを取得できない。
+   nginx設定とアプリ間の疎通は実プロセスで確認済み（E-16参照）、
+   sqlite3のネイティブビルドも単独で確認済み。
+   **Docker Hubに到達できる環境で `docker compose up -d --build` を実行するだけ**
+6. **AI層（Policy-as-Prompt）の効果実測**
+   `OPENAI_API_KEY` が要る。測定器は用意済みで、鍵を入れたら
+   `node src/scripts/evaluateModeration.js --no-ai` と引数なしの差分を見る（W-3参照）。
+   測定器そのものの正しさは鍵なしで検証済み
+7. **YouTube書き戻し / Twitch接続 / SMTP送信の実クレデンシャル確認**
+   いずれも未設定時のフェイルセーフ（例外を投げず理由を返す）はテスト済み
+
+### C. 外部の物差しでの検証（次の実質的な一手）
+
+8. **モデレーション性能の外部ベンチマーク**
+   現在 45件の自作評価セットで Precision/Recall/F1 とも 100% だが、
+   **パターンを書いた人間が評価ケースも書いている以上、これは一般化の証拠ではない**
+   （R-33の初版は自作セットで100%を出しながら、想定外のチャット8件中5件を誤検知した）。
+   WildGuardTestJP / AnswerCarefully 等をライセンス条件の範囲で入手し、
+   `src/data/moderation-eval-set.json` と同じ形式に変換して
+   `node src/scripts/evaluateModeration.js --file=...` で測るのが次の一手
+
+**なお、AI/モデレーション機構の技術的な改善は `docs/RESEARCH_IMPROVEMENTS.md`（R-1〜R-33, W-1〜W-3）に分離して整理している。**
