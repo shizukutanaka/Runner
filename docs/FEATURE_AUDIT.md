@@ -338,6 +338,43 @@ E-16（デプロイ資材）に続けて、`npm run` で叩ける経路とセッ
 
 ---
 
+### E-20. ✅ 解決済み（2026-08-25） — `.env.example` の6割が「設定しても何も起きない」キーだった
+
+- **証拠**: `backend/.env.example` の **139キー中84キー（60%）が `backend/src` の
+  どこからも読まれていなかった**。機械的に検査した結果:
+  - GDPR設定一式（`GDPR_ENABLED` / `GDPR_DATA_RETENTION_*` / `CONSENT_REQUIRED` 等 9キー）
+  - サーキットブレーカー5キー、アラート閾値9キー、メトリクス間隔3キー
+  - キャッシュ関連8キー（`QUERY_CACHE_*` / `RESPONSE_CACHE_*`）
+  - セキュリティのトグル（`CSRF_ENABLED` `ENABLE_2FA` `SESSION_HIJACK_DETECTION`
+    `TOKEN_ROTATION_ENABLED` `DETECT_TOKEN_REUSE` 等）
+  - **削除済みのStripe課金20キー**（E-5で機能を消したのに設定例だけ残っていた）
+  - Webhook設定4キー（`webhookSecurity.js` はE-5で削除済み）
+  `frontend/.env.example` も **32キー中28キーが未使用**だった。Viteは
+  `import.meta.env.VITE_*` で参照されたものしかバンドルに載せないため、
+  定義しただけのキーは文字通り何の効果もない
+- **なぜ有害か**: 利用者が `ALERT_CPU_USAGE` や `VITE_HTTPS_ONLY` を設定して、
+  **何も起きないことに気づけない**。特にセキュリティ系のトグルは
+  「有効にした」と誤認させる点で危険（`CSRF_ENABLED=true` と書いても、
+  D-7以前はCSRF対策そのものが存在しなかった）
+- **実施した対応**: 両ファイルを実在するキーだけで書き直した
+  （backend 139→53、frontend 32→4）。あわせて、実際にDBファイルの位置を決める
+  `DATABASE_PATH` が**そもそも記載されていなかった**ので追加した
+- **もう一つの死んだ設定モジュール**: `src/config/database.js`（146行）も
+  どこからも require されていなかった（E-18 の `config/index.js` と同じ形）。
+  ここでしか読まれていなかった `DB_POOL_MIN` / `DB_POOL_MAX` ごと削除した
+- **再発防止**: `tests/services/envExample.test.js` を追加。
+  `.env.example` の全キーが `backend/src` から読まれることを機械的に検査する。
+  **この種の腐敗は「機能を削除したのに設定例に残る」形で必ず再発する**
+  （実際、課金機能を削除した後もStripeの20キーが残っていた）。
+  人手の再監査に頼らず、テストが落ちるようにした。
+  削除済み機能（`STRIPE_*` / `TENANT*`）の混入と、秘密鍵の例が空であることも同時に検査する
+- **検証**: 検査スクリプトで backend 53/53・frontend 4/4 が使用中であることを確認。
+  `config/database.js` 削除後もサーバーは正常起動（`/health` → 200）。
+  テスト 625件全合格、lintエラー0
+- **再検証**: `npx jest tests/services/envExample.test.js`
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】
