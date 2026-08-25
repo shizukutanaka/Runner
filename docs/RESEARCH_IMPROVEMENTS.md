@@ -601,3 +601,42 @@ OPENAI_API_KEY を設定した状態で `node src/scripts/evaluateModeration.js`
 再実行して効果を測るのが次の一手**。決定論側でこれ以上追うべきではない。
 
 ---
+
+## R-32. Twitch AutoMod 保留の取り込みと書き戻し
+
+**問題**: Twitch の AutoMod が止めたメッセージはチャットに出ないまま **Twitch 側のキュー**に溜まる。
+本製品はそれを一切知らないため、モデレーターは**二つのキューを見張る**ことになっていた。
+本製品の保留キューを空にしても Twitch 側に未処理が残り続ける、という状態が常態化する。
+
+製品名が「YouTube & Twitch」を名乗る以上、Twitch の一次モデレーション機構との
+接続が無いのは因果鎖④（人間のレビュー）の欠損にあたる。
+
+**実装**:
+
+1. `startWatching` で `automod.message.hold`（version 2）も購読する。
+   追加スコープ `moderator:manage:automod` が要るため、**失敗してもチャット取り込みは続行**する
+   （AutoMod連携が無いせいで監視ごと止まるのは割に合わない）。`stopWatching` では両方解除する
+2. 受信した保留は `held_messages` に `source='twitch_automod'` で記録し、
+   AutoMod の判定（`reason` / `category` / `level` / `blocked_term`）をそのまま保留理由に残す。
+   **判定はやり直さない**。承認/却下は人間が行う（自動処罰をしない方針は AutoMod 経由でも同じ）
+3. `manageAutoModMessage(messageId, action)` で `POST /helix/moderation/automod/message` に
+   `ALLOW` / `DENY` を返す
+
+**取り違えやすい点（テストで固定した）**: AutoMod 保留のメッセージは**まだ公開されていない**。
+したがって却下時の書き戻しは「削除」ではなく **DENY**、承認は **ALLOW**（＝ここで初めて公開される）。
+これを YouTube と同じ「却下＝削除」で実装すると、
+**モデレーターが承認したのに視聴者には永遠に見えない**という形で表面化する。
+`moderationController.processHeldMessage` は `source` を見て書き戻し先を切り替える。
+
+**フェイルセーフ**: 未設定・API失敗のいずれでも例外を投げず理由を返し、
+ローカルの承認/却下は確定させる（書き戻しだけが落ちる）。
+
+**テスト**: `tests/services/twitchAutoMod.test.js`（10件）と
+`tests/integration/autoModWriteBack.test.js`（3件）。
+後者はHTTPエンドポイント経由で承認→ALLOW / 却下→DENY が実際に送られること、
+書き戻し失敗時もローカルが `rejected` で確定することを確認する。
+
+**副次的な整理**: `dbRun` / `dbGet` / `dbAll` の Promise ラッパーが各コントローラに
+私的にコピーされていたため、`src/db.js` から公開してサービス層からも使えるようにした
+（既存のローカル定義は挙動が同一なので手を付けていない）。
+

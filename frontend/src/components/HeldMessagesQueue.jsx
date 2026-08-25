@@ -61,6 +61,13 @@ const extractReasonBadges = (reasons) => {
         : r.escalation === 'timeout_recommended' ? 'タイムアウト推奨'
           : '要注視';
       badges.push({ key: 'repeat', label: `累犯${r.violations}回・${label}`, color: 'error' });
+    } else if (r.type === 'twitch_automod') {
+      // R-32: Twitch AutoModが止めたメッセージ。まだチャットに出ていないため、
+      // 承認するとTwitch側に公開され、却下すると破棄される（削除ではない）
+      const detail = r.autoModReason === 'blocked_term'
+        ? `禁止語${r.blockedTerms?.length ? `(${r.blockedTerms.join(', ')})` : ''}`
+        : `${r.category || 'カテゴリ判定'}${r.level != null ? ` Lv${r.level}` : ''}`;
+      badges.push({ key: 'automod', label: `Twitch AutoMod: ${detail}`, color: 'warning' });
     } else if (r.type === 'multiple_links') {
       badges.push({ key: 'links', label: 'リンク多数', color: 'warning' });
     } else if (r.type === 'negative_sentiment') {

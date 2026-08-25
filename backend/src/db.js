@@ -191,7 +191,10 @@ const ensureCommentColumns = () => {
 const ensureHeldMessageColumns = () => {
   ensureColumnDefinitions('held_messages', [
     { name: 'platform_message_id', definition: 'TEXT' },
-    { name: 'author_channel_id', definition: 'TEXT' }
+    { name: 'author_channel_id', definition: 'TEXT' },
+    // R-32: 保留の発生源。'internal'（本製品の判定）か 'twitch_automod'（Twitch AutoModが保留）。
+    // 承認/却下の書き戻し先が変わる（AutoMod経由は削除ではなくALLOW/DENYを返す）ため必要
+    { name: 'source', definition: 'TEXT DEFAULT \'internal\'' }
   ]);
 };
 
@@ -567,6 +570,20 @@ const scheduleDatabaseOptimization = () => {
 })();
 
 module.exports = db;
+// Promise版のヘルパ。各コントローラがそれぞれ同じ3行のラッパーを private に
+// 抱えている状態だったため、サービス層から使えるよう共通の入口をここに置く
+// （既存のローカル定義は挙動が同一なのでそのままにしてある）
+module.exports.dbRun = (sql, params = []) => new Promise((resolve, reject) => {
+  db.run(sql, params, function callback(err) {
+    if (err) reject(err); else resolve({ lastID: this.lastID, changes: this.changes });
+  });
+});
+module.exports.dbGet = (sql, params = []) => new Promise((resolve, reject) => {
+  db.get(sql, params, (err, row) => (err ? reject(err) : resolve(row)));
+});
+module.exports.dbAll = (sql, params = []) => new Promise((resolve, reject) => {
+  db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows)));
+});
 module.exports.closeDatabase = closeDatabase;
 module.exports.runInTransaction = runInTransaction;
 module.exports.getQueryOptimizer = getQueryOptimizer;

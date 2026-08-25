@@ -142,6 +142,9 @@ class TwitchIngestionService {
    */
   async _handleNotification(msg) {
     const subType = msg.payload?.subscription?.type;
+    if (subType === 'automod.message.hold') {
+      return this._handleAutoModHold(msg.payload.event || {});
+    }
     if (subType !== 'channel.chat.message') return;
 
     const event = msg.payload.event || {};
@@ -187,6 +190,85 @@ class TwitchIngestionService {
         logger.error('[TwitchIngestion] Too many consecutive errors - stopping all watches');
         this.stopAll();
       }
+    }
+  }
+
+  /**
+   * R-32: Twitch AutoMod が保留したメッセージを、本製品の保留キューに取り込む。
+   *
+   * AutoMod が止めたメッセージはチャットに出ないまま Twitch 側のキューに溜まる。
+   * 取り込まないとモデレーターは**二つのキューを見張る**ことになり、
+   * 「本製品の保留キューを空にしたのに未処理が残っている」という状態が常態化する。
+   *
+   * ここでは判定をやり直さない。AutoMod の判定をそのまま保留理由として記録し、
+   * 承認/却下は人間が行う（自動処罰をしないという本製品の方針は AutoMod 経由でも同じ）。
+   * 保留は `source='twitch_automod'` で印を付け、処理時に Twitch 側へ
+   * ALLOW/DENY を書き戻せるようにする。
+   */
+  async _handleAutoModHold(event) {
+    const content = event.message?.text;
+    const user = event.user_name || event.user_login;
+    const messageId = event.message_id;
+    if (!content || !user || !messageId) return;
+
+    // AutoMod の判定理由。reason は 'automod'（カテゴリ判定）か 'blocked_term'（禁止語）
+    const reasons = [{
+      type: 'twitch_automod',
+      severity: 'medium',
+      autoModReason: event.reason || 'automod',
+      category: event.automod?.category || null,
+      level: event.automod?.level ?? null,
+      blockedTerms: event.blocked_term?.terms_found?.map((t) => t.term_text).filter(Boolean) || []
+    }];
+    const holdReason = event.reason === 'blocked_term'
+      ? 'Twitch AutoMod: 禁止語'
+      : `Twitch AutoMod: ${event.automod?.category || 'カテゴリ判定'}`;
+
+    try {
+      // eslint-disable-next-line global-require
+      const { dbRun } = require('../db');
+      await dbRun(
+        `INSERT INTO held_messages
+          (message_id, content, user, platform, hold_reason, risk_score, hold_level, reasons,
+           status, platform_message_id, author_channel_id, source)
+         VALUES (?, ?, ?, 'twitch', ?, ?, 'medium', ?, 'pending', ?, ?, 'twitch_automod')`,
+        [`automod_${messageId}`, content, user, holdReason, null,
+          JSON.stringify(reasons), messageId, event.user_id || null]
+      );
+      logger.info('[TwitchIngestion] AutoMod hold ingested into review queue', {
+        user, messageId, autoModReason: event.reason, category: event.automod?.category
+      });
+    } catch (err) {
+      logger.error('[TwitchIngestion] Failed to ingest AutoMod hold', {
+        messageId, error: err.message
+      });
+    }
+  }
+
+  /**
+   * R-32: AutoMod が保留したメッセージを Twitch 側で許可/拒否する。
+   * フェイルセーフ: 未設定・失敗時も例外を投げず、理由付きの結果を返す
+   * （ローカルの判断は保持し、書き戻しだけが落ちる）。
+   */
+  async manageAutoModMessage(messageId, action) {
+    if (!this.enabled) return { ok: false, reason: 'not_configured' };
+    if (!messageId) return { ok: false, reason: 'missing_message_id' };
+    const normalized = String(action).toUpperCase();
+    if (!['ALLOW', 'DENY'].includes(normalized)) {
+      return { ok: false, reason: 'invalid_action' };
+    }
+
+    try {
+      await this._helix('/moderation/automod/message', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: this.userId, msg_id: messageId, action: normalized })
+      });
+      return { ok: true, action: normalized };
+    } catch (err) {
+      logger.warn('[TwitchIngestion] AutoMod write-back failed', {
+        messageId, action: normalized, error: err.message
+      });
+      return { ok: false, reason: 'api_error', error: err.message };
     }
   }
 
@@ -238,24 +320,55 @@ class TwitchIngestionService {
     });
     const subscriptionId = result?.data?.[0]?.id;
 
+    // R-32: AutoMod の保留も同じキューに集約する。これは追加スコープ
+    // （moderator:manage:automod）を要するため、失敗してもチャット取り込みは続ける。
+    // 「AutoMod連携が無いせいでチャット監視ごと止まる」のは割に合わない
+    let autoModSubscriptionId = null;
+    try {
+      const autoModResult = await this._helix('/eventsub/subscriptions', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'automod.message.hold',
+          version: '2',
+          condition: {
+            broadcaster_user_id: broadcasterUserId,
+            moderator_user_id: this.userId
+          },
+          transport: { method: 'websocket', session_id: sessionId }
+        })
+      });
+      autoModSubscriptionId = autoModResult?.data?.[0]?.id || null;
+      logger.info('[TwitchIngestion] Subscribed to AutoMod holds', {
+        broadcasterUserId, autoModSubscriptionId
+      });
+    } catch (err) {
+      logger.warn('[TwitchIngestion] AutoMod hold subscription unavailable - chat ingestion continues '
+        + '(moderator:manage:automod scope may be missing)', {
+        broadcasterUserId, error: err.message
+      });
+    }
+
     this.watches.set(broadcasterUserId, {
       subscriptionId,
+      autoModSubscriptionId,
       startedAt: new Date().toISOString(),
       io
     });
     logger.info('[TwitchIngestion] Started watching Twitch chat', { broadcasterUserId, subscriptionId });
-    return { started: true, broadcasterUserId, subscriptionId };
+    return { started: true, broadcasterUserId, subscriptionId, autoModSubscriptionId };
   }
 
   async stopWatching(broadcasterUserId) {
     const watch = this.watches.get(broadcasterUserId);
     if (!watch) return { stopped: false, reason: 'not_watching' };
 
-    if (watch.subscriptionId) {
+    // R-32: AutoMod購読も併せて解除する。残すと再開時に重複購読になる
+    for (const id of [watch.subscriptionId, watch.autoModSubscriptionId]) {
+      if (!id) continue;
       try {
-        await this._helix(`/eventsub/subscriptions?id=${watch.subscriptionId}`, { method: 'DELETE' });
+        await this._helix(`/eventsub/subscriptions?id=${id}`, { method: 'DELETE' });
       } catch (err) {
-        logger.warn('[TwitchIngestion] Failed to delete subscription', { error: err.message });
+        logger.warn('[TwitchIngestion] Failed to delete subscription', { subscriptionId: id, error: err.message });
       }
     }
     this.watches.delete(broadcasterUserId);

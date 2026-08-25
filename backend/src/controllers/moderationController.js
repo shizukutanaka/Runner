@@ -368,7 +368,25 @@ exports.processHeldMessage = async (req, res, next) => {
     // 保留経路だけ書き戻しの対象外だと「モデレーターが却下したのに視聴者には
     // 見えたまま」という穴が残る。OAuth未設定・識別子なしでもローカルの却下は維持する
     let platformDeletion = { attempted: false, ok: false, reason: 'not_applicable' };
-    if (action === 'reject' && held.platform === 'youtube') {
+
+    // R-32: Twitch AutoMod が保留したメッセージは、まだチャットに出ていない。
+    // 削除ではなく AutoMod キューへの ALLOW / DENY を返すのが正しい書き戻しで、
+    // これを返さない限り Twitch 側のキューに未処理として残り続ける
+    if (held.source === 'twitch_automod' && (action === 'approve' || action === 'reject')) {
+      // eslint-disable-next-line global-require
+      const twitchIngestionService = require('../services/twitchIngestionService');
+      const autoModAction = action === 'approve' ? 'ALLOW' : 'DENY';
+      platformDeletion = {
+        attempted: true,
+        kind: 'twitch_automod',
+        ...(await twitchIngestionService.manageAutoModMessage(held.platform_message_id, autoModAction))
+      };
+      if (!platformDeletion.ok) {
+        logger.warn('[Moderation] AutoMod hold processed locally but Twitch write-back did not', {
+          holdId, action, reason: platformDeletion.reason
+        });
+      }
+    } else if (action === 'reject' && held.platform === 'youtube') {
       if (held.platform_message_id) {
         // eslint-disable-next-line global-require
         const youtubeIngestionService = require('../services/youtubeIngestionService');
