@@ -39,7 +39,7 @@ services:
       TWITCH_CLIENT_SECRET: ${TWITCH_CLIENT_SECRET}
       JWT_SECRET: ${JWT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
-      FRONTEND_ALLOWED_ORIGINS: ${FRONTEND_URL:-http://localhost:8080}
+      CORS_ORIGIN: ${FRONTEND_URL:-http://localhost:8080}
       TRUST_PROXY: "true"
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:

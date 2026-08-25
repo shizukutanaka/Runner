@@ -402,23 +402,6 @@ describe('Comments API', () => {
     });
   });
 
-  describe('レート制限テスト', () => {
-    // config.rateLimit.enabled が config.js のどこにも定義されておらず、
-    // buildLimiter() (middleware/security.js) が常に noopLimiter を返すため、
-    // レート制限機能はアプリ全体で現在無効化されている（本テストのバグではなく
-    // 実装側の未配線 - docs/FEATURE_AUDIT.md E-14 参照）。有効化されるまでは
-    // このテストは原理的に成立しないためskipする
-    it.skip('連続リクエストでのレート制限（E-14: レート制限機能自体が全体的に無効化されているため現状成立しない）', async () => {
-      const requests = [];
-      for (let i = 0; i < 150; i++) {
-        requests.push(auth(request(app).get('/api/comments?platform=youtube')));
-      }
-      const results = await Promise.all(requests);
-      const rateLimitedRequests = results.filter((res) => res.statusCode === 429);
-      expect(rateLimitedRequests.length).toBeGreaterThan(0);
-    });
-  });
-
   describe('パフォーマンステスト', () => {
     it('大量コメントの処理性能', async () => {
       const comments = [];

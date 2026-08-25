@@ -279,6 +279,54 @@ E-16（デプロイ資材）に続けて、`npm run` で叩ける経路とセッ
 
 ---
 
+### E-18. ✅ 解決済み（2026-08-25） — 設定モジュールが二重に存在し、死んでいる方を読んでいた
+
+- **証拠**: `backend/src/` に **`config.js`（227行）と `config/index.js`（406行）が両方存在**していた。
+  Node の解決順ではファイルがディレクトリより優先されるため、
+  コード中の `require('./config')` / `require('../config')` は**必ず `config.js`** に解決される。
+  `config/index` を明示的に require している箇所はリポジトリ全体で0件だった
+  （`node -e "require.resolve('./src/config')"` → `src/config.js`）。
+  つまり **406行の `config/index.js` は一度も読み込まれていなかった**
+- **なぜ危険か（実害が出た）**: 本セッションで `personal-setup.sh` の `.env` テンプレートと
+  `docker-compose.yml` を書き直す際、**死んでいる方の `config/index.js` を読んで**
+  設定キーを決めてしまった。その結果:
+  - `FRONTEND_ALLOWED_ORIGINS` を生成していたが、**生きている `config.js` はこのキーを読まない**
+    （実際に読むのは `CORS_ORIGIN` / `ALLOWED_ORIGINS`）
+  - つまり生成された `.env` と compose の CORS 設定は**何の効果も無かった**
+  - `RATE_LIMIT_API_MAX` も同様に死んだ方のキーで、生きている方は `RATE_LIMIT_MAX_REQUESTS`
+  ドキュメントの誤りではなく、**同じ名前の設定が2つあり、片方が嘘をつく**という構造の問題である
+- **実施した修正**: `config/index.js` を削除し、`CORS_ORIGIN` に修正した
+- **検証**: 削除後にバックエンドを起動し `/health` 200。
+  `Origin: http://localhost:8080`（`CORS_ORIGIN` に一致）→ 認証層まで到達して401、
+  `Origin: https://evil.example` → **403でCORS拒否**。設定が実際に効いていることを確認
+- **再検証**: `ls backend/src/config.js backend/src/config/` → 後者が存在しないこと
+
+---
+
+### E-19. ✅ 解決済み（2026-08-25） — skipされたテスト10件（うち1件は理由が古く、9件は本体が空）
+
+- **証拠**: `it.skip` / `test.skip` が10件。内訳:
+  - 1件は「E-14: レート制限機能自体が全体的に無効化されているため現状成立しない」という理由でskip。
+    **E-14 は W-1 で解決済み**であり、skipの理由が古くなっていた。
+    結果として**セキュリティ制御であるレート制限のテストが1件も無い**状態が続いていた
+  - 9件は `test.skip('...', async () => {});` ——**本体が空**。
+    「該当エンドポイントが存在しないためskip」という説明はコメントで足りる情報であり、
+    永久にskipされる空のテストは何も検証しない
+- **実施した修正**:
+  - レート制限は専用ファイル `tests/api/rateLimit.test.js` に移した。
+    jestはファイル単位でモジュールレジストリを分けるので、
+    app を読み込む前に `RATE_LIMIT_ENABLED=true` を立てて実リミッターを起動できる
+    （他のテストの環境には影響しない）
+  - この過程で `/api` のリミッターが `skipSuccessfulRequests: true` で構築されていること
+    ——**スループット制限ではなくブルートフォース対策**であること——が分かったので、
+    テストは失敗リクエスト（認証なし→401）を連打する形にしてある。
+    成功リクエストを連打しても429にならないのは仕様どおり
+  - 空のskipテスト9件は削除
+- **結果**: **skipされたテストが0件**になった（606 passed / 606 total）
+- **再検証**: `grep -rn "it.skip\|test.skip\|describe.skip" backend/tests/` → 0件
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】

@@ -126,8 +126,9 @@ SESSION_STORE=memory
 # データベース: 未指定なら backend/data/comments.db が使われます
 # DATABASE_PATH=./data/comments.db
 
-# CORS / フロントエンドの配信元
-FRONTEND_ALLOWED_ORIGINS=http://localhost:5173
+# CORS / フロントエンドの配信元。コードが読むのは CORS_ORIGIN（src/config.js）。
+# 複数指定する場合は ALLOWED_ORIGINS にカンマ区切りで書く
+CORS_ORIGIN=http://localhost:5173
 
 # 自動バックアップ（バックエンドのプロセス内でスケジュール実行されます）
 AUTO_BACKUP=true
@@ -263,7 +264,7 @@ echo ""
 print_info "For production deployment with HTTPS:"
 echo "  - Put nginx (or Caddy) in front and terminate TLS there"
 echo "  - Make sure /socket.io passes the WebSocket Upgrade header through"
-echo "  - Update FRONTEND_ALLOWED_ORIGINS in backend/.env to your domain"
+echo "  - Update CORS_ORIGIN in backend/.env to your domain"
 echo "  - Or use the container setup: docker compose up -d --build"
 echo ""
 

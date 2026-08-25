@@ -154,7 +154,6 @@ describe('API Integration Tests', () => {
     // 注意: プラットフォーム利用者(users テーブル)を作成する公開APIが存在しないため
     // (POST /api/users 自体が routes/users.js に定義されていない)、作成テストはskipし、
     // beforeAll で直接シードした行に対して実在するGET/PUTエンドポイントのみ検証する
-    test.skip('POST /api/users - should create user (users作成用の公開APIが存在しないためskip)', async () => {});
 
     test('GET /api/users/:id - should retrieve user', async () => {
       const res = await request(app)
@@ -199,7 +198,6 @@ describe('API Integration Tests', () => {
       expect(res.body).toHaveProperty('bannedCount');
     });
 
-    test.skip('GET /api/analytics/snapshots - should return historical data (該当エンドポイント自体が実装に存在しないためskip)', async () => {});
   });
 
   describe('Settings API', () => {
@@ -207,8 +205,6 @@ describe('API Integration Tests', () => {
     // routes/settings.js にも routes/moderation.js にも存在しない。近い機能として
     // PUT /api/moderation/settings（プラットフォームをURLパラメータではなくボディで指定、
     // GETに相当するものは無い）があるが形状が異なり単純な付け替えができないためskip
-    test.skip('GET /api/settings/moderation/:platform - should get settings (該当エンドポイントが存在しないためskip)', async () => {});
-    test.skip('PUT /api/settings/moderation/:platform - should update settings (該当エンドポイントが存在しないためskip)', async () => {});
   });
 
   describe('Validation Tests', () => {
@@ -265,14 +261,12 @@ describe('API Integration Tests', () => {
 
     // 重複ID時の500エラーというシナリオ自体が、コメントIDが常にサーバー側で
     // uuidv4()生成される（クライアントは指定不可）設計により発生しえないため対象外
-    test.skip('POST /api/comments - should handle database errors gracefully (IDは常にサーバー側でuuid生成されるため重複が起こりえずskip)', async () => {});
   });
 
   describe('Rate Limiting', () => {
     // config.rateLimit.enabled が未定義のため、レート制限機能自体がアプリ全体で
     // 現在無効化されている（docs/FEATURE_AUDIT.md E-14参照）。有効化されるまでは
     // このテストは原理的に成立しないためskipする
-    test.skip('Should enforce rate limits on API endpoints (E-14: レート制限機能自体が全体的に無効化されているため現状成立しない)', async () => {});
   });
 
   describe('Security Headers', () => {

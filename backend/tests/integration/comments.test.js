@@ -200,7 +200,6 @@ describe('Comments Integration Tests', () => {
     // 注意: PUT /:id はステータス（モデレーション判定）の更新専用エンドポイントであり、
     // 本文content編集機能自体が実装に存在しない（commentActionSchema.updateStatusは
     // action/reasonのみを受け付ける）。content編集は別機能として未実装のため対象外
-    test.skip('should update comment content (content編集エンドポイント自体が未実装のためskip)', async () => {});
 
     test('should update comment status', async () => {
       if (!testCommentId) {
@@ -330,7 +329,5 @@ describe('Comments Integration Tests', () => {
     // 別ルート GET /api/analytics/stats（requireRole('analyst')）に存在するが
     // ロール要件・レスポンス形状が異なるため単純な付け替えでは対応できず、
     // 新規エンドポイント実装は本テストファイルの整合修正のスコープ外として見送る
-    test.skip('should return comment statistics (GET /api/comments/statsエンドポイント自体が未実装のためskip)', async () => {});
-    test.skip('should return statistics for specific time range (同上)', async () => {});
   });
 });
