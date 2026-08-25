@@ -238,9 +238,20 @@ app.use((req, res, next) => {
 app.use(metricsMiddleware);
 
 // Health check and metrics endpoints (before rate limiting)
+//
+// `/health` は**意図的に公開**する。コンテナのヘルスチェックやロードバランサが
+// 認証情報を持たずに叩くため。返すのは status と timestamp だけで、情報開示は無い。
+//
+// 一方 `/health/detailed` と `/metrics` は**認証を必須にする**。
+// 従来これらは無認証で、Nodeのバージョン・プラットフォーム・アーキテクチャ・
+// CPU数・総メモリ量・リクエスト統計・エラー件数を誰にでも返していた。
+// 特に **Node のバージョン開示は既知CVEの狙い撃ちを容易にする**ため、
+// 運用情報として妥当な範囲を超えている。
+// eslint-disable-next-line global-require
+const { authenticateToken: requireAuth, requireRole: requireAdminRole } = require('./middleware/auth');
 app.get('/health', healthCheckHandler);
-app.get('/health/detailed', detailedHealthCheckHandler);
-app.get('/metrics', metricsHandler);
+app.get('/health/detailed', requireAuth, requireAdminRole('admin'), detailedHealthCheckHandler);
+app.get('/metrics', requireAuth, requireAdminRole('admin'), metricsHandler);
 
 // API routes with rate limiting
 app.use('/api', apiRateLimit);

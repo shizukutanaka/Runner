@@ -1,1221 +1,339 @@
-# YouTube & Twitch Comment Manager デプロイガイド
+# Runner デプロイガイド
+
+## このドキュメントについて
+
+以前のこのファイルは1221行あり、その大半が**この製品と無関係な一般的なLinux運用の
+チュートリアル**（`htop` の入れ方、スワップファイルの作り方、`lsof` でのポート確認など）でした。
+そして製品固有の記述は、多くが**間違っているか、従うと壊れる**内容でした:
+
+- **ロードバランシングの節**が `backend1:3000 / backend2:3000 / backend3:3000` への
+  振り分けと `pm2 scale ... 4` を指示していた。本アプリは単一インスタンス専用なので、
+  この通りにすると**データベースが壊れます**（理由は次節）
+- バックアップ手順が `database.db` と `frontend/build/` を参照していた。
+  実際のファイルは `comments.db` と `frontend/dist/` で、
+  しかも**アプリには自動バックアップが組み込まれている**ことに触れていなかった
+- Nginx と Let's Encrypt の設定を手書きさせる節があったが、
+  現在は**フロントエンドのコンテナがTLSを終端する**ので不要
+- `npm run db:init` / `npm run db:migrate` を実行させていたが、
+  どちらも存在しません（DBは初回起動時に自動作成されます）
+
+一般的なLinux運用の情報は他所にいくらでもあります。ここには
+**この製品を動かすために必要で、かつ正しいことだけ**を書きます。
+
+---
 
 ## 目次
 
-1. [概要](#概要)
-2. [デプロイ環境](#デプロイ環境)
-3. [ローカル開発環境](#ローカル開発環境)
-4. [本番環境デプロイ](#本番環境デプロイ)
-5. [Dockerデプロイ](#dockerデプロイ)
-6. [クラウドプラットフォーム](#クラウドプラットフォーム)
-7. [設定と環境変数](#設定と環境変数)
-8. [セキュリティ設定](#セキュリティ設定)
-9. [パフォーマンス最適化](#パフォーマンス最適化)
-10. [監視とログ](#監視とログ)
-11. [バックアップと復元](#バックアップと復元)
-12. [トラブルシューティング](#トラブルシューティング)
-13. [メンテナンス](#メンテナンス)
+1. [最重要: 単一インスタンス制約](#最重要-単一インスタンス制約)
+2. [Docker Composeでのデプロイ（推奨）](#docker-composeでのデプロイ推奨)
+3. [Dockerを使わない場合](#dockerを使わない場合)
+4. [環境変数](#環境変数)
+5. [バックアップと復元](#バックアップと復元)
+6. [監視](#監視)
+7. [アップデート](#アップデート)
+8. [トラブルシューティング](#トラブルシューティング)
 
-## 概要
+---
 
-このガイドでは、YouTube & Twitch Comment Managerの本番環境へのデプロイ方法について説明します。開発環境から本番環境への移行、Dockerを使用したコンテナ化、クラウドプラットフォームへのデプロイなど、様々なデプロイオプションをカバーしています。
+## 最重要: 単一インスタンス制約
 
-### 対象読者
+**バックエンドは1プロセスで動かしてください。** 複数に増やしてはいけません。
 
-- システム管理者
-- DevOpsエンジニア
-- 開発者
-- IT担当者
+理由は3つあります。
 
-### 前提条件
+1. **データベースが単一のSQLiteファイル**です。複数プロセスからの並行書き込みで破損します
+2. **YouTubeのポーリング、TwitchのEventSub WebSocket接続、レイド検知の状態を
+   プロセス内に保持**しています。プロセスを増やすと、YouTube APIのクォータを
+   プロセス数だけ多重に消費し、同じコメントを重複して取り込み、
+   レイド検知の閾値が壊れます
+3. 保留キューの処理も同様に多重化されます
 
-- Node.js 18.x 以上
-- npm または yarn
-- Git
-- 基本的なLinuxコマンドの知識
-- SSL証明書（HTTPSを使用する場合）
+このため、以下は**すべて削除済み**です。復活させないでください。
 
-## デプロイ環境
+- `k8s/` のマニフェスト（`replicas: 3` + HPAで最大10だった）
+- `backend/ecosystem.config.js` の `instances: 'max'` + クラスターモード
+- 本ガイドのロードバランシングの節
 
-### システム要件
+水平スケールが必要になった場合の**正しい順序**は次のとおりです。
 
-#### 最小要件
-- **CPU**: 2コア以上
-- **メモリ**: 4GB以上
-- **ストレージ**: 20GB以上の空き容量
-- **ネットワーク**: 100Mbps以上
+1. データベースを外部化する（PostgreSQL等）
+2. 取り込み処理をワーカーとして分離する
+3. その上でスケール構成を設計する
 
-#### 推奨要件
-- **CPU**: 4コア以上
-- **メモリ**: 8GB以上
-- **ストレージ**: 50GB以上のSSD
-- **ネットワーク**: 1Gbps以上
+---
 
-### サポートOS
+## Docker Composeでのデプロイ（推奨）
 
-- **Ubuntu**: 20.04 LTS, 22.04 LTS
-- **CentOS**: 7, 8
-- **Debian**: 10, 11
-- **Amazon Linux**: 2
-- **Windows Server**: 2019, 2022
-- **macOS**: 12, 13（開発環境のみ）
+`backend` / `frontend` / `redis` の3コンテナ構成です。
+フロントエンドのnginxがTLSを終端し、`/api` と `/socket.io` をバックエンドへプロキシします。
 
-## ローカル開発環境
+### 前提
 
-### 1. リポジトリのクローン
+- Docker および Docker Compose v2（`docker compose` サブコマンド）
+- 永続ディスク（SQLiteファイルを再起動をまたいで保持するため）
+
+### 手順
 
 ```bash
 git clone https://github.com/shizukutanaka/Runner.git
 cd Runner
+
+cp .env.example .env
+# JWT_SECRET / SESSION_SECRET / ENCRYPTION_KEY は必ず設定してください
+#   openssl rand -hex 32
+# 未設定だと本番モードでは起動を拒否します（意図的なガードです）
+
+docker compose up -d --build
+docker compose ps
+docker compose logs -f
 ```
 
-### 2. 依存関係のインストール
+起動後は **`https://localhost:8443`** にアクセスします（`FRONTEND_PORT` で変更可）。
 
-#### バックエンド
+### なぜHTTPSが必須なのか
+
+認証トークンは `Secure` 属性付きの httpOnly Cookie で持たせています。
+**平文HTTPではブラウザがCookieを保存しないため、ログインが成立しません。**
+
+証明書を用意していない場合、フロントエンドのコンテナが起動時に
+自己署名証明書を生成します。これは「何も設定しなくても起動して動作確認できる」ためで、
+自己署名のまま本番運用してよいという意味ではありません。
+
+### 本番の証明書に差し替える
+
 ```bash
-cd backend
-npm install
+# 取得した証明書を配置する（ファイル名は固定）
+cp /path/to/fullchain.pem ./certs/fullchain.pem
+cp /path/to/privkey.pem   ./certs/privkey.pem
+
+docker compose restart frontend
 ```
 
-#### フロントエンド
-```bash
-cd ../frontend
-npm install
-```
+`./certs` はコンテナの `/etc/nginx/certs` にマウントされます。
+中身は `.gitignore` されているのでコミットされません。
 
-### 3. 環境設定
+Let's Encrypt を使う場合は、ホスト側で `certbot` などにより証明書を取得し、
+上記のパスへ配置・更新してください（証明書の更新後は `docker compose restart frontend`）。
 
-#### 環境変数ファイルの作成
+### ポート
+
+| ポート | 既定 | 用途 |
+|--------|------|------|
+| `FRONTEND_PORT` | 8443 | HTTPS。**実際のアクセス先** |
+| `FRONTEND_HTTP_PORT` | 8080 | `/health` のみ。それ以外はHTTPSへ301 |
+
+バックエンドは外部公開されません（`expose` のみ）。フロントエンドのnginx経由で到達します。
+
+---
+
+## Dockerを使わない場合
+
+VMに直接置く場合も、**バックエンドは1プロセス**という制約は変わりません。
+
 ```bash
 # バックエンド
-cd ../backend
-cp .env.example .env
+cd backend
+npm ci --omit=dev
+cp .env.example .env      # 秘密鍵を設定すること
+npm start                 # pm2 経由（ecosystem.config.js は fork/1インスタンス）
+# もしくは pm2 を使わない場合:
+#   npm run start:node
 ```
 
 ```bash
 # フロントエンド
-cd ../frontend
-cp .env.example .env
+cd frontend
+npm ci
+npm run build             # dist/ が生成される
 ```
 
-#### 環境変数の設定
-```bash
-# .envファイルに以下の変数を設定
-NODE_ENV=development
-PORT=3000
-DATABASE_URL=sqlite:./data/database.db
-JWT_SECRET=your-secret-key
-OPENAI_API_KEY=your-openai-api-key
-YOUTUBE_API_KEY=your-youtube-api-key
-TWITCH_CLIENT_ID=your-twitch-client-id
-RATE_LIMIT_ENABLED=true
-RATE_LIMIT_STORE=redis
-RATE_LIMIT_REDIS_URL=redis://localhost:6379
-RATE_LIMIT_GENERAL_MAX=100
-RATE_LIMIT_GENERAL_WINDOW_MS=900000
-RATE_LIMIT_API_MAX=60
-RATE_LIMIT_API_WINDOW_MS=60000
-RATE_LIMIT_STRICT_MAX=10
-RATE_LIMIT_STRICT_WINDOW_MS=300000
-```
-
-#### 環境変数の検証
-```bash
-cd ../backend
-npm run env:check
-```
-`backend/.env` と `frontend/.env` の必須キーが揃っているか自動検証します。未設定のキーがある場合は `.env.example` を参照して追記してください。
-
-### 4. データベース
-
-データベース（`backend/data/comments.db`）は**バックエンドの初回起動時に自動で作成**され、
-スキーマの追加も起動時に適用されます。手動の初期化コマンドはありません。
-
-### 5. アプリケーション起動
-
-#### 開発モード起動
-```bash
-# バックエンド（別ターミナル）
-npm run dev
-
-# フロントエンド（別ターミナル）
-cd ../frontend
-npm run dev
-```
-
-#### 本番モード起動
-```bash
-# バックエンド
-npm start
-
-# フロントエンド（ビルド成果物をnginx等で配信する。preview はあくまで確認用）
-cd ../frontend
-npm run build
-npm run preview
-```
-
-### 6. アクセス確認
-
-- フロントエンド: http://localhost:5173
-- バックエンドAPI: http://localhost:3000/api
-- ヘルスチェック: http://localhost:3000/health
-
-## 本番環境デプロイ
-
-### 1. サーバー準備
-
-#### Ubuntu/Debianの場合
-```bash
-# システム更新
-sudo apt update && sudo apt upgrade -y
-
-# Node.jsインストール
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# PM2インストール（プロセス管理）
-sudo npm install -g pm2
-
-# Nginxインストール（リバースプロキシ）
-sudo apt install -y nginx
-
-# Gitインストール
-sudo apt install -y git
-
-# ファイアウォール設定
-sudo ufw allow 80
-sudo ufw allow 443
-```
-
-### 2. アプリケーション配置
-
-```bash
-# アプリケーション用のディレクトリ作成
-sudo mkdir -p /opt/comment-manager
-sudo chown $USER:$USER /opt/comment-manager
-
-# リポジトリクローン
-cd /opt/comment-manager
-git clone https://github.com/shizukutanaka/Runner.git app
-cd app
-
-# 依存関係インストール
-cd backend && npm ci --production
-cd ../frontend && npm ci --production && npm run build
-```
-
-### 3. 環境設定
-
-#### 環境変数ファイル作成
-```bash
-# バックエンド環境変数
-cat > backend/.env << EOF
-NODE_ENV=production
-PORT=3000
-DATABASE_URL=sqlite:./data/database.db
-JWT_SECRET=$(openssl rand -base64 64)
-OPENAI_API_KEY=your-openai-api-key
-YOUTUBE_API_KEY=your-youtube-api-key
-TWITCH_CLIENT_ID=your-twitch-client-id
-SESSION_SECRET=$(openssl rand -base64 64)
-REDIS_URL=redis://localhost:6379
-RATE_LIMIT_ENABLED=true
-RATE_LIMIT_STORE=redis
-RATE_LIMIT_REDIS_URL=redis://localhost:6379
-RATE_LIMIT_REDIS_PREFIX=runner:ratelimit:
-RATE_LIMIT_GENERAL_MAX=100
-RATE_LIMIT_GENERAL_WINDOW_MS=900000
-RATE_LIMIT_API_MAX=60
-RATE_LIMIT_API_WINDOW_MS=60000
-RATE_LIMIT_STRICT_MAX=10
-RATE_LIMIT_STRICT_WINDOW_MS=300000
-EOF
-
-# フロントエンド環境変数
-cat > frontend/.env << EOF
-VITE_API_BASE_URL=https://<your-domain>/api
-VITE_WS_URL=wss://<your-domain>
-EOF
-```
-
-#### 環境変数検証
-```bash
-cd backend
-npm run env:check
-```
-`.env` の必須項目が揃っているかを自動検証します。不足が報告された場合は `.env.example` を参照して補完してください。
-
-#### 検証失敗時の対処例
-- `JWT_SECRET` / `YOUTUBE_API_KEY` / `TWITCH_CLIENT_SECRET` がエラーとなる場合は、プレースホルダー文字列（`your-...`, `sample`, `example` 等）を本番値へ置き換えます。
-- URL関連エラー (`VITE_API_BASE_URL`, `VITE_WS_URL`) の場合は、`https://` / `http://`、`wss://` / `ws://` から始まる完全な URL を設定してください。
-- 実行結果が `needs-attention` のままの場合は出力に表示される「チェック対象: 必須 ... / 任意 ...」のリストを参照し、該当キーを修正して再実行します。
-
-### 4. PM2設定
-
-```bash
-# PM2エコシステムファイル作成
-cat > ecosystem.config.js << EOF
-module.exports = {
-  apps: [{
-    name: 'comment-manager-backend',
-    script: './backend/src/server.js',
-    env: {
-      NODE_ENV: 'production',
-      PORT: 3000
-    },
-    instances: 'max',
-    exec_mode: 'cluster'
-  }, {
-    name: 'comment-manager-frontend',
-    script: 'serve',
-    env: {
-      PM2_SERVE_PATH: './frontend/build',
-      PM2_SERVE_PORT: 3001,
-      PM2_SERVE_HOMEPAGE: '/index.html'
-    },
-    cwd: './frontend'
-  }]
-};
-EOF
-
-# PM2でアプリケーション起動
-pm2 start ecosystem.config.js
-
-# 自動起動設定
-pm2 startup
-pm2 save
-```
-
-### 5. Nginx設定
-
-```bash
-# Nginx設定ファイル作成
-sudo cat > /etc/nginx/sites-available/comment-manager << EOF
-server {
-    listen 80;
-    server_name <your-domain>;
-
-    # フロントエンド
-    location / {
-        proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
-    }
-
-    # API
-    location /api {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
-
-        # CORS設定
-        add_header 'Access-Control-Allow-Origin' '*' always;
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
-
-        if (\$request_method = 'OPTIONS') {
-            return 204;
-        }
-    }
-
-    # WebSocket
-    location /ws {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-
-    # セキュリティヘッダー
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "no-referrer-when-downgrade" always;
-    add_header Content-Security-Policy "default-src 'self' https: data: blob: 'unsafe-inline'; connect-src 'self' https://<your-domain> wss://<your-domain>;" always;
-}
-EOF
-
-# サイト有効化
-sudo ln -s /etc/nginx/sites-available/comment-manager /etc/nginx/sites-enabled/
-sudo rm /etc/nginx/sites-enabled/default
-
-# Nginx設定テスト
-sudo nginx -t
-
-# Nginx再起動
-sudo systemctl restart nginx
-sudo systemctl enable nginx
-```
-
-### 6. SSL設定（Let's Encrypt）
-
-```bash
-# Certbotインストール
-sudo apt install -y certbot python3-certbot-nginx
-
-# SSL証明書取得
-sudo certbot --nginx -d <your-domain>
-
-# 自動更新設定
-sudo crontab -e
-# 以下を追加
-0 12 * * * /usr/bin/certbot renew --quiet
-```
-
-### 7. ファイアウォール設定
-
-```bash
-# UFW設定
-sudo ufw allow 'Nginx Full'
-sudo ufw allow ssh
-sudo ufw --force enable
-```
-
-## Dockerデプロイ
-
-### Docker Composeを使用したデプロイ
-
-#### 1. Docker Composeファイル作成
-
-```yaml
-version: '3.8'
-
-services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    env_file:
-      - backend/.env
-    volumes:
-      - ./backend/data:/app/data
-    depends_on:
-      - redis
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_BASE_URL=${VITE_API_BASE_URL}
-        - VITE_WS_URL=${VITE_WS_URL}
-    ports:
-      - "3001:80"
-    depends_on:
-      - backend
-    env_file:
-      - frontend/.env
-    restart: unless-stopped
-
-  # 本番用の値を配置する前に、コンテナイメージ内で `npm run env:check` を実行して
-  # プレースホルダーやURL形式の不備がないか確認してください。
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - frontend
-      - backend
-    restart: unless-stopped
-
-volumes:
-  redis_data:
-```
-
-#### 2. Dockerfile作成
-
-##### バックエンドDockerfile
-```dockerfile
-FROM node:18-alpine
-
-WORKDIR /app
-
-# 依存関係インストール
-COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
-
-# ソースコードコピー
-COPY . .
-
-# データディレクトリ作成
-RUN mkdir -p data
-
-# ヘルスチェック
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node healthcheck.js
-
-EXPOSE 3000
-
-CMD ["npm", "start"]
-```
-
-##### フロントエンドDockerfile
-```dockerfile
-FROM node:18-alpine as build
-
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm ci
-
-COPY . .
-RUN npm run build
-
-FROM nginx:alpine
-
-COPY --from=build /app/build /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
-```
-
-#### 3. Nginx設定ファイル
-
-```nginx
-server {
-    listen 80;
-    server_name localhost;
-
-    location / {
-        proxy_pass http://frontend:80;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /api/ {
-        proxy_pass http://backend:3000/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /ws {
-        proxy_pass http://backend:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-```
-
-#### 4. デプロイ実行
-
-```bash
-# 環境変数ファイル作成
-cat > .env << EOF
-JWT_SECRET=your-secret-key
-OPENAI_API_KEY=your-openai-api-key
-YOUTUBE_API_KEY=your-youtube-api-key
-TWITCH_CLIENT_ID=your-twitch-client-id
-REACT_APP_API_BASE_URL=https://example.com/api
-REACT_APP_WS_URL=wss://example.com
-EOF
-
-# Dockerイメージビルド
-docker-compose build
-
-# アプリケーション起動
-docker-compose up -d
-
-# ログ確認
-docker-compose logs -f
-```
-
-## クラウドプラットフォーム
-
-以前ここには AWS EC2+RDS / GCP Compute Engine+Cloud SQL / Heroku / Vercel の
-手順が並んでいたが、いずれも**このアプリでは成立しない**ため削除した。
-
-- **RDS / Cloud SQL（PostgreSQL）**: 手順は `DATABASE_URL=postgresql://...` を
-  設定させる内容だったが、本アプリに **PostgreSQLドライバは同梱されておらず**、
-  設定も `DATABASE_PATH`（SQLiteファイルのパス）しか読まない。この通りに設定しても
-  マネージドDBには一切接続されない
-- **Heroku**: dynoのファイルシステムは揮発性で、再起動のたびに消える。
-  SQLiteファイルをそこに置くと**モデレーション履歴が定期的に全消失**する。
-  手順にあった `heroku buildpacks:add heroku/python` に至っては、
-  このリポジトリにPythonコードが1行も無い
-- **Vercel**: 静的フロントは載るが、バックエンドは常駐プロセスとして
-  socket.io接続とEventSub WebSocketを保持し続ける必要があるため載らない。
-  手順が設定させていた `REACT_APP_API_BASE_URL` / `REACT_APP_WS_URL` は
-  Create React Appの命名で、本プロジェクト（Vite）が読むのは
-  `VITE_API_BASE_URL` / `VITE_SOCKET_URL` である
-
-### 実際に必要な条件
-
-クラウドを使う場合、満たすべき条件は次の3つだけである。
-
-1. **永続ディスクを持つ単一のインスタンス**（VM、またはボリュームを付けたコンテナ）。
-   SQLiteファイルを再起動をまたいで保持できること
-2. **バックエンドは1プロセス**。SQLiteの並行書き込みと、プロセス内に持つ
-   YouTubeポーリング・Twitch EventSub接続・レイド検知の状態が理由（「ロードバランシング」節を参照）
-3. **WebSocketを通すリバースプロキシ**。`/socket.io` の Upgrade ヘッダを落とさないこと
+生成された `frontend/dist/` を任意のWebサーバーで配信し、
+**同一オリジンで `/api` と `/socket.io` をバックエンドへプロキシ**してください。
+設定例はリポジトリの `frontend/nginx.conf` がそのまま使えます
+（`upstream` の向き先と証明書のパスだけ環境に合わせて変更）。
+
+**必ず満たすべき3条件**:
+
+1. **永続ディスクを持つ単一インスタンス** — SQLiteファイルを再起動をまたいで保持できること
+2. **バックエンドは1プロセス**
+3. **WebSocketを通すリバースプロキシ** — `/socket.io` の `Upgrade` ヘッダを落とさないこと
 
 この3条件を満たすなら、AWS EC2・GCP Compute Engine・Hetzner・さくらのVPSなど
-どのVMでも同じ手順（本ドキュメントの「本番環境デプロイ」節）で動く。
-コンテナで動かす場合はリポジトリルートの `docker-compose.yml` がそのまま使える。
+どのVMでも同じ手順で動きます。
 
+> **載らない構成**: Heroku などファイルシステムが揮発する環境（SQLiteが消えます）、
+> Vercel などのサーバーレス（常駐プロセスとしてWebSocket接続を保持できません）。
+> マネージドPostgreSQLへの接続も**できません**（PostgreSQLドライバを同梱していないため）。
 
-## 設定と環境変数
+---
 
-### 必須環境変数
+## 環境変数
 
-```bash
-# アプリケーション設定
-NODE_ENV=production
-PORT=3000
+**正典は `backend/.env.example` と `frontend/.env.example` です。**
+両ファイルには**コードが実際に読むキーだけ**が入っており、
+`backend/tests/services/envExample.test.js` がそれを機械的に検査しています。
+ここに一覧を再掲すると必ず古くなるので、ファイルを直接参照してください。
 
-# データベース
-DATABASE_URL=sqlite:./data/database.db
+本番で必ず設定するもの:
 
-# 認証
-JWT_SECRET=your-jwt-secret-key
-SESSION_SECRET=your-session-secret-key
+| キー | 説明 |
+|------|------|
+| `JWT_SECRET` | `openssl rand -hex 32`。未設定だと本番起動を拒否 |
+| `SESSION_SECRET` | 同上 |
+| `ENCRYPTION_KEY` | 同上 |
+| `CORS_ORIGIN` | 公開するオリジン（例 `https://example.com`）。複数は `ALLOWED_ORIGINS` にカンマ区切り |
 
-# APIキー
-OPENAI_API_KEY=your-openai-api-key
-YOUTUBE_API_KEY=your-youtube-api-key
-TWITCH_CLIENT_ID=your-twitch-client-id
+APIキー（`YOUTUBE_API_KEY` / `TWITCH_*` / `OPENAI_API_KEY`）は**未設定でも起動します**。
+該当機能だけが無効になり、警告がログに出ます（フェイルセーフ設計）。
 
-# キャッシュ（オプション）
-REDIS_URL=redis://localhost:6379
-
-# フロントエンド設定
-REACT_APP_API_BASE_URL=https://yourdomain.com/api
-REACT_APP_WS_URL=wss://yourdomain.com
-```
-
-### オプション環境変数
-
-```bash
-# レート制限
-RATE_LIMIT_WINDOW_MS=900000
-RATE_LIMIT_MAX_REQUESTS=100
-
-# キャッシュ設定
-CACHE_TTL=300
-CACHE_MAX_SIZE=1000
-
-# ログ設定
-LOG_LEVEL=info
-LOG_FILE=/var/log/comment-manager/app.log
-
-# バックアップ設定
-BACKUP_ENABLED=true
-BACKUP_INTERVAL=24
-BACKUP_RETENTION_DAYS=30
-
-# セキュリティ設定
-CORS_ORIGIN=https://example.com
-HELMET_ENABLED=true
-```
-
-## セキュリティ設定
-
-### HTTPS設定
-
-#### SSL証明書取得（Let's Encrypt）
-```bash
-# Certbotインストール
-sudo apt install -y certbot python3-certbot-nginx
-
-# SSL証明書取得
-sudo certbot --nginx -d yourdomain.com
-
-# 自動更新設定
-sudo crontab -e
-# 以下を追加
-0 12 * * * /usr/bin/certbot renew --quiet
-```
-
-#### 自己署名証明書作成
-```bash
-# 秘密鍵生成
-openssl genrsa -out server.key 2048
-
-# 証明書署名要求作成
-openssl req -new -key server.key -out server.csr
-
-# 自己署名証明書作成
-openssl x509 -req -days 365 -in server.csr -signkey server.key -out server.crt
-
-# Nginx設定にSSL追加
-sudo cat >> /etc/nginx/sites-available/comment-manager << EOF
-server {
-    listen 443 ssl;
-    server_name example.com;
-
-    ssl_certificate /etc/ssl/certs/server.crt;
-    ssl_certificate_key /etc/ssl/private/server.key;
-
-    # SSL設定
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384;
-    ssl_prefer_server_ciphers off;
-}
-EOF
-```
-
-### ファイアウォール設定
-
-#### UFW設定
-```bash
-sudo ufw allow 'Nginx Full'
-sudo ufw allow ssh
-sudo ufw --force enable
-```
-
-#### iptables設定
-```bash
-# 基本ルール
-sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-sudo iptables -A INPUT -j DROP
-
-# 保存
-sudo iptables-save > /etc/iptables/rules.v4
-```
-
-### 認証設定
-
-#### JWT設定
-```javascript
-// バックエンド設定
-const jwtConfig = {
-  secret: process.env.JWT_SECRET,
-  expiresIn: '24h',
-  algorithm: 'HS256'
-};
-```
-
-#### セッション設定
-```javascript
-// セッション設定
-const sessionConfig = {
-  secret: process.env.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: true,
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000
-  }
-};
-```
-
-## パフォーマンス最適化
-
-### キャッシュ設定
-
-#### Redisキャッシュ
-```bash
-# Redisインストール
-sudo apt install -y redis-server
-
-# Redis設定
-sudo cat > /etc/redis/redis.conf << EOF
-maxmemory 256mb
-maxmemory-policy allkeys-lru
-save 900 1
-save 300 10
-save 60 10000
-EOF
-
-sudo systemctl restart redis
-```
-
-#### アプリケーションキャッシュ
-```javascript
-// キャッシュ設定
-const cacheConfig = {
-  ttl: parseInt(process.env.CACHE_TTL) || 300,
-  maxSize: parseInt(process.env.CACHE_MAX_SIZE) || 1000,
-  redis: process.env.REDIS_URL
-};
-```
-
-### データベース最適化
-
-#### SQLite最適化
-```bash
-# 定期的なVACUUM
-sqlite3 database.db "VACUUM;"
-
-# WALモード有効化
-sqlite3 database.db "PRAGMA journal_mode=WAL;"
-sqlite3 database.db "PRAGMA synchronous=NORMAL;"
-```
-
-#### PostgreSQL最適化
-```sql
--- インデックス作成
-CREATE INDEX idx_comments_platform_timestamp ON comments(platform, timestamp DESC);
-CREATE INDEX idx_users_status ON users(status);
-CREATE INDEX idx_moderation_logs_created_at ON ai_moderation_logs(created_at DESC);
-
--- クエリオプティマイザ設定
-SET random_page_cost = 1.1;
-SET effective_cache_size = '256MB';
-```
-
-### ロードバランシング
-
-#### Nginxロードバランシング
-```nginx
-upstream backend {
-    least_conn;
-    server backend1:3000 weight=3;
-    server backend2:3000 weight=3;
-    server backend3:3000 weight=1;
-}
-
-server {
-    location /api {
-        proxy_pass http://backend;
-        # 他の設定...
-    }
-}
-```
-
-#### PM2クラスタリング
-```bash
-# PM2クラスターモード
-pm2 start ecosystem.config.js
-pm2 scale comment-manager-backend 4
-```
-
-## 監視とログ
-
-### ログ設定
-
-#### アプリケーションログ
-```javascript
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
-  transports: [
-    new winston.transports.File({ filename: 'logs/error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'logs/combined.log' })
-  ]
-});
-```
-
-#### Nginxログ
-```bash
-# ログローテーション設定
-sudo cat > /etc/logrotate.d/nginx << EOF
-/var/log/nginx/*.log {
-    daily
-    missingok
-    rotate 52
-    compress
-    delaycompress
-    notifempty
-    create 644 nginx adm
-    postrotate
-        systemctl reload nginx
-    endscript
-}
-EOF
-```
-
-### 監視ツール
-
-#### PM2モニタリング
-```bash
-# PM2モニタリング
-pm2 install pm2-logrotate
-pm2 set pm2-logrotate:max_size 10M
-pm2 set pm2-logrotate:retain 10
-
-# リアルタイムモニタリング
-pm2 monit
-```
-
-#### システム監視
-```bash
-# htopインストール
-sudo apt install -y htop
-
-# システム監視スクリプト
-cat > monitor.sh << 'EOF'
-#!/bin/bash
-echo "=== System Status ==="
-echo "CPU Usage: $(top -bn1 | grep load | awk '{printf "%.2f%%", $(NF-2)}')"
-echo "Memory Usage: $(free | awk 'NR==2{printf "%.2f%%", $3*100/$2 }')"
-echo "Disk Usage: $(df -h | awk '$NF=="/"{printf "%s", $5}')"
-echo "Active Connections: $(netstat -tuln | wc -l)"
-echo "=== PM2 Status ==="
-pm2 jlist
-EOF
-
-chmod +x monitor.sh
-```
-
-### アラート設定
-
-#### Slack通知
-```bash
-# Slack webhook URL設定
-curl -X POST -H 'Content-type: application/json' \
---data '{"text":"Comment Manager Alert: High CPU usage detected"}' \
-https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK
-```
+---
 
 ## バックアップと復元
 
-### 自動バックアップ
+### 自動バックアップ（推奨）
 
-#### バックアップスクリプト
+**アプリのプロセス内でスケジュール実行されます。** cronを別途組む必要はありません。
+
 ```bash
-cat > backup.sh << 'EOF'
-#!/bin/bash
-BACKUP_DIR="/opt/comment-manager/backups"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-
-# ディレクトリ作成
-mkdir -p $BACKUP_DIR
-
-# データベースバックアップ
-sqlite3 /opt/comment-manager/app/backend/data/database.db ".backup $BACKUP_DIR/db_backup_$TIMESTAMP.db"
-
-# ファイルバックアップ
-tar -czf $BACKUP_DIR/files_backup_$TIMESTAMP.tar.gz \
-  /opt/comment-manager/app/backend/data/ \
-  /opt/comment-manager/app/frontend/build/
-
-# 古いバックアップ削除（30日以上）
-find $BACKUP_DIR -type f -mtime +30 -delete
-
-echo "Backup completed: $TIMESTAMP"
-EOF
-
-chmod +x backup.sh
-
-# 定期実行設定
-sudo crontab -e
-# 以下を追加
-0 2 * * * /opt/comment-manager/backup.sh
+AUTO_BACKUP=true
+BACKUP_SCHEDULE=0 2 * * *   # cron書式
+MAX_BACKUPS=30
+ENCRYPT_BACKUPS=true
 ```
+
+出力先は `backend/backups/`（composeでは `backend_backups` ボリューム）です。
 
 ### 手動バックアップ
 
-```bash
-# データベースバックアップ
-sqlite3 database.db ".backup backup_$(date +%Y%m%d_%H%M%S).db"
+データベースの実体は **`backend/data/comments.db`** です。
 
-# ファイルバックアップ
-tar -czf backup_$(date +%Y%m%d_%H%M%S).tar.gz ./data ./build
+```bash
+# 稼働中でも安全にコピーできる方法（WALモードのため cp は不可）
+sqlite3 backend/data/comments.db ".backup backup_$(date +%Y%m%d_%H%M%S).db"
+
+# composeの場合
+docker compose cp backend:/app/data/comments.db ./comments-backup.db
 ```
 
-### 復元手順
+### 復元
 
 ```bash
-# データベース復元
-cp backup_file.db database.db
-
-# ファイル復元
-tar -xzf backup_file.tar.gz
-
-# 権限修正
-sudo chown -R comment-manager:comment-manager /opt/comment-manager
+docker compose stop backend
+docker compose cp ./comments-backup.db backend:/app/data/comments.db
+docker compose start backend
 ```
 
-## トラブルシューティング
+停止せずに差し替えるとWALとの不整合で破損する可能性があります。必ず止めてください。
 
-### デプロイ時の一般的な問題
+---
 
-#### 依存関係のインストールエラー
+## 監視
+
+実在するエンドポイントは3つだけです。
+
+| エンドポイント | 認証 | 内容 |
+|----------------|------|------|
+| `GET /health` | 不要 | 稼働確認。コンテナのヘルスチェックもこれを使う |
+| `GET /health/detailed` | admin | 依存関係・ホスト構成・リクエスト統計 |
+| `GET /metrics` | admin | **JSON形式**のメトリクス |
+
+> `/health/detailed` と `/metrics` は以前**無認証で公開**されており、
+> Nodeのバージョン・プラットフォーム・CPU数・メモリ量まで誰にでも返していました。
+> Nodeバージョンの開示は既知CVEの狙い撃ちを容易にするため、管理者認証を必須にしました。
+> `/health` は死活監視のため公開のままです（返すのは status と timestamp だけ）。
+
+> `/metrics` は **Prometheus の exposition 形式ではありません**。
+> Prometheusで取り込むにはエクスポーターを別途用意する必要があります。
+> 以前このガイドにあった Prometheus / Grafana の構成は、参照先の設定ファイルが
+> リポジトリに存在しなかったため削除しました。
+
+ログは標準出力に出ます。
+
 ```bash
-# キャッシュクリア
-npm cache clean --force
-rm -rf node_modules package-lock.json
-npm install
-```
-
-#### ポート競合
-```bash
-# 使用中のポート確認
-lsof -i :3000
-netstat -tlnp | grep :3000
-
-# プロセス終了
-kill -9 <PID>
-```
-
-#### パーミッションエラー
-```bash
-# 権限修正
-sudo chown -R $USER:$USER /opt/comment-manager
-sudo chmod -R 755 /opt/comment-manager
-
-# ディレクトリ作成
-mkdir -p /opt/comment-manager/data
-mkdir -p /opt/comment-manager/logs
-```
-
-### パフォーマンス問題
-
-#### メモリ不足
-```bash
-# スワップファイル作成
-sudo fallocate -l 2G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-
-# fstabに追加
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
-
-#### CPU使用率が高い
-```bash
-# PM2設定調整
-pm2 stop all
-pm2 delete all
-pm2 start ecosystem.config.js --instances 2
-```
-
-### データベース問題
-
-#### データベース接続エラー
-```bash
-# SQLiteデータベース権限確認
-ls -la /opt/comment-manager/app/backend/data/
-
-# データベースファイル再作成
-rm /opt/comment-manager/app/backend/data/database.db
-npm run db:init
-```
-
-#### クエリパフォーマンスの問題
-```bash
-# クエリ実行計画確認
-sqlite3 database.db "EXPLAIN QUERY PLAN SELECT * FROM comments WHERE platform = 'youtube';"
-
-# インデックス作成
-sqlite3 database.db "CREATE INDEX idx_comments_platform_timestamp ON comments(platform, timestamp DESC);"
-```
-
-### ネットワーク問題
-
-#### API接続エラー
-```bash
-# ネットワーク診断
-ping your-api-endpoint
-curl -I https://your-api-endpoint
-
-# DNS確認
-nslookup example.com
-
-# ファイアウォール確認
-sudo ufw status
-```
-
-#### WebSocket接続エラー
-```bash
-# WebSocketテスト
-websocat wss://example.com/ws
-
-# Nginx設定確認
-sudo nginx -t
-sudo nginx -s reload
-```
-
-## メンテナンス
-
-### 定期メンテナンス
-
-#### 日次メンテナンス
-```bash
-# ログローテーション
-logrotate -f /etc/logrotate.d/nginx
-logrotate -f /etc/logrotate.d/pm2-comment-manager
-
-# キャッシュクリア
-redis-cli FLUSHALL
-
-# バックアップ実行
-./backup.sh
-```
-
-#### 週次メンテナンス
-```bash
-# システム更新
-sudo apt update && sudo apt upgrade -y
-
-# セキュリティチェック
-sudo ufw status
-sudo fail2ban status
-
-# ディスク使用量確認
-df -h
-du -sh /opt/comment-manager/*
-```
-
-#### 月次メンテナンス
-```bash
-# ログ分析
-cat /var/log/nginx/access.log | goaccess -a > /var/www/html/report.html
-
-# パフォーマンス分析
-pm2 monit
-
-# バックアップテスト
-./restore-test.sh
-```
-
-### セキュリティメンテナンス
-
-#### 定期的なセキュリティチェック
-```bash
-# 脆弱性スキャン
-npm audit --production
-
-# 依存関係更新
-npm update --production
-
-# ログセキュリティチェック
-grep -i "failed\|error\|attack" /var/log/nginx/access.log
-```
-
-#### アクセスログ分析
-```bash
-# 異常アクセス検出
-cat /var/log/nginx/access.log | awk '{print $1}' | sort | uniq -c | sort -nr | head -10
-
-# レート制限違反確認
-grep "429" /var/log/nginx/access.log | wc -l
-```
-
-### アップデート手順
-
-#### マイナーバージョンアップデート
-```bash
-# リポジトリ更新
-cd /opt/comment-manager/app
-git pull origin main
-
-# 依存関係更新
-cd backend && npm update
-cd ../frontend && npm update
-
-# 再ビルド
-cd ../frontend && npm run build
-
-# PM2再起動
-pm2 reload all
-```
-
-#### メジャーバージョンアップデート
-```bash
-# バックアップ作成
-./backup.sh
-
-# アプリケーション停止
-pm2 stop all
-
-# データベースマイグレーション
-npm run db:migrate
-
-# アプリケーション更新
-git pull origin main
-npm install
-npm run build
-
-# アプリケーション起動
-pm2 start all
-
-# ヘルスチェック
-curl -f https://example.com/health || exit 1
-```
-
-## サポート
-
-### 技術サポート
-
-- **メール**: devops@example.com
-- **GitHub Issues**: https://github.com/shizukutanaka/Runner/issues
-- **ドキュメント**: https://docs.example.com
-
-### 監視ツール
-
-- **UptimeRobot**: サービス稼働監視
-- **Grafana**: メトリクス監視
-- **Sentry**: エラートラッキング
-
-### 緊急対応
-
-#### サービスダウン時
-```bash
-# ステータス確認
-pm2 status
-sudo systemctl status nginx
-
-# ログ確認
-pm2 logs --lines 50
-sudo tail -f /var/log/nginx/error.log
-
-# 再起動
-pm2 restart all
-sudo systemctl restart nginx
-```
-
-#### データベース障害時
-```bash
-# バックアップから復元
-./restore.sh latest
-
-# 整合性チェック
-sqlite3 database.db "PRAGMA integrity_check;"
-
-# 最適化
-sqlite3 database.db "VACUUM;"
-sqlite3 database.db "REINDEX;"
+docker compose logs -f backend
+docker compose logs -f frontend
 ```
 
 ---
 
-*このデプロイガイドは定期的に更新されます。最新情報はGitHubリポジトリを参照してください。*
+## アップデート
 
-**著作権**: © 2025 Runner Project Team
+```bash
+cd Runner
+git pull
+
+# コンテナの場合
+docker compose up -d --build
+
+# 直接配置の場合
+cd backend && npm ci --omit=dev && pm2 restart ecosystem.config.js   # backend/ 内で実行
+cd ../frontend && npm ci && npm run build
+```
+
+データベースのスキーマ変更は**起動時に自動適用**されます
+（`ensureColumnDefinitions` が不足している列を追加します）。
+マイグレーションコマンドはありません。
+
+**アップデート前にバックアップを取ってください。**
+
+---
+
+## トラブルシューティング
+
+### 起動しない: `JWT_SECRET is required in production`
+
+意図的なガードです。秘密鍵が空のまま本番が動き出さないようにしています。
+`JWT_SECRET` / `SESSION_SECRET` / `ENCRYPTION_KEY` を設定してください。
+
+### ログインできない / ログイン後すぐログアウトされる
+
+**HTTPSでアクセスしていますか。** 認証Cookieは `Secure` 属性付きなので、
+平文HTTPではブラウザが保存しません。`https://` で開いてください。
+
+自己署名証明書の場合、ブラウザの警告を承認しないとCookieも保存されません。
+
+### `/api` が404になる
+
+フロントエンドを配信しているWebサーバーが `/api` をバックエンドへ
+プロキシしていない構成です。`frontend/nginx.conf` を参照してください。
+フロントは同一オリジンの `/api` を叩く前提です。
+
+### リアルタイム更新が来ない
+
+`/socket.io` のプロキシで `Upgrade` / `Connection` ヘッダを転送していない可能性があります。
+`frontend/nginx.conf` の `location /socket.io/` が参考になります。
+
+疎通確認:
+
+```bash
+curl -k "https://localhost:8443/socket.io/?EIO=4&transport=polling"
+# {"sid":"...","upgrades":["websocket"],...} が返れば経路は正常
+```
+
+### ログインが429で弾かれる
+
+ログインは15分に5回までに制限されています（ブルートフォース対策）。
+この制限は `RATE_LIMIT_ENABLED` に**関係なく常に有効**です。
+15分待つか、開発環境ではプロセスを再起動してください（カウンタはメモリ上）。
+
+### YouTube/Twitchのコメントが取り込まれない
+
+APIキーが未設定なら、その旨がログに警告として出ます（アプリは起動します）。
+
+- YouTubeの**書き戻し**（削除・BAN）にはOAuth2が必要です。APIキーだけでは読み取りのみです
+- TwitchのEventSubチャット購読には**ユーザーアクセストークン**が必要です
+  （アプリトークンでは購読できません）
+
+### ディスクが逼迫している
+
+バックアップの保持数（`MAX_BACKUPS`）とログを確認してください。
+コンテナの場合は `docker compose exec backend du -sh /app/data /app/logs /app/backups`。
+
+---
+
+## 関連ドキュメント
+
+- [`README.md`](README.md) — 機能概要とクイックスタート
+- [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md) — APIリファレンス（全81エンドポイントが実在することを検査済み）
+- [`docs/FEATURE_AUDIT.md`](docs/FEATURE_AUDIT.md) — 実装状況の監査記録
+- [`docs/RESEARCH_IMPROVEMENTS.md`](docs/RESEARCH_IMPROVEMENTS.md) — モデレーション性能の実測と改善記録

@@ -376,7 +376,7 @@
 
 - **GET `/health`** ライブネス確認 / Liveness probe (匿名)
 - **GET `/health/detailed`** 詳細状態 / Detailed health (admin)
-- **GET `/metrics`** 簡易メトリクス / Basic metrics (匿名)。**JSONを返す**。
+- **GET `/metrics`** 簡易メトリクス / Basic metrics (**admin**)。**JSONを返す**。
   Prometheus の exposition 形式ではないため、Prometheus で取り込むには
   エクスポーターを別途用意する必要がある
 

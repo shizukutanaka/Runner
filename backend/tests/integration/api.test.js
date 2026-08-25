@@ -67,15 +67,24 @@ describe('API Integration Tests', () => {
       expect(res.body).toHaveProperty('timestamp');
     });
 
-    test('GET /health/detailed - should return system metrics', async () => {
+    // `/health/detailed` は管理者認証が必要になった。以前は無認証で
+    // Nodeのバージョン・CPU数・メモリ量まで公開していたため
+    // （詳細は tests/api/healthEndpointExposure.test.js）
+    test('GET /health/detailed - 管理者ならシステムメトリクスを返す', async () => {
+      const { generateToken } = require('../../src/middleware/auth');
       const res = await request(app)
         .get('/health/detailed')
+        .set('Authorization', `Bearer ${generateToken({ id: 'api-test-admin', role: 'admin' })}`)
         .expect(200);
 
       expect(res.body).toHaveProperty('status');
       expect(res.body).toHaveProperty('uptime');
       expect(res.body).toHaveProperty('metrics');
       expect(res.body.metrics).toHaveProperty('memory');
+    });
+
+    test('GET /health/detailed - 認証なしは401', async () => {
+      await request(app).get('/health/detailed').expect(401);
     });
   });
 
