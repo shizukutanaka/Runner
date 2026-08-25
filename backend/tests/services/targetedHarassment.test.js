@@ -75,3 +75,31 @@ describe('標的型ハラスメント検知（R-33）', () => {
     });
   });
 });
+
+// 検知が保留キューに届くこと（因果鎖④）。R-31 と同じ確認を R-33 にも掛ける。
+// 語彙に頼らない検知は「なぜ保留されたか」がモデレーターに見えないと使えないので、
+// 理由が構造化された形で残ることまで確認する
+describe('標的型ハラスメントが保留キューに届くこと（R-33・因果鎖④）', () => {
+  const { checkMessageHold } = require('../../src/controllers/commentsController');
+
+  it('保留され、abuseカテゴリと該当パターンIDが理由に残る', async () => {
+    const content = '誰も見てないのに続ける意味あるの？やめたら？';
+    const moderation = await analyze(content);
+    const hold = await checkMessageHold(content, moderation, 'youtube', 'harasser');
+
+    expect(hold.hold).toBe(true);
+    const reason = hold.reasons.find((r) => r.type === 'ng_word_category');
+    expect(reason).toBeDefined();
+    expect(reason.categories).toContain('abuse');
+    // モデレーターがバッジ表示に使うID
+    expect(reason.words).toContain('harassment:worthlessness_and_quit');
+  });
+
+  it('【過剰検知ガード】同じ語を含む無害な発話は保留されない', async () => {
+    const content = 'このクエスト意味ないから途中でやめたらいいよ';
+    const moderation = await analyze(content);
+    const hold = await checkMessageHold(content, moderation, 'youtube', 'normal-user');
+    expect(hold.hold).toBe(false);
+    expect(hold.reasons).toEqual([]);
+  });
+});

@@ -51,6 +51,17 @@ const extractReasonBadges = (reasons) => {
       if (stalking.length > 0) {
         badges.push({ key: 'stalking', label: 'つきまとい示唆', color: 'error' });
       }
+      // R-33: 語彙に頼らない標的型ハラスメント。NG語が一つも無いので、
+      // 何が引っかかったのかを示さないとモデレーターは「なぜ保留されたのか」が分からない
+      const HARASSMENT_LABEL = {
+        'harassment:appearance_shaming': '容姿への攻撃',
+        'harassment:worthlessness_and_quit': '活動の否定',
+        'harassment:rumor_mongering': '噂の流布'
+      };
+      (r.words || []).forEach((w) => {
+        const label = HARASSMENT_LABEL[w];
+        if (label) badges.push({ key: w, label, color: 'error' });
+      });
     } else if (r.type === 'raid_defense') {
       // R-25: レイド防御による自動隔離。trigger で理由を区別する
       const detail = r.trigger === 'first_seen' ? '新規アカウント' : '同一内容';
