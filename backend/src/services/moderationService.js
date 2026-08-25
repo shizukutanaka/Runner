@@ -46,6 +46,65 @@ try {
   logger.warn('[ModerationService] Failed to load ng-words.json - keyword moderation is disabled', { error: err.message });
 }
 
+// R-30: 日本語NGワードの部分一致による誤検知ガード。
+// 日本語は語の区切りが無いため `includes()` 照合が別語の内部に噛む。実測した例:
+//   「ラスボス倒した！やっと死ねる…完走おめでとう」→ 「死ね」に一致（可能形の「死ねる」）
+//   「シネマ」→ 「シネ」に一致
+//   「気にしねえよ」→ 「しね」に一致（関東方言の「しない」）
+// 語ごとに「直後に来たら不一致とみなす文字」「直前に来たら不一致とみなす文字」を持つ。
+// 単純に語を削るのではなく用法で切り分けるのは、「死ねよ」「しね!!」のような
+// 実際の暴言は取りこぼしたくないため。
+const NG_WORD_MATCH_GUARDS = {
+  // 死ねる/死ねれば/死ねます = 可能形。「死ねー！」は暴言なので長音は除外しない
+  '死ね': { after: /^[るれま]/ },
+  // しねる/しねます に加え、方言の しねえ/しねぇ/しねー、「〜でしね」(ですねの打ち間違い)
+  'しね': { after: /^[るれまえぇー]/, before: /で$/ },
+  // シネマ（cinema）が最大の誤検知源
+  'シネ': { after: /^[ルレママ]/ },
+  '氏ね': { after: /^[るれま]/ }
+};
+
+// 語 word が haystack に「誤検知ガードを通過した形で」出現するか判定する。
+// 出現位置ごとに前後を見て、すべてがガードに掛かった場合のみ不一致とする
+const matchesNgWord = (haystack, word) => {
+  const guard = NG_WORD_MATCH_GUARDS[word];
+  if (!guard) return haystack.includes(word);
+
+  let index = haystack.indexOf(word);
+  while (index !== -1) {
+    const after = haystack.slice(index + word.length);
+    const before = haystack.slice(0, index);
+    const suppressed = (guard.after && guard.after.test(after))
+      || (guard.before && guard.before.test(before));
+    if (!suppressed) return true;
+    index = haystack.indexOf(word, index + 1);
+  }
+  return false;
+};
+
+// R-31: つきまとい・監視の示唆パターン（カテゴリは threat 扱い）。
+// 語彙単体では無害な言葉の組み合わせで成立するため、NGワードリストでは表現できない。
+// いずれも「配信者の現実の所在／移動」と「それを把握しているという主張」が
+// 同一文中に揃うことを条件にしており、ゲーム内の話や一般的な世間話には当たらない。
+// 判定はあくまで保留（人間のレビュー）に回すためのものであり、自動処罰はしない
+const STALKING_PATTERNS = [
+  {
+    // 「どこにいたか知ってる」「どこ住んでるか知ってる」「昨日どこ行ったか知ってるよ」
+    id: 'stalking:knows_whereabouts',
+    pattern: /どこ(に|で)?(いた|居た|行った|住んで|勤めて|通って)[^。！!？?]{0,12}(知って|わかって|分かって|把握)/
+  },
+  {
+    // 「家の前にいた」「職場の近くで見た」「学校まで来た」
+    id: 'stalking:near_real_location',
+    pattern: /(自宅|家|職場|会社|学校|最寄り駅)[^。！!？?]{0,8}(前|近く|まで|付近)[^。！!？?]{0,8}(いた|居た|来た|行った|見た|待って)/
+  },
+  {
+    // 「後をつけた」「尾行した」
+    id: 'stalking:followed',
+    pattern: /(後|あと)を(つけ|付け)|尾行/
+  }
+];
+
 // リンクブロック関連の設定
 const LINK_BLOCK_CONFIG = {
   // 完全にブロックするドメイン
@@ -837,12 +896,32 @@ exports.analyzeComment = async (content, platform, user, timestamp, contextComme
   const contentLower = normalizeForMatching(content).toLowerCase();
   const contentConfusablesNormalized = removeConfusables(normalizeForMatching(content)).toLowerCase();
   NG_WORDS.forEach((word) => {
-    if (contentLower.includes(word) || contentConfusablesNormalized.includes(word)) {
+    // R-30: 日本語は語境界が無いため、可能形や同音語の内部に噛む一致をガードで除外する
+    if (matchesNgWord(contentLower, word) || matchesNgWord(contentConfusablesNormalized, word)) {
       result.flaggedWords.push(word);
       // R-14: ヒットした語のカテゴリを記録（重複は除外）してモデレーターに理由を提示
       const category = NG_WORD_CATEGORY.get(word);
       if (category && !result.flaggedCategories.includes(category)) {
         result.flaggedCategories.push(category);
+      }
+      result.isOffensive = true;
+      result.score += 50;
+    }
+  });
+
+  // R-31: 実世界での監視・つきまとい示唆の検知。
+  // 既存のthreatリストは「住所特定した」「i know where you live」のような直截な表現しか
+  // 拾えず、評価セットの「昨日どこにいたか知ってるよ。いつも同じ道通ってるね」のように
+  // 単語単体では無害な語だけで構成された示唆を素通りしていた。
+  // Han et al. のヘイトレイド研究（arXiv:2305.16248）でも、配信者が最も深刻に受け取るのは
+  // 罵倒そのものより「現実の身元・所在を握っている」という示唆だと報告されている。
+  // 誤検知を避けるため、①配信者の実世界での所在・移動、かつ ②それを把握しているという主張、
+  // の両方が揃う形にのみ一致させる（ゲーム内の「同じ道」等に当たらないようにする）
+  STALKING_PATTERNS.forEach(({ id, pattern }) => {
+    if (pattern.test(contentLower)) {
+      result.flaggedWords.push(id);
+      if (!result.flaggedCategories.includes('threat')) {
+        result.flaggedCategories.push('threat');
       }
       result.isOffensive = true;
       result.score += 50;
