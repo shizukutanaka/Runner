@@ -45,6 +45,12 @@ const extractReasonBadges = (reasons) => {
         const meta = NG_CATEGORY_META[cat] || { label: cat, color: 'default' };
         badges.push({ key: `ng-${cat}`, label: meta.label, color: meta.color });
       });
+      // R-31: つきまとい・監視の示唆は threat カテゴリの中でも対応が変わる
+      // （通報や記録保全が必要になりうる）ため、専用バッジで区別する
+      const stalking = (r.words || []).filter((w) => String(w).startsWith('stalking:'));
+      if (stalking.length > 0) {
+        badges.push({ key: 'stalking', label: 'つきまとい示唆', color: 'error' });
+      }
     } else if (r.type === 'raid_defense') {
       // R-25: レイド防御による自動隔離。trigger で理由を区別する
       const detail = r.trigger === 'first_seen' ? '新規アカウント' : '同一内容';

@@ -66,3 +66,30 @@ describe('つきまとい・監視の示唆検知（R-31）', () => {
     });
   });
 });
+
+// 検知そのものより重要なのは「検知結果が人間のレビューに届くか」（第一原理の因果鎖 ④）。
+// analyzeComment が threat を立てても保留キューに入らなければ製品としては無意味なので、
+// 保留判定まで通して確認する
+describe('つきまとい検知が保留キューに届くこと（R-31・因果鎖④）', () => {
+  const { checkMessageHold } = require('../../src/controllers/commentsController');
+
+  it('つきまとい示唆はhigh severityの理由付きで保留される', async () => {
+    const content = '昨日どこにいたか知ってるよ。いつも同じ道通ってるね';
+    const moderation = await analyze(content);
+    const hold = await checkMessageHold(content, moderation, 'youtube', 'stalker-user');
+
+    expect(hold.hold).toBe(true);
+    const reason = hold.reasons.find((r) => r.type === 'ng_word_category');
+    expect(reason).toBeDefined();
+    expect(reason.categories).toContain('threat');
+    expect(reason.severity).toBe('high');
+  });
+
+  it('【過剰検知ガード】ゲーム内の同じ言い回しは保留されない', async () => {
+    const content = 'このマップ、敵がいつも同じ道通ってくるんだよね';
+    const moderation = await analyze(content);
+    const hold = await checkMessageHold(content, moderation, 'youtube', 'normal-user');
+    expect(hold.hold).toBe(false);
+    expect(hold.reasons).toEqual([]);
+  });
+});
