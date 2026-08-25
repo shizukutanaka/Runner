@@ -33,17 +33,18 @@ module.exports = {
 
       max_memory_restart: '1G',
 
+      // PORT はここでは指定しない。指定すると .env の PORT を上書きしてしまい、
+      // scripts/personal-setup.sh が生成する .env（PORT=3000）や
+      // frontend の VITE_API_BASE_URL と食い違う。未設定時の既定は
+      // src/config/index.js の 4000
       env_production: {
-        NODE_ENV: 'production',
-        PORT: 4000
+        NODE_ENV: 'production'
       },
       env_staging: {
-        NODE_ENV: 'staging',
-        PORT: 4000
+        NODE_ENV: 'staging'
       },
       env_development: {
-        NODE_ENV: 'development',
-        PORT: 4000
+        NODE_ENV: 'development'
       },
 
       error_file: './logs/pm2-error.log',

@@ -105,94 +105,48 @@ cat > "$PROJECT_ROOT/backend/.env" << EOF
 # Personal Use Configuration - Auto-generated
 # Generated on: $(date)
 # Preset: ${PRESET}
+#
+# ここに書かれているキーは、すべて backend/src が実際に読むものだけです。
+# 以前は ENABLE_2FA / CSRF_ENABLED / GDPR_ENABLED など19個の
+# 「どこからも読まれない設定」が並んでいましたが、削除しました。
 # ===================================================================
 
 NODE_ENV=production
 PORT=3000
-APP_NAME="YouTube & Twitch Comment Manager"
 
-# Security Secrets (DO NOT SHARE)
+# 秘密鍵（絶対に共有しないこと）
 JWT_SECRET=${JWT_SECRET}
-JWT_EXPIRY=15m
-JWT_REFRESH_EXPIRY=7d
 SESSION_SECRET=${SESSION_SECRET}
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 
-# Session Configuration
+# セッション（個人利用なのでメモリストア。Redisを使う場合は
+# SESSION_STORE=redis と SESSION_REDIS_URL を設定）
 SESSION_STORE=memory
-SESSION_COOKIE_SECURE=false
-SESSION_COOKIE_HTTPONLY=true
-SESSION_COOKIE_SAMESITE=strict
-SESSION_MAX_AGE=1800000
 
-# Advanced Security Features
-ENABLE_2FA=true
-TOTP_WINDOW=2
-BACKUP_CODES_COUNT=10
-ENABLE_IP_WHITELIST=true
-MAX_SESSIONS_PER_USER=5
-SESSION_HIJACK_DETECTION=true
-CSRF_ENABLED=true
-TOKEN_ROTATION_ENABLED=true
+# データベース: 未指定なら backend/data/comments.db が使われます
+# DATABASE_PATH=./data/comments.db
 
-# Database
-DATABASE_URL=sqlite:./data/database.db
-DB_POOL_SIZE=3
+# CORS / フロントエンドの配信元
+FRONTEND_ALLOWED_ORIGINS=http://localhost:5173
 
-# Cache & Performance
-CACHE_TTL=300
-CACHE_MAX_SIZE=1000
-QUERY_CACHE_ENABLED=true
-RESPONSE_CACHE_ENABLED=true
-CIRCUIT_BREAKER_ENABLED=true
-
-# Data Protection
-ENCRYPTION_ENABLED=true
+# 自動バックアップ（バックエンドのプロセス内でスケジュール実行されます）
 AUTO_BACKUP=true
 BACKUP_SCHEDULE=0 2 * * *
 ENCRYPT_BACKUPS=true
 MAX_BACKUPS=30
 
-# GDPR Compliance
-GDPR_ENABLED=true
-GDPR_DATA_RETENTION_COMMENTS=90
-GDPR_DATA_RETENTION_USERS=365
-AUDIT_LOGGING=true
-
-# Monitoring & Alerting
-ALERTING_ENABLED=true
-ALERT_ERROR_RATE=0.03
-ALERT_RESPONSE_TIME=800
-ALERT_MEMORY_USAGE=0.85
-ALERT_CPU_USAGE=0.75
-
-# Rate Limiting
+# レート制限
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX_REQUESTS=100
 
-# CORS
-CORS_ORIGIN=http://localhost:5173
-
-# Feature Flags
-ENABLE_AI_MODERATION=true
-ENABLE_REAL_TIME_SYNC=true
-ENABLE_ANALYTICS=false
-ENABLE_NOTIFICATIONS=true
-
-# Personal Use Settings
-DEPLOYMENT_TYPE=personal
-HIGH_SECURITY_MODE=true
-LOCAL_MODE=true
-
-# API Keys (Add your own)
+# APIキー（自分のものを設定してください。未設定でもアプリは起動し、
+# 該当機能だけが無効になります）
 OPENAI_API_KEY=
 YOUTUBE_API_KEY=
 TWITCH_CLIENT_ID=
 TWITCH_CLIENT_SECRET=
 
-# Logging
 LOG_LEVEL=info
-LOG_FILE=./logs/app.log
 EOF
 
 print_success "Backend .env created"
@@ -207,33 +161,17 @@ cat > "$PROJECT_ROOT/frontend/.env" << EOF
 # ===================================================================
 
 VITE_APP_NAME="YouTube & Twitch Comment Manager"
+
+# バックエンドの PORT（backend/.env）と必ず揃えること
 VITE_API_BASE_URL=http://localhost:3000/api
-VITE_WS_URL=ws://localhost:3000
 
-# Security Features
-VITE_ENABLE_2FA_UI=true
-VITE_SESSION_TIMEOUT_WARNING=300000
-VITE_AUTO_LOGOUT_INACTIVE=1800000
+# socket.io の接続先。コードが読むのは VITE_SOCKET_URL であり、
+# 以前ここにあった VITE_WS_URL はどこからも参照されていなかった。
+# socket.io はハンドシェイクをHTTPで行うため http:// を指定する
+VITE_SOCKET_URL=http://localhost:3000
 
-# Feature Flags
-VITE_ENABLE_AI_MODERATION=true
-VITE_ENABLE_REAL_TIME=true
-VITE_ENABLE_ANALYTICS=false
-VITE_ENABLE_NOTIFICATIONS=true
-VITE_ENABLE_THEMES=true
-
-# Development
 VITE_DEBUG=false
 VITE_DEV_TOOLS=false
-
-# Performance
-VITE_WS_RECONNECT_ATTEMPTS=5
-VITE_API_TIMEOUT=30000
-
-# Privacy
-VITE_DISABLE_ANALYTICS=true
-VITE_DISABLE_EXTERNAL_TRACKING=true
-VITE_LOCAL_MODE=true
 EOF
 
 print_success "Frontend .env created"
@@ -243,7 +181,7 @@ print_header "Installing Dependencies"
 
 cd "$PROJECT_ROOT/backend"
 print_info "Installing backend dependencies..."
-npm install --production
+npm install --omit=dev
 
 cd "$PROJECT_ROOT/frontend"
 print_info "Installing frontend dependencies..."
@@ -287,16 +225,19 @@ fi
 # Security checklist
 print_header "Security Checklist"
 
-echo "✓ Strong secrets generated automatically"
-echo "✓ 2FA enabled"
-echo "✓ IP whitelisting enabled"
-echo "✓ Session hijack detection enabled"
-echo "✓ CSRF protection enabled"
-echo "✓ Token rotation enabled"
-echo "✓ Data encryption enabled"
-echo "✓ Automatic backups enabled"
-echo "✓ GDPR compliance enabled"
-echo "✓ Audit logging enabled"
+echo "✓ Strong secrets generated (JWT_SECRET / SESSION_SECRET / ENCRYPTION_KEY)"
+echo "✓ Two-factor authentication available (enable it per account in Settings)"
+echo "✓ Refresh token rotation (old tokens are invalidated on use)"
+echo "✓ Audit logging of moderation and account actions"
+echo "✓ Automatic encrypted backups (AUTO_BACKUP=true)"
+echo "✓ Rate limiting"
+echo ""
+print_warning "Not implemented -- do not assume these are protecting you:"
+echo "  - CSRF tokens (no CSRF middleware exists in this codebase)"
+echo "  - Session hijack detection"
+echo "  - GDPR data-retention automation"
+echo "  The previous version of this script printed all of the above as"
+echo "  enabled, which was not true."
 echo ""
 
 print_warning "Important: Add your API keys to backend/.env:"
@@ -316,10 +257,10 @@ echo "5. Access the application at http://localhost:5173"
 echo ""
 
 print_info "For production deployment with HTTPS:"
-echo "  - Use nginx or Apache as reverse proxy"
-echo "  - Set SESSION_COOKIE_SECURE=true in backend/.env"
-echo "  - Update CORS_ORIGIN to your domain"
-echo "  - Consider using Docker: docker-compose up -d"
+echo "  - Put nginx (or Caddy) in front and terminate TLS there"
+echo "  - Make sure /socket.io passes the WebSocket Upgrade header through"
+echo "  - Update FRONTEND_ALLOWED_ORIGINS in backend/.env to your domain"
+echo "  - Or use the container setup: docker compose up -d --build"
 echo ""
 
 # Security recommendations
@@ -353,16 +294,16 @@ Preset used: ${PRESET}
 Node version: $(node --version)
 npm version: $(npm --version)
 
-Security features enabled:
-- Two-Factor Authentication (2FA)
-- IP Whitelisting
-- Session Hijack Detection
-- CSRF Protection
-- Token Rotation
-- Data Encryption
-- Automatic Backups
-- GDPR Compliance
-- Audit Logging
+Security features available:
+- Two-Factor Authentication (TOTP; enable per account in Settings)
+- Refresh token rotation
+- Data encryption at rest (ENCRYPTION_KEY)
+- Automatic encrypted backups
+- Audit logging
+- Rate limiting
+
+Not implemented: CSRF tokens, session hijack detection,
+GDPR data-retention automation.
 
 Next steps:
 1. Add API keys to backend/.env
