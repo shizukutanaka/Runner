@@ -301,8 +301,13 @@ const verifyToken = (token) => {
 };
 
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  // D-7: httpOnly Cookie を優先し、Authorization ヘッダーも受け付ける。
+  // Cookieを先に見るのはブラウザからのアクセスを正とするため。ヘッダー経路は
+  // APIクライアントとの互換のために残している（詳細は middleware/authCookies.js）
+  // eslint-disable-next-line global-require
+  const { readAccessToken } = require('./authCookies');
+  const { token, source } = readAccessToken(req);
+  req.authSource = source;
 
   if (!token) {
     // Development mode: allow anonymous access with limited permissions

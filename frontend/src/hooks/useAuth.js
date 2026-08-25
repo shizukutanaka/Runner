@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { login as apiLogin, logout as apiLogout, register as apiRegister, fetchCurrentAccount } from '../api/auth';
-import { tokenStorage } from '../utils/tokenStorage';
 import socket from '../ws';
 
 export const useAuth = () => {
@@ -11,19 +10,19 @@ export const useAuth = () => {
   useEffect(() => {
     let cancelled = false;
 
+    // D-7: トークンは httpOnly Cookie にあり、JavaScriptからは存在確認すらできない。
+    // 以前はここで sessionStorage を見て「無ければ未ログイン」と判断していたが、
+    // Cookie方式ではそれが常に「無い」になるため、**必ずサーバーに問い合わせる**。
+    // ログイン済みかどうかの唯一の判定は GET /api/users/me が200を返すかである
     const checkSession = async () => {
-      if (!tokenStorage.get()) {
-        setLoading(false);
-        return;
-      }
       try {
         const current = await fetchCurrentAccount();
         if (!cancelled) {
           setAccount(current);
         }
       } catch {
+        // 401（未ログイン）を含む。エラー＝未ログインとして扱う
         if (!cancelled) {
-          tokenStorage.remove();
           setAccount(null);
         }
       } finally {

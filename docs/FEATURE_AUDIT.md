@@ -407,12 +407,47 @@ E-16（デプロイ資材）に続けて、`npm run` で叩ける経路とセッ
   前提が変わってから設計し直す方が安全である
 - **再検証**: `grep -rn "tenant" backend/src/` → 0件
 
-### D-7. ★ トークン保管がsessionStorage（XSS露出）
+### D-7. ✅ 解決済み（2026-08-25） — httpOnly Cookie へ移行し、同時にCSRF対策を導入
 
-- **証拠**: `frontend/src/utils/tokenStorage.js` にTODOコメントあり（httpOnly Cookie移行が理想、サーバー側セッション管理が必要）
-- **推奨アクション**: `/api/users/login` を httpOnly Cookie 発行に変更し、フロントのBearerヘッダー方式から移行
-- **⚠ 移行時の必須条件（2026-08-25 追記）**: 現在このコードベースには **CSRF対策が一切無い**（`csurf` も独自トークンも Origin/Referer 検証も無く、`res.cookie` も `cookie-parser` も使われていない）。それで問題ないのは、認証が `Authorization` ヘッダー（`src/middleware/auth.js:304`）だけで成立しており、ブラウザはクロスサイトリクエストにこのヘッダーを自動付与しないため。`req.session.userId` は監査ログの属性付けにしか使われておらず、認可には使われていない。
-  **したがって httpOnly Cookie へ移行した瞬間に、全ての状態変更エンドポイントがCSRF攻撃可能になる。** Cookie移行とCSRF対策の導入は必ず同一の変更としてセットで行うこと（SameSite=Strict だけに頼らない）。
+- **元の問題**: フロントが `sessionStorage` にトークンを保存していたため、
+  XSSが一度でも成立すればトークンをそのまま持ち出せた
+- **実施した移行**:
+  - バックエンド: ログイン/リフレッシュ時に `access_token` / `refresh_token` を
+    **HttpOnly + SameSite=Strict（本番では Secure）** で発行（`middleware/authCookies.js`）。
+    `authenticateToken` は **Cookieを優先し、Authorizationヘッダーも受け付ける**
+    （APIクライアント・既存テストを壊さないため）
+  - フロント: `sessionStorage` への保存を全廃。`tokenStorage.js` は参照ゼロになったので削除。
+    axios は `withCredentials` のみでCookieを送る
+  - **`useAuth` の重大な落とし穴**: 以前は `tokenStorage.get()` が空なら未ログインと判断していた。
+    Cookie方式ではJSからトークンの存在を確認できず**常に空**になるため、この判定を残すと
+    リロードのたびに全員ログアウトする。**必ずサーバーに `GET /api/users/me` で問い合わせる**
+    形に変更した（ログイン済みかどうかの唯一の判定はこれ）
+- **CSRF対策を同時に入れた理由**: これまでCSRF対策が不要だったのは、認証が
+  `Authorization` ヘッダーだけで成立しており、ブラウザがクロスサイトで自動付与しないため。
+  **Cookieは自動付与されるので、Cookie認証を入れた瞬間に全ての状態変更エンドポイントが
+  CSRF可能になる。** 二重防御にしてある: ①SameSite=Strict ②Cookie認証された状態変更に対する
+  Origin/Referer 検証（`csrfGuard`）
+- **実測で分かったこと**: このアプリには `csrfGuard` の前段に `validateOrigin`
+  （`middleware/security.js`）があり、**メソッドや認証方式に関係なく**許可外Originを弾く。
+  `csrfGuard` はその内側の二重防御であって最初の壁ではない。テストにこの実際の挙動を固定した
+- **もう一つの発見**: レートリミッターが2系統ある。`middleware/security.js` は
+  `config.rateLimit.enabled` を見るが、`middleware/rateLimiter.js`（ログイン保護の
+  `limiters.auth`、15分5回）は**それを見ずに常に有効**。テスト環境でもログインが5回で
+  429になる（実際に6回目で踏んだ）。ブルートフォース対策が常時有効なこと自体は妥当だが、
+  2系統が別々の有効化条件を持っている点は将来整理の余地がある
+- **検証**:
+  - `curl`（本番設定）: `Set-Cookie` に `HttpOnly; Secure; SameSite=Strict` を確認
+  - Cookieのみで `GET /api/users/me` → 200、Cookie無し → 401
+  - 許可外Originからの状態変更 → **403**、許可Origin → 200
+  - Cookieのみ（本文空）でのリフレッシュ → 200 かつ両Cookieがローテーション
+  - **実ブラウザ（Chromium + nginx + 実バックエンド）**: ログイン後
+    `sessionStorage` は**空**、Cookieは `httpOnly=true, sameSite=Strict` の2本、
+    ダッシュボードのタブ11個が描画、**リロード後もタブ11個を維持**（Cookieだけで
+    セッションが継続）、ページエラー0件
+  - 回帰テスト `tests/api/authCookies.test.js`（14件）
+- **既知の制約**: `Secure` 属性が付くため**本番はHTTPS必須**。平文HTTPではブラウザが
+  Cookieを保存しない（開発環境では `Secure` は付かない）
+- **再検証**: ログイン後に `sessionStorage` が空であること、リロードでセッションが維持されること
 
 ### D-8. ✅ 解決済み（2026-07-10） — コミュニティインサイトUIの残り2画面
 
@@ -422,7 +457,7 @@ E-16（デプロイ資材）に続けて、`npm run` で叩ける経路とセッ
 - **検証**: Playwright + 実Chromiumで登録→ログイン→Settings→文化プロファイルタブ（プリセット取得・選択・保存・現在設定のChips表示を確認）→Moderatorタブ→文脈分析（コメント+文脈2件を送信し「危険」判定・スコア・インサイト文の表示を確認）まで実施
 - **再検証**: `ls frontend/src/components/CultureProfilePanel.jsx frontend/src/components/ContextAnalysisPanel.jsx` → 両方存在すれば実装済み。`grep -n "ContextAnalysisPanel\|CultureProfilePanel" frontend/src/components/Dashboard.js frontend/src/components/SettingsPanel.js` → それぞれ配線されていれば統合済み
 
-### D-9. ✅ 解決済み（2026-07-10更新） — 残存テスト失敗を142件→4件に削減（残り4件は意図的な機能ギャップ）
+### D-9. ✅ 解決済み（2026-08-25更新） — 残存テスト失敗142件→0件（据え置いていた4件も解消）
 
 - **元の証拠**: `cd backend && NODE_ENV=test npx jest` → 15スイート失敗/142件失敗（367件中）。主因4種を特定: (a) notifications テーブルに `user_id`/`expires_at` 列が無くSQLITE_ERROR、(b) `openaiService.test.js` が実際には未使用の `openaiService_enhanced.js`（527行、参照ゼロ）をテストしていた上にモック構造も不良、(c) `validation.js` の `Joi.date().iso()` がISO文字列をDateオブジェクトへ強制変換していた、(d) `cacheService.js`/`monitoringService.js`/`errorHandler.js` の常駐 `setInterval` がJestのopen-handle検出に引っかかりタイムアウトを誘発
 - **実施した修正**:
@@ -442,8 +477,8 @@ E-16（デプロイ資材）に続けて、`npm run` で叩ける経路とセッ
   - (m追加・2026-07-10) `tests/integration/comments.test.js`（22件）は`user`必須フィールドの欠落・レスポンス封筒不一致（`res.body.comments`ではなく`res.body.data.items`）・コメントIDのUUID形式要件・`PUT /:id`が`status`ではなく`action`（enum: visible/hidden/muted/deleted/flagged）を受け付けること、の4種の不一致が重なっていた。加えて存在しない`POST /:id/moderate`エンドポイントを想定した3件は実在する`PUT /:id`+`action`に書き換え、削除が実際にはソフトデリート（`status='deleted'`に更新するのみで行は残る、監査証跡目的の意図的設計）であることに合わせてDELETE後のGETは404ではなく200+`status:'deleted'`を検証するよう修正。実装に存在しない機能2件（`PUT /:id`での本文content編集、`GET /api/comments/stats`）はskip
   - (n追加・2026-07-10) `tests/integration/api.test.js`（21件）を全面書き直し。上記(a)〜(m)と同系統の不一致（`/api/health`という誤ったパス・封筒形状・`PATCH`と`PUT`のメソッド差・`status`と`action`のフィールド名差・UUID形式要件）に加え、**`PUT /api/users/:id`（モデレーターによるban/mute操作）が配線されたJoiスキーマと実装コントローラーで完全に無関係なフィールドを扱っており一度も機能していなかった**重大バグを発見・修正（詳細は本書冒頭「追記4」参照）。プラットフォーム利用者(`users`テーブル)を作成する公開APIが存在しないため、GET/PUT検証は`beforeAll`でDBへ直接シードする方式に変更。存在しない`POST /api/users`・`GET /api/analytics/snapshots`・`GET/PUT /api/settings/moderation/:platform`・重複ID起因の500エラー経路（IDが常にサーバー側uuid生成のため到達不能）はskip
 - **検証**: 各修正後に`NODE_ENV=test npx jest`をフルスイート実行し、失敗数の悪化がないことを都度確認。最終結果: 142件失敗→**4件失敗**（367→439件、settings.test.jsが構文エラーで0扱いだった55件が新たに数えられるようになった影響を含む）、open handle 36→1。本セッションで触れた9ファイル全て全合格（documented skip除く）: `tests/integration/notifications.test.js`24/24、`tests/api/comments.test.js`37/38、`tests/api/notifications.test.js`8/8、`tests/services/commentService.test.js`33/33、`tests/api/settings.test.js`51/55、`tests/api/billing.test.js`12/12、`tests/middleware/security.test.js`7/7、`tests/integration/security.test.js`13/13、`tests/integration/comments.test.js`19/19、`tests/integration/api.test.js`15/21
-- **既知の残課題**: 残り4件は全て`tests/api/settings.test.js`の意図的な機能ギャップ（`存在しないユーザー`404・`不正なユーザーID形式`400・`空の更新データ`400・`不正なテーマ値`400）。いずれもユーザー実在確認・IDフォーマット仕様・空更新の扱いという製品仕様が未確定な領域で、無理に実装を追加せず意図的に据え置いている。D-9はこれで実質完了
-- **再検証**: `NODE_ENV=test npx jest 2>&1 | tail -5` で failed 件数を確認（4件のみになっていれば維持できている）
+- **残課題も解消済み（2026-08-25 追記）**: 据え置いていた4件（`存在しないユーザー`404・`不正なユーザーID形式`400・`空の更新データ`400・`不正なテーマ値`400）は**すべて解決している**。`tests/api/settings.test.js` は現在 **55/55 全合格**であり、リポジトリ全体でも失敗0件・skip 0件。上の「意図的な機能ギャップ」という記述は古くなっていたので訂正する
+- **再検証**: `NODE_ENV=test npx jest 2>&1 | tail -5` で failed 0件・skip 0件であること
 
 ### D-10. ✅ 解決済み（2026-07-04） — CriticalAlertsBannerが二重に壊れていた
 
@@ -509,11 +544,10 @@ E-16（デプロイ資材）に続けて、`npm run` で叩ける経路とセッ
 
 ### A. 製品として決めないと着手できないもの（オーナー判断待ち）
 
-1. **D-7 httpOnly Cookie移行**
-   D-5（リフレッシュトークン）で足場は整っている。**着手時はCSRF対策の導入が必須**
-   （現在CSRF対策が無いのは認証がBearerヘッダーのみだから。詳細はD-7の節）
-2. **D-9残り4件（`tests/api/settings.test.js`）**: テストが期待する仕様が製品として未確定
-
+**このカテゴリは空になった。** D-7（httpOnly Cookie移行 + CSRF対策）と
+D-9（テスト失敗の残り4件）はいずれも2026-08-25に解決済み。
+E-5（課金）と D-6/E-3残課題（マルチテナント）はオーナー判断により削除済み。
+現在フルスイートは **621件全合格・失敗0件・skip 0件**である。
 **2026-08-25に決着した項目**: E-5（Stripe課金）と D-6 / E-3残課題（マルチテナント）は
 オーナー判断により**両方とも削除**した。いずれも「未完成の機能」ではなく
 **構造上一度も動作したことがないコード**だったことが調査で判明している（各節を参照）。

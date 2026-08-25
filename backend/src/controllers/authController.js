@@ -6,6 +6,7 @@ const validator = require('validator');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const logger = require('../logger');
+const { setAuthCookies, clearAuthCookies, readRefreshToken } = require('../middleware/authCookies');
 const config = require('../config');
 const { generateToken } = require('../middleware/auth');
 
@@ -131,6 +132,10 @@ exports.login = async (req, res, next) => {
 
     logger.info('[Auth] Login successful', { id: account.id, username: account.username });
 
+    // D-7: httpOnly Cookie で渡す。本文にも残すのはAPIクライアント互換のため
+    // （ブラウザ側はCookieを使い、sessionStorageには保存しない）
+    setAuthCookies(res, { token, refreshToken });
+
     res.json({
       success: true,
       token,
@@ -206,12 +211,14 @@ exports.logout = async (req, res) => {
   if (req.session) {
     req.session.destroy(() => {});
   }
+  clearAuthCookies(res);
   res.json({ success: true, message: 'ログアウトしました' });
 };
 
 // リフレッシュトークンを検証し、新しいアクセストークン+ローテーションしたリフレッシュトークンを発行
 exports.refresh = async (req, res, next) => {
-  const { refreshToken } = req.body;
+  // D-7: Cookie を優先し、本文経由も受け付ける（APIクライアント互換）
+  const refreshToken = readRefreshToken(req);
 
   if (!refreshToken || typeof refreshToken !== 'string') {
     return next({ status: 401, message: '無効なリフレッシュトークンです' });
@@ -237,6 +244,9 @@ exports.refresh = async (req, res, next) => {
     const newRefreshToken = await issueRefreshToken(account.id);
 
     logger.info('[Auth] Token refreshed', { id: account.id });
+
+    // ローテーション後の値でCookieを差し替える
+    setAuthCookies(res, { token, refreshToken: newRefreshToken });
 
     res.json({
       success: true,

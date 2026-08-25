@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { APIError } from './comments';
-import { tokenStorage, refreshTokenStorage } from '../utils/tokenStorage';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -27,13 +26,11 @@ const handleAuthAPIError = (error, defaultMessage) => {
 
 export const login = async (username, password) => {
   try {
-    const res = await axios.post(`${API_BASE_URL}/users/login`, { username, password });
-    if (res.data.token) {
-      tokenStorage.set(res.data.token);
-    }
-    if (res.data.refreshToken) {
-      refreshTokenStorage.set(res.data.refreshToken);
-    }
+    // D-7: サーバーが httpOnly Cookie を発行する。応答本文にもトークンは入っているが
+    // （APIクライアント互換のため）、ブラウザ側では保存しない
+    const res = await axios.post(
+      `${API_BASE_URL}/users/login`, { username, password }, { withCredentials: true }
+    );
     return res.data;
   } catch (error) {
     handleAuthAPIError(error, 'ログインに失敗しました');
@@ -44,24 +41,15 @@ export const login = async (username, password) => {
 // axiosのレスポンスインターセプター（comments.js）から401時に呼ばれる。
 // 循環import回避のため、生のaxiosインスタンス（インターセプター未適用）を都度使う
 export const refreshAccessToken = async () => {
-  const currentRefreshToken = refreshTokenStorage.get();
-  if (!currentRefreshToken) {
-    return null;
-  }
-
+  // D-7: リフレッシュトークンは httpOnly Cookie にある。クライアントからは読めないので
+  // 本文には載せず、`withCredentials` でCookieを送るだけでよい。
+  // 更新されたトークンもサーバーが Set-Cookie で差し替える。
+  // 戻り値は「更新できたか」を表す真偽値（呼び出し側はそのまま再実行すればよい）
   try {
-    const res = await axios.post(`${API_BASE_URL}/users/refresh`, { refreshToken: currentRefreshToken });
-    if (res.data.token) {
-      tokenStorage.set(res.data.token);
-    }
-    if (res.data.refreshToken) {
-      refreshTokenStorage.set(res.data.refreshToken);
-    }
-    return res.data.token || null;
+    const res = await axios.post(`${API_BASE_URL}/users/refresh`, {}, { withCredentials: true });
+    return Boolean(res.data?.success);
   } catch {
-    tokenStorage.remove();
-    refreshTokenStorage.remove();
-    return null;
+    return false;
   }
 };
 
@@ -84,12 +72,11 @@ export const fetchCurrentAccount = async () => {
 };
 
 export const logout = async () => {
+  // D-7: Cookieを消せるのはサーバーだけ（httpOnly なのでJSからは触れない）。
+  // ログアウトの本体は POST /users/logout の Set-Cookie による失効指示である
   try {
-    await axios.post(`${API_BASE_URL}/users/logout`);
+    await axios.post(`${API_BASE_URL}/users/logout`, {}, { withCredentials: true });
   } catch {
-    // ログアウトはベストエフォート: サーバー側エラーがあってもクライアント側トークンは破棄する
-  } finally {
-    tokenStorage.remove();
-    refreshTokenStorage.remove();
+    // ベストエフォート。失敗してもリフレッシュトークンはサーバー側で無効化を試みている
   }
 };

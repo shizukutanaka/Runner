@@ -1,4 +1,5 @@
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const session = require('express-session');
 const { randomUUID } = require('crypto');
@@ -15,6 +16,7 @@ const youtubeRouter = require('./routes/youtube');
 const twitchRouter = require('./routes/twitch');
 const communityInsightsRouter = require('./routes/communityInsights');
 const config = require('./config');
+const { csrfGuard } = require('./middleware/authCookies');
 const { errorHandler, notFoundHandler, requestTimeout } = require('./middleware/errorHandler');
 const {
   metricsMiddleware,
@@ -180,6 +182,13 @@ app.use(validateOrigin);
 // CORS and body parsing
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
+
+// D-7: httpOnly Cookie による認証。Cookieを読めるようにした上で、
+// **同じ場所でCSRFガードを掛ける**。Cookieはブラウザが自動送信するため、
+// Cookie認証を入れた瞬間に状態変更エンドポイントがCSRF可能になる
+// （ヘッダー認証だけだった頃は自動送信されないので不要だった）
+app.use(cookieParser());
+app.use(csrfGuard);
 
 
 // 入力サイズ制限（DoS対策）

@@ -26,8 +26,13 @@ exports.changePassword = Joi.object({
   newPassword: passwordSchema.required()
 });
 
+// D-7: リフレッシュトークンは httpOnly Cookie から読むのが主経路になったため、
+// 本文での指定は**任意**にする。required のままだと、Cookieを持っている
+// ブラウザからの `POST /users/refresh`（本文は空）が検証段階で400になり、
+// Cookie方式のリフレッシュが一切成立しない。
+// 本文が無い場合の「トークンが無い」判定はコントローラー側が401で返す
 exports.refresh = Joi.object({
-  refreshToken: Joi.string().required()
+  refreshToken: Joi.string().optional()
 });
 
 exports.verify2FA = Joi.object({

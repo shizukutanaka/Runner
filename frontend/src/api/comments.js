@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { tokenStorage } from '../utils/tokenStorage';
 
 // API ベースURL設定（Vite環境変数）
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -63,12 +62,11 @@ export const handleAPIError = (error, defaultMessage = 'API エラーが発生�
 };
 
 // リクエストインターセプター
+// D-7: 認証は httpOnly Cookie。ブラウザが自動送信するので Authorization ヘッダーは
+// 組み立てない。`withCredentials` を立てないとCookieが送られないので必須
 axios.interceptors.request.use(
   (config) => {
-    const token = tokenStorage.get();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+    config.withCredentials = true;
     return config;
   },
   (error) => Promise.reject(error)
@@ -87,21 +85,20 @@ axios.interceptors.response.use(
       config._retriedAfterRefresh = true;
       // 循環import回避のため動的import（auth.jsはcomments.jsのAPIErrorを参照するため）
       const { refreshAccessToken } = await import('./auth');
-      const newToken = await refreshAccessToken();
+      // D-7: 更新後のトークンはサーバーがCookieに載せ替える。
+      // クライアントは成功したかどうかだけを見て、そのまま再実行すればよい
+      const refreshed = await refreshAccessToken();
 
-      if (newToken) {
-        config.headers = config.headers || {};
-        config.headers.Authorization = `Bearer ${newToken}`;
+      if (refreshed) {
         return axios(config);
       }
 
-      tokenStorage.remove();
+      // D-7: Cookieの失効はサーバー側で行われる。クライアントは遷移するだけ
       window.location.href = '/login';
       return Promise.reject(error);
     }
 
     if (response?.status === 401) {
-      tokenStorage.remove();
       window.location.href = '/login';
     }
     return Promise.reject(error);

@@ -10,6 +10,23 @@
 // このファイルは app を読み込む**前に** RATE_LIMIT_ENABLED=true を立てることで
 // 実際のリミッターを起動する。jest はファイルごとにモジュールレジストリを
 // 分けるので、他のテストの環境には影響しない。
+// **注意**: jest はワーカープロセスを複数のテストファイルで使い回すため、
+// ここで立てた環境変数は**同じワーカーで後から走るファイルにも残る**。
+// 実際、この後始末が無かったせいで authCookies.test.js のログインが429で落ちた
+// （ログインのレートリミッターが意図せず有効になっていた）。
+// モジュールレジストリはファイルごとに分かれるが、process.env は共有される。
+const PREV_ENV = {
+  RATE_LIMIT_ENABLED: process.env.RATE_LIMIT_ENABLED,
+  RATE_LIMIT_MAX_REQUESTS: process.env.RATE_LIMIT_MAX_REQUESTS,
+  RATE_LIMIT_WINDOW_MS: process.env.RATE_LIMIT_WINDOW_MS
+};
+afterAll(() => {
+  Object.entries(PREV_ENV).forEach(([k, v]) => {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  });
+});
+
 process.env.RATE_LIMIT_ENABLED = 'true';
 // 変数名は src/config.js が読むもの。config/index.js（削除済みの死んだモジュール）が
 // 使っていた RATE_LIMIT_API_MAX ではない
