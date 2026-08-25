@@ -233,11 +233,15 @@ echo "✓ Automatic encrypted backups (AUTO_BACKUP=true)"
 echo "✓ Rate limiting"
 echo ""
 print_warning "Not implemented -- do not assume these are protecting you:"
-echo "  - CSRF tokens (no CSRF middleware exists in this codebase)"
 echo "  - Session hijack detection"
 echo "  - GDPR data-retention automation"
-echo "  The previous version of this script printed all of the above as"
-echo "  enabled, which was not true."
+echo "  (The previous version of this script printed both as enabled.)"
+echo ""
+print_info "About CSRF: there is no CSRF middleware, and none is needed while"
+echo "  every authenticated endpoint reads its token from the Authorization"
+echo "  header. A browser will not attach that header to a cross-site request."
+echo "  If authentication is ever moved into a cookie, CSRF protection"
+echo "  becomes mandatory at the same time."
 echo ""
 
 print_warning "Important: Add your API keys to backend/.env:"
@@ -302,8 +306,11 @@ Security features available:
 - Audit logging
 - Rate limiting
 
-Not implemented: CSRF tokens, session hijack detection,
-GDPR data-retention automation.
+Not implemented: session hijack detection, GDPR data-retention automation.
+
+CSRF: no middleware, and none required -- authentication is Bearer-header
+only, which browsers do not attach cross-site. This stops being true the
+moment authentication moves into a cookie.
 
 Next steps:
 1. Add API keys to backend/.env

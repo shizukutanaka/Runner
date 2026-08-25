@@ -235,6 +235,29 @@ D-8（文化プロファイル/文脈分析UI）実装後、指示通り実際�
 
 ---
 
+### E-17. ✅ 解決済み（2026-08-25） — 起動・運用コマンド群の大半が実行不能だった
+
+E-16（デプロイ資材）に続けて、`npm run` で叩ける経路とセットアップスクリプトを検証した。
+
+- **`backend/package.json` の53スクリプトのうち12個が存在しないファイルを呼んでいた**
+  `db:init` `db:migrate` `db:seed` `db:backup` `db:restore` `monitoring:start` `backup:create` `backup:restore` `performance:benchmark` `performance:test` `start:cluster` `k8s:deploy`。
+  READMEとDEPLOYMENT_GUIDEは3箇所で `npm run db:init` を実行させていたが、DBは `src/db.js` が起動時に自動作成する（手動初期化は元から不要）。バックアップも `backupService.startScheduledBackups()` がプロセス内で回している
+- **`npm run build` は必ず失敗していた**: `build` → `security:check` → `snyk test`。snykパッケージは初回実行時にバイナリをダウンロードする方式で、この環境では取得に失敗し、成功してもアカウント認証が要る。`deploy` / `deploy:production` / `deploy:staging` もすべてこれに依存していた。`npm audit --audit-level high` に置換し、`security:fix` の `snyk wizard`（snykが数年前に廃止したコマンド）も撤去
+- **`test:unit` は "community" に部分一致していただけだった**: `jest --testPathPattern=unit` が拾っていたのは `communityInsights.test.js` と `communityHealthService.test.js` の2ファイルのみ（"comm**unit**y"）。`precommit` がこれに依存しており、コミット前ゲートは実質2ファイルしか回していなかった。`tests/` は integration(9スイート) とそれ以外(29スイート) にきれいに分かれるため、レイヤーディレクトリを明示するパターンに変更（29+9=38で全スイートと一致）
+- **`test:e2e` は0件マッチで常に非ゼロ終了**していた。backendにjestのE2Eスイートは無く、E2Eはfrontend側のPlaywrightが担当。削除
+- **`ecosystem.config.js` はk8sマニフェストと同じ誤りを犯していた**: `instances: 'max'` + `exec_mode: 'cluster'`。実際に起動すると4プロセス立ち上がることを確認した。単一SQLiteファイルへの並行書き込みと、プロセス内に持つYouTubeポーリング／Twitch EventSub接続／レイド検知状態が壊れる。`instances: 1` + `fork` に変更し、`example.com` のままだったpm2 deployブロックと重複キー（`listen_timeout` `kill_timeout` が各2回）を削除
+- **`wait_ready: true` に対応する合図が無かった**: `src/server.js` が `process.send('ready')` を送っていなかったため、pm2は `listen_timeout`（10秒）経過をもって起動完了とみなしていた。`pm2 reload` の切り替え点が実待受開始とずれるので、`onListening` で送るようにした
+- **`scripts/personal-setup.sh`（READMEが最初に勧める経路）が自家撞着していた**
+  - 生成する `backend/.env` は `PORT=3000`、生成する `frontend/.env` は `localhost:3000` を指す。しかし案内される起動コマンド `npm start` は pm2 の `--env production` で、`ecosystem.config.js` が **PORTを4000に上書き**していた。つまりスクリプトの指示通りに進めるとフロントはバックエンドに繋がらない。pm2側のPORT指定を削除して `.env` を優先するようにし、`PORT=4555` で実際に待受ポートが追随することを確認
+  - 生成する `frontend/.env` の `VITE_WS_URL` はどこからも読まれない（コードは `VITE_SOCKET_URL`）
+  - 生成する35個のキーのうち **19個が `backend/src` のどこからも読まれない**（`ENABLE_2FA` `CSRF_ENABLED` `GDPR_ENABLED` `SESSION_HIJACK_DETECTION` `TOKEN_ROTATION_ENABLED` `RESPONSE_CACHE_ENABLED` など）。`DATABASE_URL` も設定していたが、DB層が読むのは `DATABASE_PATH`
+  - **最も問題だったのは終了時のセキュリティチェックリスト**。「✓ CSRF protection enabled」「✓ Session hijack detection enabled」「✓ GDPR compliance enabled」を含む10項目を無条件で出力し、同じ内容を `SETUP_INFO.txt` にも書き出していた。CSRFミドルウェアはこのコードベースに存在しない。自分の環境を固めようとした利用者はこれを読んで確認をやめる
+- **CSRFについての結論（重要）**: 対策が無いこと自体は現状**脆弱性ではない**。認証は `Authorization` ヘッダーのみで成立し（`src/middleware/auth.js:304`）、`res.cookie` も `cookie-parser` も使われておらず、リフレッシュトークンも `req.body` から受け取る。ブラウザはクロスサイトリクエストに `Authorization` を自動付与しない。ただしD-7（httpOnly Cookie移行）を実施した瞬間に全状態変更エンドポイントが攻撃可能になるため、D-7側に必須条件として追記した
+- **検証**: pm2で単一インスタンスが `status=online` / `restarts=0` / `GET /health 200` を維持することを確認。`npm run build` が exit 0。テストは 529 passed / 0 failed で不変、新しい2分割の合計（405+124）が全体と一致。setup.sh は `bash -n` のみ（実行すると両ワークスペースで `npm install` が走るため、このセッションでは実行していない）
+- **再検証**: `npm run <script>` を総なめして存在しないファイルを呼ぶものが無いこと。`scripts/personal-setup.sh` を実行し、生成された `.env` のPORTでフロントからログインできること
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】
@@ -298,6 +321,8 @@ D-8（文化プロファイル/文脈分析UI）実装後、指示通り実際�
 
 - **証拠**: `frontend/src/utils/tokenStorage.js` にTODOコメントあり（httpOnly Cookie移行が理想、サーバー側セッション管理が必要）
 - **推奨アクション**: `/api/users/login` を httpOnly Cookie 発行に変更し、フロントのBearerヘッダー方式から移行
+- **⚠ 移行時の必須条件（2026-08-25 追記）**: 現在このコードベースには **CSRF対策が一切無い**（`csurf` も独自トークンも Origin/Referer 検証も無く、`res.cookie` も `cookie-parser` も使われていない）。それで問題ないのは、認証が `Authorization` ヘッダー（`src/middleware/auth.js:304`）だけで成立しており、ブラウザはクロスサイトリクエストにこのヘッダーを自動付与しないため。`req.session.userId` は監査ログの属性付けにしか使われておらず、認可には使われていない。
+  **したがって httpOnly Cookie へ移行した瞬間に、全ての状態変更エンドポイントがCSRF攻撃可能になる。** Cookie移行とCSRF対策の導入は必ず同一の変更としてセットで行うこと（SameSite=Strict だけに頼らない）。
 
 ### D-8. ✅ 解決済み（2026-07-10） — コミュニティインサイトUIの残り2画面
 
