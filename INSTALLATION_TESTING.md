@@ -274,7 +274,7 @@ Add to your CI pipeline:
 ## Next Steps
 
 1. Read [TESTING_GUIDE.md](./TESTING_GUIDE.md) for detailed testing patterns
-2. Review [QUALITY_IMPROVEMENTS_SUMMARY.md](./QUALITY_IMPROVEMENTS_SUMMARY.md) for implementation details
+2. Review [docs/FEATURE_AUDIT.md](./docs/FEATURE_AUDIT.md) for what is implemented and how it was verified
 3. Explore Storybook at http://localhost:6006
 4. Write tests for new features following the examples
 
