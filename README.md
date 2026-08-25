@@ -83,13 +83,16 @@ Enterprise-grade live streaming comment management platform that unifies YouTube
 - すべてリアルタイム処理（WebSocket経由で自動フィード）
 - O(1)メモリ効率のCircularBuffer実装
 - 入力検証によるDoS攻撃対策
-- 113テスト（89 service + 24 route tests）による品質保証
+- テストによる品質保証（リポジトリ全体で46スイート・625件。`cd backend && npm test` で実行）
 
 ### 統合分析ダッシュボード
 - **クロスプラットフォーム統計**: YouTubeとTwitchの統合メトリクス表示
 - **リアルタイムチャート**: コメント数、ユーザーアクティビティのライブ更新
-- **エクスポート機能**: CSV/PDF形式でのデータ出力
-- **カスタムレポート**: ユーザー定義の分析レポート作成
+- **監査ログのCSVエクスポート**: ユーザーのセッション/操作履歴をCSVで出力できます
+
+> 分析データのエクスポート（`GET /api/analytics/export`）は**未実装**で、
+> 成功を装わず 501 を返します。PDF出力とカスタムレポートは実装がありません
+> （以前ここには「CSV/PDF形式でのデータ出力」「カスタムレポート」と記載されていました）。
 
 ### 多言語サポート / Multi-language Support
 - **国際化対応**: 日本語・英語を含む多言語UIとメッセージ
@@ -102,8 +105,11 @@ Enterprise-grade live streaming comment management platform that unifies YouTube
 - **ロールベースアクセス制御 / Role-based access control**: 管理者・モデレーター・視聴者権限の詳細設定
 - **監査ログ / Audit logging**: 全操作の詳細ログ記録と追跡（クリティカル操作のリアルタイムアラート対応）
 - **分散レートリミット / Distributed rate limiting**: Redis連携によるマルチノード共有レート制限
-- **暗号化通信 / Encrypted transport**: HTTPSとWSSによるセキュア通信
-- **Webhookセキュリティ / Webhook security**: HMAC署名検証、リプレイ攻撃防止
+- **暗号化通信 / Encrypted transport**: フロントエンドのコンテナがTLSを終端し、HTTPS/WSSで通信します
+
+> 以前ここには「Webhookセキュリティ: HMAC署名検証、リプレイ攻撃防止」と記載されて
+> いましたが、その実装（`webhookSecurity.js`）はStripe課金専用で、課金機能の削除に
+> 伴って一緒に削除されました。現在このアプリに受信Webhookはありません。
 
 ### 多言語・国際化対応 / Multilingual & Internationalization
 - **日英2言語対応 / Japanese & English**: 同梱するロケールは `frontend/src/locales/` の ja / en の2つです
@@ -118,8 +124,11 @@ Enterprise-grade live streaming comment management platform that unifies YouTube
 - **リアルタイムアラートバナー / Real-time alert banner**: 重大監視イベントを即時通知
 - **レスポンシブデザイン / Responsive design**: デスクトップ・タブレット・モバイル対応
 - **ダークモード / Dark mode**: 目の疲れを軽減するテーマ
-- **キーボードショートカット / Keyboard shortcuts**: 効率的な操作のためのホットキーサポート
-- **アクセシビリティ / Accessibility**: WCAG準拠のアクセシビリティ機能
+- **キーボード操作 / Keyboard navigation**: Tabキーのフォーカストラップとスキップリンク
+
+> 以前ここには「ホットキーサポート」「WCAG準拠のアクセシビリティ機能」と
+> 記載されていましたが、実装されているのはフォーカストラップとスキップリンクのみです
+> （`Ctrl+K` 等のショートカットは存在せず、WCAG準拠を裏づける実装も配線されていませんでした）。
 
 ## 対象ユーザー
 
@@ -563,11 +572,12 @@ Before starting development work, see [`docs/FEATURE_AUDIT.md`](docs/FEATURE_AUD
 - **タグ付け / Tagging**: コメントをカテゴリ別に整理します。
 - **モデレーション / Moderate**: コメントの承認・非承認・保留を実行します。
 
-#### キーボードショートカット / Keyboard Shortcuts
-- `Ctrl+K`: コメント検索
-- `Ctrl+M`: モデレーションパネル表示
-- `Ctrl+S`: 設定画面表示
-- `F5`: 画面の手動更新
+#### キーボード操作 / Keyboard Navigation
+- `Tab` / `Shift+Tab`: ダイアログ内でフォーカスがループします（フォーカストラップ）
+- スキップリンクでメインコンテンツへ直接移動できます
+
+> 以前ここには `Ctrl+K` / `Ctrl+M` / `Ctrl+S` / `F5` のショートカット一覧が
+> ありましたが、いずれも実装されていません（`ctrlKey` を扱うコードが存在しない）。
 
 #### ユーザー管理 / User Management
 - **コメント投稿ユーザーを一覧表示します**
