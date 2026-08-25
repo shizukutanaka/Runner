@@ -69,17 +69,24 @@ describe('評価ハーネスのAI層アトリビューション（W-3の測定�
     expect(lexical.length).toBeGreaterThan(0);
   });
 
-  it('AI層はindirect（語彙に頼らない攻撃）の検知率を動かせる', async () => {
-    // 決定論層はindirectを構造的に埋められない。AI層を入れると動くことを確認する
-    // （実際の精度は鍵を入れて実測すること。ここで見るのは経路が繋がっていること）
+  it('AI層を有効にしても、どの難易度でも検知率は下がらない', async () => {
+    // このテストは当初「AI層を入れるとindirectの検知率が上がる」を確認していたが、
+    // R-33 で決定論層が indirect を 100% 拾うようになり、上げようが無くなった。
+    // 測定器として意味が残るのは**下がらないこと**の側 ——
+    // LLMの助言が決定論的判定を覆さないという arXiv:2607.12149 の制約が、
+    // 集計レベルでも守られていることの確認になる
     jest.resetModules();
     // eslint-disable-next-line global-require
     const withoutAi = await require('../../src/scripts/evaluateModeration').evaluate();
     const harness = loadHarnessWithAi({ isToxic: true, policyViolation: true });
     const withAi = await harness.evaluate();
 
-    expect(withAi.byDifficulty.indirect.recall)
-      .toBeGreaterThan(withoutAi.byDifficulty.indirect.recall);
+    Object.keys(withoutAi.byDifficulty).forEach((difficulty) => {
+      const before = withoutAi.byDifficulty[difficulty].recall;
+      const after = withAi.byDifficulty[difficulty].recall;
+      if (before === null || after === null) return;
+      expect(after).toBeGreaterThanOrEqual(before);
+    });
   });
 
   it('AI層が有効でも、決定論的に検知済みのケースは検知されたまま', async () => {
