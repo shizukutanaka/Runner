@@ -229,8 +229,14 @@ D-8（文化プロファイル/文脈分析UI）実装後、指示通り実際�
 - **検証**
   - `docker compose config` が exit 0（旧構成では検出されなかったサービス定義の整合性を確認）
   - `nginx -t` で `frontend/nginx.conf` の構文検証を通過
-  - 実際にnginxを起動して疎通確認: `/health`→200、`/`と`/moderation`→SPAのindex.htmlとセキュリティヘッダ4種、`/assets/*`→`Cache-Control` 1件のみ、`/api/comments`と`/socket.io/`→502（バックエンド不在時の正しい挙動＝プロキシが配線済みである証拠）
-  - **未検証**: この環境にはDockerデーモンが無いため `docker build` / `docker compose up` は実行できていない。イメージが実際にビルドされ起動することの確認は残っている
+  - **コンテナと同じ構成を実プロセスで再現して疎通確認**（Dockerを使わず、`frontend/npm run build` の実成果物 `dist/` を docroot に、実バックエンドを upstream にしてnginxを起動）:
+    - `GET /` → 200（`<title>Runner - YouTube & Twitch Comment Management`）
+    - `GET /assets/js/index-*.js` → 200（ハッシュ付きアセットが `location /assets/` に一致することを確認）
+    - `GET /dashboard` → 200（SPAフォールバック、セキュリティヘッダ4種を保持）
+    - `GET /api/comments` → **401**（プロキシ経由でバックエンドに到達し、認証が効いている）
+    - `GET /socket.io/?EIO=4&transport=polling` → **ハンドシェイク成功**（`{"sid":"...","upgrades":["websocket"]}`）。修正前の構成には存在しなかった経路
+    - `GET /.env` → 403
+  - **未検証**: この環境にはDockerデーモンが無いため `docker build` / `docker compose up` は実行できていない。上記でnginx設定とアプリ間の疎通は確認済みだが、**イメージ自体がビルドされ起動すること**（特にsqlite3のネイティブビルド）の確認は残っている
 - **再検証**: Dockerデーモンのある環境で `docker compose up -d --build` を実行し、`http://localhost:8080` でログインできること、リアルタイム通知（socket.io）が届くことを確認する
 
 ---
