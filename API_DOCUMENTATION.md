@@ -127,20 +127,40 @@
 
 - **POST `/api/moderation`** コメント評価 / Analyze comment
   - **ボディ / Body** `content`, `platform`, `user`, `timestamp`
-- **PUT `/api/moderation/settings`** プラットフォーム別設定更新 / Update moderation settings (`platform`, `thresholds`, `bannedWords`, `regexPatterns`)
-- **PUT `/api/moderation/thresholds`** 詳細閾値設定 / Update thresholds (ダミー実装でエコーバック)
-- **PUT `/api/moderation/auto-learning`** 自動学習切替 / Toggle auto learning (`enabled` boolean)
-- **PUT `/api/moderation/switch-model`** モデル切替 / Switch AI model (`modelName`)
-- **POST `/api/moderation/retrain`** 再学習リクエスト / Retrain model (`trainingData[]`)
-- **GET `/api/moderation/explanation`** 判定説明取得 / Get explanation (`commentId` クエリ推奨)
-- **GET `/api/moderation/export`** 判定結果エクスポート / Export moderation results (`startDate`, `endDate`, `format`)
-- **GET `/api/moderation/collect-banned-words`** NG ワード自動収集 / Collect banned words (`source`, `limit`)
-- **PUT `/api/moderation/word-weights`** NG ワード重み付け / Update weights (`wordWeights` オブジェクト)
-- **GET `/api/moderation/banned-word-history`** NG ワード履歴 / Fetch history (`page`, `limit`)
-- **POST `/api/moderation/external-banned-words`** 外部連携 / Sync banned words (`action`, `target`, `words`)
-- **POST `/api/moderation/translate-banned-words`** NG ワード翻訳 / Translate words (`words[]`, `sourceLang`, `targetLangs[]`)
+- **PUT `/api/moderation/settings`** プラットフォーム別設定更新 / Update moderation settings
+  (`platform`, `thresholds`, `bannedWords`, `regexPatterns`)
 
-各エンドポイントはダミー応答を返すものがあります。プロダクション用途では `backend/src/services/moderationService.js` の拡張が必要です。
+### 翻訳 / Translation
+
+- **POST `/api/moderation/translation/translate`** テキスト翻訳 / Translate text
+- **POST `/api/moderation/translation/auto-translate`** 自動翻訳 / Auto-translate
+
+### AIモデレーション / AI moderation
+
+- **POST `/api/moderation/ai-moderation/analyze`** AI判定 / Analyze with AI
+- **POST `/api/moderation/ai-moderation/multi-analyze`** 複数プロバイダ判定 / Multi-provider analysis
+
+### AI判定しきい値 / AI thresholds
+
+- **GET `/api/moderation/ai-threshold/comments/:id`** コメント単位のしきい値取得
+- **PUT `/api/moderation/ai-threshold/comments/:id`** コメント単位のしきい値設定
+- **PUT `/api/moderation/ai-threshold/users/:id`** ユーザー既定値の設定 (admin)
+- **POST `/api/moderation/ai-threshold/batch`** 一括更新 (admin)
+
+### 保留メッセージキュー / Held messages
+
+- **GET `/api/moderation/held-messages`** 保留一覧 / List held messages
+- **GET `/api/moderation/held-messages/stats`** 集計 / Statistics
+- **PUT `/api/moderation/held-messages/:holdId`** 承認・却下 / Approve or reject
+  - Twitch AutoMod 由来の保留（`source=twitch_automod`）は、承認で **ALLOW**、
+    却下で **DENY** が Twitch へ送られる（削除ではない。まだ公開されていないため）
+- **POST `/api/moderation/held-messages/bulk`** 一括処理 / Bulk process
+
+> 以前ここには `/thresholds` `/auto-learning` `/switch-model` `/retrain`
+> `/explanation` `/export` `/collect-banned-words` `/word-weights`
+> `/banned-word-history` `/external-banned-words` `/translate-banned-words` も
+> 記載されていたが、いずれもハードコード値を返すだけの実装だったため
+> ルートごと削除済み（E-1）。上記は実在するエンドポイントのみ。
 
 ## 通知 API / Notifications API (`backend/src/routes/notifications.js`)
 
@@ -220,21 +240,6 @@
 
 - **GET `/api/settings/ai-moderation-logs/:commentId`** AI 判定ログ / Fetch AI moderation logs
 - **GET `/api/settings/comment-edit-history/:commentId`** コメント編集履歴 / Fetch comment edit history
-
-## UI 設定 API / UI API (`backend/src/routes/ui.js`)
-
-すべて `admin` 権限が必要で、`strictRateLimit` が適用されます。
-
-- **PUT `/api/ui/layout`** UI レイアウト保存 / Save layout (`panels`, `positions` 等)
-- **PUT `/api/ui/colors`** カラーパターン設定 / Set color palette
-- **PUT `/api/ui/accessibility`** アクセシビリティ設定 / Accessibility options
-- **PUT `/api/ui/font`** フォント設定 / Font preferences
-- **PUT `/api/ui/zoom`** 拡大縮小設定 / Zoom level
-- **PUT `/api/ui/auto-dark`** 自動ダークモード / Auto dark mode toggle
-- **PUT `/api/ui/badge`** 通知バッジ / Badge behaviour
-- **PUT `/api/ui/help`** ヘルプ表示 / Help visibility
-- **PUT `/api/ui/language`** UI 言語 / UI language selection
-- **PUT `/api/ui/custom-css`** カスタム CSS / Custom CSS block
 
 ## 監視 API / Monitoring API (`backend/src/routes/monitoring.js`)
 
@@ -367,149 +372,17 @@
 - **POST `/api/monitoring/metrics/reset`** メトリクスリセット / Reset metrics (admin)
 - **GET `/api/monitoring/health/check/:name`** 個別ヘルスチェック / Run individual check (`moderator`)
 
-## 請求 API / Billing API (`backend/src/routes/billing.js`)
-
-> すべての請求 API は JWT 認証が必須です。Stripe 統合により、サブスクリプション管理と決済処理を提供します。
-
-- **GET `/api/billing/plans`** プラン一覧取得 / Get available plans
-  - **権限 / Role** `user`
-  - **レスポンス例 / Sample response**
-    ```json
-    {
-      "status": 200,
-      "data": {
-        "plans": [
-          {
-            "id": "professional",
-            "name": "Professional",
-            "currency": "jpy",
-            "interval": "month",
-            "seats": 10,
-            "summary": {
-              "ja": "中規模ストリーミング運用チーム向けの標準プラン",
-              "en": "Standard plan designed for mid-sized streaming operation teams"
-            },
-            "features": [
-              { "ja": "モデレーター最大10名まで追加可能", "en": "Add up to 10 moderators" },
-              { "ja": "主要プラットフォームのリアルタイム統合", "en": "Real-time integration for major platforms" }
-            ],
-            "monthlyAmount": 12000,
-            "oneTimeAmount": 36000,
-            "hasPrice": true,
-            "priceId": "price_xxx",
-            "oneTimePriceId": "price_yyy"
-          }
-        ]
-      },
-      "message": "プラン一覧を取得しました"
-    }
-    ```
-- **GET `/api/billing/subscription`** サブスクリプション状態取得 / Get subscription status
-  - **権限 / Role** `user`
-  - **クエリ / Query** `userId` (admin のみ、他のユーザーの情報取得可)
-  - **レスポンス例 / Sample response**
-    ```json
-    {
-      "status": 200,
-      "data": {
-        "subscription": {
-          "userId": "user-123",
-          "stripeCustomerId": "cus_xxx",
-          "stripeSubscriptionId": "sub_xxx",
-          "planId": "professional",
-          "status": "active",
-          "currentPeriodStart": "2025-01-01T00:00:00.000Z",
-          "currentPeriodEnd": "2025-02-01T00:00:00.000Z",
-          "cancelAt": null,
-          "cancelAtPeriodEnd": false,
-          "metadata": { "priceId": "price_xxx" },
-          "createdAt": "2025-01-01T00:00:00.000Z",
-          "updatedAt": "2025-01-01T00:00:00.000Z"
-        },
-        "plan": {
-          "id": "professional",
-          "name": "Professional",
-          "currency": "jpy",
-          "interval": "month",
-          "seats": 10,
-          "summary": { "ja": "...", "en": "..." },
-          "features": [...]
-        }
-      },
-      "message": "サブスクリプション状態を取得しました"
-    }
-    ```
-- **POST `/api/billing/checkout`** チェックアウトセッション作成 / Create checkout session
-  - **権限 / Role** `user`
-  - **ボディ / Body**
-    ```json
-    {
-      "planId": "professional",
-      "email": "user@example.com",
-      "successUrl": "http://localhost:5173/billing/success",
-      "cancelUrl": "http://localhost:5173/billing/cancel",
-      "locale": "ja",
-      "userId": "user-123"
-    }
-    ```
-  - **レスポンス例 / Sample response**
-    ```json
-    {
-      "status": 200,
-      "data": {
-        "sessionId": "cs_xxx",
-        "url": "https://checkout.stripe.com/c/pay/cs_xxx"
-      },
-      "message": "チェックアウトセッションを作成しました"
-    }
-    ```
-  - **エラー / Errors**
-    - `400` プラン ID が不正、価格設定未構成、メールアドレス必須
-    - `503` Stripe 未設定
-- **POST `/api/billing/portal`** 請求ポータルセッション作成 / Create billing portal session
-  - **権限 / Role** `user`
-  - **ボディ / Body**
-    ```json
-    {
-      "returnUrl": "http://localhost:5173/settings/billing",
-      "userId": "user-123"
-    }
-    ```
-  - **レスポンス例 / Sample response**
-    ```json
-    {
-      "status": 200,
-      "data": {
-        "url": "https://billing.stripe.com/p/session/xxx"
-      },
-      "message": "請求ポータルセッションを作成しました"
-    }
-    ```
-  - **エラー / Errors**
-    - `404` Stripe 顧客レコードが存在しない
-    - `503` Stripe 未設定
-- **POST `/api/billing/webhook`** Stripe Webhook 処理 / Handle Stripe webhook
-  - **認証 / Auth** Stripe 署名検証 (`verifyStripeWebhook`)
-  - **処理イベント / Handled events**
-    - `checkout.session.completed` チェックアウト完了、サブスクリプション有効化
-    - `customer.subscription.created` サブスクリプション作成
-    - `customer.subscription.updated` サブスクリプション更新
-    - `customer.subscription.deleted` サブスクリプション削除
-    - `customer.subscription.cancelled` サブスクリプションキャンセル
-  - **レスポンス / Response** `{ "received": true, "type": "...", "handledType": "..." }`
-  - **エラー / Errors**
-    - `400` 署名ヘッダー欠如、署名検証失敗
-    - `503` Webhook シークレット未設定
-
-## ヘルスチェック / Health & Metrics (`backend/src/routes/health.js`, `backend/src/app.js`)
+## ヘルスチェック / Health & Metrics (`backend/src/app.js`)
 
 - **GET `/health`** ライブネス確認 / Liveness probe (匿名)
 - **GET `/health/detailed`** 詳細状態 / Detailed health (admin)
-- **GET `/health/ready`** レディネス確認 / Readiness probe
-- **GET `/health/live`** プロセス稼働 / Process liveness
-- **GET `/health/metrics`** プロセスメトリクス / Process metrics
-- **GET `/health/metrics/prometheus`** Prometheus 互換メトリクス / Prometheus metrics
-- **GET `/metrics`** 簡易メトリクス / Basic metrics (匿名)
+- **GET `/metrics`** 簡易メトリクス / Basic metrics (匿名)。**JSONを返す**。
+  Prometheus の exposition 形式ではないため、Prometheus で取り込むには
+  エクスポーターを別途用意する必要がある
+
+> 以前ここには `/health/ready` `/health/live` `/health/metrics`
+> `/health/metrics/prometheus` も記載されていたが、いずれも実装が存在しない
+> （`routes/health.js` は E-12 で重複と判明し削除済み）。
 
 ## WebSocket / WebSocket (`backend/src/ws.js`)
 
