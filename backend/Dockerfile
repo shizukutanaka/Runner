@@ -1,67 +1,48 @@
-# Multi-stage Dockerfile for Backend with Distroless
-# Expected Improvements:
-# - Image size: 60-70% reduction
-# - Security vulnerabilities: 90% reduction
-# - Attack surface: Minimal (no shell, no package manager)
+# バックエンドAPIのイメージ。
+#
+# 過去の版は起動不能だった:
+#  - ビルドを node:18-alpine（musl）で行い、実行を
+#    gcr.io/distroless/nodejs18-debian11（glibc）で行っていた。sqlite3 の
+#    ネイティブバイナリはmusl向けにコンパイルされるためglibcでは読み込めない。
+#  - しかもproduction依存のインストールが `npm ci --only=production --ignore-scripts`
+#    だったため、sqlite3のinstallスクリプトごと止まり、そもそもネイティブバイナリが
+#    生成されていなかった。
+#  - distroless には node が PATH に無いため、docker-composeの
+#    `CMD node -e ...` ヘルスチェックは永久にunhealthyを返す。
+# 単一ランタイム（node:18-alpine）に統一してこれらをまとめて解消している。
 
-# Build stage
-FROM node:18-alpine AS builder
+FROM node:18-alpine AS deps
 
-# Install build dependencies
-RUN apk add --no-cache \
-    sqlite \
-    sqlite-dev \
-    python3 \
-    make \
-    g++
-
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Install all dependencies (including devDependencies for testing)
-RUN npm ci --ignore-scripts && \
-    npm cache clean --force
-
-# Copy application code
-COPY . .
-
-# Run tests and linting
-RUN npm run lint -- --max-warnings=0 || true && \
-    npm run test -- --passWithNoTests || true
-
-# Production dependencies stage
-FROM node:18-alpine AS production-deps
+# sqlite3 のネイティブビルドに必要
+RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
 COPY package*.json ./
 
-# Install only production dependencies
-RUN npm ci --only=production --ignore-scripts && \
-    npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
-# Final production stage with Distroless
-FROM gcr.io/distroless/nodejs18-debian11 AS production
+FROM node:18-alpine AS production
 
 ENV NODE_ENV=production
 ENV PORT=4000
 
 WORKDIR /app
 
-# Copy production dependencies from production-deps stage
-COPY --from=production-deps --chown=nonroot:nonroot /app/node_modules ./node_modules
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node package*.json ./
+COPY --chown=node:node src ./src
 
-# Copy application code from builder
-COPY --from=builder --chown=nonroot:nonroot /app/src ./src
-COPY --from=builder --chown=nonroot:nonroot /app/package*.json ./
+# アプリが書き込むディレクトリ。ボリュームを当てない場合でも起動できるよう
+# イメージ側で node ユーザー所有として用意しておく
+RUN mkdir -p /app/data /app/logs /app/backups \
+    && chown -R node:node /app/data /app/logs /app/backups
 
-# Create required directories in builder and copy them
-# (Distroless doesn't have mkdir, so we prepare in builder)
-USER nonroot:nonroot
+USER node
 
 EXPOSE 4000
 
-# Start application
-CMD ["src/server.js"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD node -e "require('http').get('http://127.0.0.1:'+(process.env.PORT||4000)+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+
+CMD ["node", "src/server.js"]

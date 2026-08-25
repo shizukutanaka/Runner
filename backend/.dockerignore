@@ -1,0 +1,15 @@
+# ホスト側でビルドされた成果物やネイティブバイナリをイメージに持ち込まない
+node_modules
+coverage
+data
+logs
+backups
+uploads
+.env
+.env.*
+!.env.example
+*.log
+*.db
+*.db-journal
+.git
+.vscode

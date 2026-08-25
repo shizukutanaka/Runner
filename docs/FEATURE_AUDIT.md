@@ -196,6 +196,45 @@ D-8（文化プロファイル/文脈分析UI）実装後、指示通り実際�
 
 ---
 
+### E-16. ✅ 解決済み（2026-08-25） — デプロイ資材が一つ残らず起動不能だった
+
+`ci-cd.yml` が完全なファンタジーだった前例から、README監査で「実在は確認したが中身は未検証」のまま残していた Docker / Kubernetes 資材を検証した。**全ファイルが起動不能**だった。
+
+- **`k8s/`（5マニフェスト）— 削除**
+  - `pvc.yml` の redis-data-pvc に `accessModes` ではなく **`accessMimes`** というタイプミス。`kubectl apply -f k8s/` はスキーマ検証で落ちる。**一度も適用されたことがない**動かぬ証拠
+  - `deployment.yml` は backend を `replicas: 3`、`hpa.yml` は最大10レプリカまでスケールさせる。しかし全レプリカが**単一の `ReadWriteOnce` PVC上のSQLiteファイル**を共有する構成。RWOは単一ノードにしかマウントできず、仮にマウントできてもSQLiteの多重書き込みでDBが破損する
+  - さらにアプリはYouTubeポーリング・Twitch EventSub接続・レイド検知状態を**プロセス内に保持**する。レプリカを増やせばAPIクォータをレプリカ数だけ多重消費し、同じコメントを重複取り込みする。**このアプリはアーキテクチャ上1インスタンス専用**であり、マニフェストの前提そのものが成立しない
+  - `comment-manager-secrets` のSecretマニフェストは同梱されておらず、`image: comment-manager-backend:latest` はどのレジストリにも存在しない。`ingress.yml` は `example.com` のまま
+- **`docker-compose.yml` — nginx/prometheus/grafana/backup の4サービスを削除**
+  - 参照先が**6つとも存在しない**: `./nginx/nginx.conf`、`./nginx/ssl`、`./monitoring/prometheus.yml`、`./monitoring/grafana/dashboards`、`./monitoring/grafana/datasources`、`backend/src/scripts/backup-cron.js`。bind mountは存在しないパスを**空ディレクトリとして作る**ため、nginxは `nginx.conf` という名前のディレクトリを設定ファイルとして読もうとして落ちる
+  - nginxサービスとfrontendサービスが**どちらもホストの80番**を要求しており、同時起動できない
+- **`backend/Dockerfile` — 全面書き直し**
+  - ビルドを `node:18-alpine`（musl）、実行を `gcr.io/distroless/nodejs18-debian11`（glibc）で行っていた。sqlite3のネイティブバイナリはmusl向けにコンパイルされるためglibcでは**読み込めない**
+  - そもそも `npm ci --only=production --ignore-scripts` がsqlite3のinstallスクリプトを止めるので、**ネイティブバイナリが生成されていなかった**
+  - distrolessには `node` がPATHに無く、composeの `CMD node -e ...` ヘルスチェックは**永久にunhealthy**を返す
+  - builderステージの `npm run lint || true` / `npm run test || true` は失敗を握り潰すだけで何も検証していない
+- **`frontend/Dockerfile` — 全面書き直し**
+  - `USER nginxuser` を指定した上で**ポート80をlisten**していた。非rootは1024未満をbindできないため起動直後に必ず落ちる（公式nginxイメージはmasterのみroot、ワーカーは自動でnginxユーザーに降格するため、そもそも上書き不要）
+  - `addgroup -g 1001 -S nginxuser` と `adduser -S nginxuser -u 1001` はユーザーを同名グループに所属させておらず、この点でも壊れていた
+  - **最も重大**: Dockerfileが `RUN cat > /config/nginx.conf <<'EOF'` でnginx設定を**その場で生成**しており、その内容に `/api` と `/socket.io` の proxy_pass が**一切無かった**。フロントは既定で同一オリジンの `/api` を叩き（`src/api/*.js`）、socket.ioも `window.location.origin` に繋ぐ（`src/ws.js`）ため、仮に上記が全て直っていても**コンテナ版はバックエンドに到達できない**
+  - しかも `frontend/nginx.conf` という**プロキシ設定が正しく書かれた実ファイルがリポジトリに存在していた**にもかかわらず、Dockerfileはそれを `COPY` せずヒアドキュメント版で上書きしていた。`git grep` の結果、このファイルはどこからも参照されない孤児だった。正しい設定が横に置かれたまま壊れた設定が焼き込まれていたことになる
+  - ARGで受けていた `VITE_API_URL` / `VITE_WS_URL` は、アプリが実際に読む `VITE_API_BASE_URL` / `VITE_SOCKET_URL` と**名前が違う**。composeはこれを `environment:` で渡していたが、Viteは**ビルド時**に埋め込むため実行時環境変数は無視される（二重に無効）
+- **実施した修正**
+  - `k8s/` と `frontend/vite.config.optimized.js`（どこからも参照されないデッドファイル）を削除
+  - 孤児だった `frontend/nginx.conf` を実際に `COPY` する構成に変更し、内容も見直した（ヒアドキュメント生成は廃止）。`/api` と `/socket.io` のプロキシ、WebSocketのUpgradeヘッダ、SPAフォールバック、セキュリティヘッダ、`/health`、ドットファイル拒否を実装。あわせて **nginxの `add_header` は同一ブロック内に `add_header` が1つでもあると上位ブロックの指定を継承しない**問題に対処した（`location = /index.html` にセキュリティヘッダを再掲。try_filesからの内部リダイレクトもこのlocationに入るため、放置するとSPAの全ルートでヘッダが消える）
+  - 両Dockerfileを書き直し、`backend/.dockerignore` `frontend/.dockerignore` を追加（ホスト側node_modulesの混入防止）
+  - composeを backend / frontend / redis の3サービスに縮小。公開ポートは frontend の1つだけ（既定8080）
+  - `frontend/.env.example` の `VITE_WS_URL` を、コードが実際に読む `VITE_SOCKET_URL` に修正
+  - READMEのKubernetes手順を削除し、代わりに**1インスタンス専用である理由**を明記。「PostgreSQL 14+（本番推奨）」（pgドライバ非同梱）と「Prometheus + Grafana統合」（`/metrics` はJSONを返すのみでPrometheus形式ではない）という誤記も訂正
+- **検証**
+  - `docker compose config` が exit 0（旧構成では検出されなかったサービス定義の整合性を確認）
+  - `nginx -t` で `frontend/nginx.conf` の構文検証を通過
+  - 実際にnginxを起動して疎通確認: `/health`→200、`/`と`/moderation`→SPAのindex.htmlとセキュリティヘッダ4種、`/assets/*`→`Cache-Control` 1件のみ、`/api/comments`と`/socket.io/`→502（バックエンド不在時の正しい挙動＝プロキシが配線済みである証拠）
+  - **未検証**: この環境にはDockerデーモンが無いため `docker build` / `docker compose up` は実行できていない。イメージが実際にビルドされ起動することの確認は残っている
+- **再検証**: Dockerデーモンのある環境で `docker compose up -d --build` を実行し、`http://localhost:8080` でログインできること、リアルタイム通知（socket.io）が届くことを確認する
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】

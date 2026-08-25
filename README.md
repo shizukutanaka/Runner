@@ -252,39 +252,41 @@ npm run dev
 
 ### 本番環境デプロイメント
 
-#### Dockerを使用したデプロイ
+#### Docker Composeを使用したデプロイ
+
+`backend` / `frontend` / `redis` の3コンテナ構成です。フロントエンドのnginxが
+`/api` と `/socket.io` をバックエンドへプロキシするため、外部に開くポートは1つだけです。
 
 ```bash
 # 環境変数設定
 cp .env.example .env
-# .envファイルを編集して本番環境の設定を行ってください
+# JWT_SECRET / SESSION_SECRET は必ず設定してください（openssl rand -hex 32）
 
-# Docker Composeで起動
-docker-compose up -d
+# ビルドして起動
+docker compose up -d --build
 
 # ログ確認
-docker-compose logs -f
+docker compose logs -f
 
 # 状態確認
-docker-compose ps
+docker compose ps
 ```
 
-#### Kubernetesデプロイメント
+起動後は `http://localhost:8080`（`FRONTEND_PORT` で変更可）でアクセスします。
 
-```bash
-# Secret作成
-kubectl create secret generic comment-manager-secrets \
-  --from-literal=jwt-secret=$(openssl rand -hex 32) \
-  --from-literal=session-secret=$(openssl rand -hex 32) \
-  --from-literal=openai-api-key=your-key
+#### スケーリングについて
 
-# リソースデプロイ
-kubectl apply -f k8s/
+本アプリはSQLiteの単一ファイルをデータベースとして使い、YouTubeのポーリングと
+TwitchのEventSub WebSocket接続、レイド検知の状態をプロセス内に保持します。
+そのため **バックエンドは1インスタンスで動かす前提** です。複数レプリカに増やすと
+データベースが破損し、YouTube APIのクォータをレプリカ数だけ多重に消費し、
+同じコメントを重複して取り込みます。
 
-# デプロイ確認
-kubectl get pods
-kubectl get services
-```
+水平スケールが必要になった場合は、まずデータベースを外部化し、
+取り込み処理をワーカーとして分離するところから設計し直してください。
+（以前このリポジトリにあった `k8s/` のマニフェストは `replicas: 3` +
+HPAで最大10レプリカという、上記の理由で成立しない構成だった上、
+`accessMimes` というタイプミスで `kubectl apply` すら通らなかったため削除しました）
 
 詳細は [`DEPLOYMENT_GUIDE.md`](DEPLOYMENT_GUIDE.md) を参照してください。
 
@@ -688,11 +690,12 @@ A: 自動更新が有効な場合はバックグラウンドで更新されま�
 ### アーキテクチャ
 - **バックエンド**: Node.js 18+ + Express 5.x + Socket.IO 4.x
 - **フロントエンド**: React 18+ + Material-UI 5.x + Vite 5.x
-- **データベース**: SQLite 3.x（開発）/ PostgreSQL 14+（本番推奨）
+- **データベース**: SQLite 3.x（開発・本番とも。PostgreSQLドライバは同梱していません）
 - **キャッシュ**: Redis 7.x（セッション・レート制限対応）
 - **認証**: JWT + リフレッシュトークン方式（トークンローテーション対応）
-- **コンテナ**: Docker + Kubernetes対応
-- **監視**: Prometheus + Grafana統合
+- **コンテナ**: Docker Compose（単一ノード構成）
+- **監視**: `/health` と `/metrics`（JSON）。Prometheus形式では出力していないため、
+  Prometheus/Grafanaで取り込むにはエクスポーターを別途用意する必要があります
 
 ### セキュリティ機能
 

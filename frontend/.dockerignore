@@ -1,0 +1,12 @@
+# ホスト側でビルドされた成果物やネイティブバイナリをイメージに持ち込まない
+node_modules
+dist
+coverage
+playwright-report
+test-results
+.env
+.env.*
+!.env.example
+*.log
+.git
+.vscode
