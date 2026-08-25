@@ -20,6 +20,15 @@
  *   node src/scripts/convertJapaneseToxicDataset.js /tmp/jtox/data/subset.csv > /tmp/jtox-eval.json
  *   node src/scripts/evaluateModeration.js --file=/tmp/jtox-eval.json
  *
+ * **開発用と検証用の分割（--split）**:
+ *   検出ルールを外部セットを見ながら調整すると、そのセットは訓練データに変わり
+ *   独立な検証の場を失う。第2の外部セットが手に入らない状況では、
+ *   1つのセットを機械的に二分し、**片方だけを見て調整し、もう片方で報告する**。
+ *     node src/scripts/convertJapaneseToxicDataset.js <csv> --split=dev  > dev.json
+ *     node src/scripts/convertJapaneseToxicDataset.js <csv> --split=test > test.json
+ *   分割は id の偶奇による（内容とは無関係な決定的規則なので、
+ *   実行のたびに都合よく変わることがない）。
+ *
  * ---------------------------------------------------------------------------
  * ラベル変換規則（結果を見る前に決めたもの。後から都合よく変えないこと）
  * ---------------------------------------------------------------------------
@@ -60,7 +69,7 @@ const parseCsv = (text) => {
   return rows;
 };
 
-const convert = (csvText) => {
+const convert = (csvText, split = null) => {
   const rows = parseCsv(csvText).filter((r) => r.length > 1);
   const header = rows.shift();
   const idx = (name) => header.indexOf(name);
@@ -87,6 +96,14 @@ const convert = (csvText) => {
     else if (notToxic > toxic + hard) expected = 'pass';
 
     if (!expected) { skipped += 1; return; }
+
+    // --split: id の偶奇で dev / test に二分する。内容と無関係な決定的規則
+    const rawId = Number(r[idx('id')]);
+    if (split) {
+      const bucket = Number.isFinite(rawId) ? (rawId % 2 === 0 ? 'dev' : 'test') : 'dev';
+      if (bucket !== split) return;
+    }
+
     cases.push({
       id: `jtox-${r[idx('id')] || n}`,
       text,
@@ -104,9 +121,15 @@ if (require.main === module) {
     console.error('使い方: node src/scripts/convertJapaneseToxicDataset.js <subset.csv>');
     process.exit(1);
   }
-  const { cases, skipped } = convert(fs.readFileSync(file, 'utf8'));
+  const splitArg = process.argv.find((a) => a.startsWith('--split='));
+  const split = splitArg ? splitArg.split('=')[1] : null;
+  if (split && !['dev', 'test'].includes(split)) {
+    console.error('--split は dev か test を指定してください');
+    process.exit(1);
+  }
+  const { cases, skipped } = convert(fs.readFileSync(file, 'utf8'), split);
   const flag = cases.filter((c) => c.expected === 'flag').length;
-  console.error(`[convert] 採用 ${cases.length}件（有害 ${flag} / 無害 ${cases.length - flag}）`);
+  console.error(`[convert] ${split ? `[${split}] ` : ''}採用 ${cases.length}件（有害 ${flag} / 無害 ${cases.length - flag}）`);
   console.error(`[convert] 除外 ${skipped}件（アノテーターの判断が割れたもの）`);
   console.log(JSON.stringify({ cases }, null, 2));
 }

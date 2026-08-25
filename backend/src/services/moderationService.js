@@ -152,6 +152,26 @@ const TARGETED_HARASSMENT_PATTERNS = [
   }
 ];
 
+// R-35: 属性への言及 × 断定的な貶め（属性差別）。
+//
+// 外部ベンチマークの **dev側だけ**を見て設計した（test側は最後の報告まで見ていない）。
+// dev側の見逃しに共通していた構造がこれ:
+//   「中国人って素行が悪いからなぁ」「働けよ無職」「士業は路頭に迷え」
+// いずれも属性語も貶め語も単独では日常語であり、NGワードでは表現できない。
+//
+// R-31/R-33 と同じく2成分の共起を要求し、さらに**近接（20文字以内）**も要求する。
+// 近接を課さないと「無職の友達が働けって言われてた」のような伝聞まで拾ってしまう。
+const ATTRIBUTE_PATTERN = /(中国人|韓国人|朝鮮人|外国人|移民|老人|年寄り|障害者|無職|ニート|生活保護|士業|公務員|養護学校)/;
+const DEROGATION_PATTERN = /(素行が悪い|民度が低い|民度低い|劣ってる|劣っている|使えない|消えろ|失せろ|路頭に迷え|働けよ|働け[。！!\s]|税金泥棒|寄生虫|クズばかり|ゴミばかり|しかいない|中退)/;
+const ATTRIBUTE_PROXIMITY = 20;
+
+const detectAttributeDerogation = (text) => {
+  const a = text.match(ATTRIBUTE_PATTERN);
+  const d = text.match(DEROGATION_PATTERN);
+  if (!a || !d) return false;
+  return Math.abs(a.index - d.index) <= ATTRIBUTE_PROXIMITY;
+};
+
 // リンクブロック関連の設定
 const LINK_BLOCK_CONFIG = {
   // 完全にブロックするドメイン
@@ -986,6 +1006,16 @@ exports.analyzeComment = async (content, platform, user, timestamp, contextComme
       result.score += 50;
     }
   });
+
+  // R-35: 属性差別（属性への言及と断定的な貶めが近接して共起する形）
+  if (detectAttributeDerogation(contentLower)) {
+    result.flaggedWords.push('harassment:attribute_derogation');
+    if (!result.flaggedCategories.includes('discrimination')) {
+      result.flaggedCategories.push('discrimination');
+    }
+    result.isOffensive = true;
+    result.score += 50;
+  }
 
   if (result.score >= 50) {
     result.isSpam = true;
