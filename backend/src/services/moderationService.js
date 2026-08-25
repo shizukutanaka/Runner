@@ -172,6 +172,29 @@ const detectAttributeDerogation = (text) => {
   return Math.abs(a.index - d.index) <= ATTRIBUTE_PROXIMITY;
 };
 
+// R-36: 性的ハラスメント（身体への言及 × 性的な要求・評価）。
+//
+// 配信者への性的ハラスメントは、ライブ配信のモデレーションで最も報告の多い
+// 加害のひとつであり（特に女性配信者）、本製品にはこの区分が**そもそも存在しなかった**
+// （カテゴリは abuse / threat / spam / discrimination のみだった）。
+// 文化プロファイルには `no_adult` / `adult_verified` というフラグが既にあるのに、
+// それが働きかける対象が無い状態だった。
+//
+// 語彙だけでは扱えない部分をここで補う。身体部位も要求語も**単独では日常語**なので、
+// R-31/R-33 と同じく2成分の共起を必須にし、さらに近接（20文字以内）も要求する。
+// ゲーム配信で普通に出る「このキャラの胸当て強い」「脚が速いキャラ」等に
+// 当たらないようにするため。
+const BODY_REFERENCE_PATTERN = /(胸|おっぱい|お尻|尻|太もも|谷間|下着|パンツ|裸|素肌)/;
+const SEXUAL_DEMAND_PATTERN = /(見せて|見せろ|見たい|触りたい|舐め|しゃぶ|揉み|揉ませ|エロ|えっち|やらしい|興奮|抜ける|抜いた)/;
+const SEXUAL_PROXIMITY = 20;
+
+const detectSexualHarassment = (text) => {
+  const b = text.match(BODY_REFERENCE_PATTERN);
+  const d = text.match(SEXUAL_DEMAND_PATTERN);
+  if (!b || !d) return false;
+  return Math.abs(b.index - d.index) <= SEXUAL_PROXIMITY;
+};
+
 // リンクブロック関連の設定
 const LINK_BLOCK_CONFIG = {
   // 完全にブロックするドメイン
@@ -1006,6 +1029,16 @@ exports.analyzeComment = async (content, platform, user, timestamp, contextComme
       result.score += 50;
     }
   });
+
+  // R-36: 性的ハラスメント（身体への言及と性的な要求・評価が近接して共起する形）
+  if (detectSexualHarassment(contentLower)) {
+    result.flaggedWords.push('harassment:sexual');
+    if (!result.flaggedCategories.includes('sexual')) {
+      result.flaggedCategories.push('sexual');
+    }
+    result.isOffensive = true;
+    result.score += 50;
+  }
 
   // R-35: 属性差別（属性への言及と断定的な貶めが近接して共起する形）
   if (detectAttributeDerogation(contentLower)) {
