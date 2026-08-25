@@ -111,12 +111,23 @@ D-8（文化プロファイル/文脈分析UI）実装後、指示通り実際�
 - **実施した対応**: ファイルを削除
 - **再検証**: `test -f frontend/src/utils/websocket.js` → 存在しなければ削除済み
 
-### E-5. Stripe課金バックエンド — フロントエンド呼び出しゼロ
+### E-5. ✅ 解決済み（2026-08-25） — Stripe課金を削除（オーナー判断）
 
-- **ファイル**: `backend/src/controllers/billingController.js`, `backend/src/services/stripeService.js`, `backend/src/routes/billing.js`
-- **証拠**: frontend/src 内に "billing" への参照が0件
-- **推奨アクション**: 保留可（バックエンドは実装済みのため、課金UIを作る段階まで放置してよい）。ただし製品計画に課金がないなら削除候補
-- **再検証**: `grep -rln "billing" frontend/src --include="*.js" --include="*.jsx"` → 0件なら未接続のまま
+- **判明した実態**: 「バックエンドは実装済みだがフロント未接続」という当初の記述は**不正確**だった。
+  生きている `src/config.js` は **`STRIPE_*` 環境変数を一つも読まない**（`config.services` は
+  `openai` / `youtube` / `twitch` のみ）。設定は削除済みの死んだ `config/index.js`（E-18）側に
+  だけ存在していたため、`STRIPE_SECRET_KEY` を設定しても `ensureStripeConfigured()` が
+  必ず `STRIPE_NOT_CONFIGURED`（503）を投げる。**一度も動作したことがない**
+- **12件のテストが通っていた理由**: `jest.mock('../../src/services/stripeService')` で
+  サービス全体をモックしていたため、設定が存在しないことを検出できなかった
+- **オーナー判断**: 削除（2026-08-25にユーザーが選択）
+- **削除したもの**: `billingController.js`(147) / `stripeService.js`(543) / `routes/billing.js`(37) /
+  `webhookSecurity.js`(421) / `tests/api/billing.test.js`、`app.js` のマウント2箇所、
+  `db.js` の `user_subscriptions` テーブル定義とインデックス2件（計約1,148行）
+- **既存DBへの配慮**: `DROP TABLE` は**実行していない**。新規DBで作られなくなるだけで、
+  既存DBのテーブルは無害に残る（利用者のデータを消さないため）
+- **検証**: 削除後に起動し `/health` 200、`/api/billing/plans` → **404**、`/api/comments` → 401（無傷）
+- **再検証**: `grep -rn "stripe" backend/src/` → 0件
 
 ### E-6. ✅ 解決済み（2026-07-04） — getComprehensiveSystemStatsを削除
 
@@ -380,11 +391,21 @@ E-16（デプロイ資材）に続けて、`npm run` で叩ける経路とセッ
 - **検証**: `tests/integration/auth.test.js`の既存リフレッシュテストが実際に意味のある検証になった（従来は`refreshToken`が発行されないため`if (!refreshToken) return`で常にスキップされる空振りテストだった）。ローテーション（使用済みトークンの即時無効化）の検証も追加。全36件合格
 - **再検証**: `grep -n "issueRefreshToken" backend/src/controllers/authController.js` → 複数ヒットすれば実装済み。`grep -n "refreshAccessToken" frontend/src/api/comments.js` → ヒットすればインターセプター配線済み
 
-### D-6. ★ アカウント⇔チャンネルの担当範囲が存在しない
+### D-6 / E-3残課題. ✅ 解決済み（2026-08-25） — マルチテナント機能を削除（オーナー判断）
 
-- **証拠**: `accounts` テーブル（運用者）とコメントデータの間に「どのチャンネル/プラットフォームを担当するか」の関連が無い。全moderatorが全データを閲覧・操作できる
-- **推奨アクション**: E-3（テナント方針）の意思決定と合わせて設計。最小案: `account_channels` 中間テーブル + クエリへの担当範囲フィルタ
-- **再検証**: `grep -n "account_channels\|channel_id" backend/src/db.js` → 無ければ未対応
+- **実態**: `routes/tenants.js` は `app.js` に**一度もマウントされておらず到達不能**だった。
+  加えて `middleware/auth.js` の `TenantManager`（約215行）はテナントを**プロセス内のMap**に
+  保持しており、再起動で全消失する設計だった（どこからも参照されていない）
+- **アーキテクチャ上の不整合**: 本アプリはSQLite単一ファイル＋プロセス内状態（YouTubeポーリング／
+  Twitch EventSub接続／レイド検知）のため、そもそもテナント分離が成立しない。
+  コメント・ユーザーの実データ経路に `tenant_id` フィルタは0件のままだった
+- **オーナー判断**: 削除（2026-08-25にユーザーが選択）
+- **削除したもの**: `tenantController.js`(555) / `routes/tenants.js`(36) /
+  `tests/integration/tenants.test.js` / `auth.js` の `TenantManager` と export（計約806行）
+- **将来必要になった場合の正しい順序**: ①DBを外部化する ②取り込み処理をワーカーへ分離する
+  ③その上でテナント分離を設計する。中途半端な足場を残すより、
+  前提が変わってから設計し直す方が安全である
+- **再検証**: `grep -rn "tenant" backend/src/` → 0件
 
 ### D-7. ★ トークン保管がsessionStorage（XSS露出）
 
@@ -488,14 +509,14 @@ E-16（デプロイ資材）に続けて、`npm run` で叩ける経路とセッ
 
 ### A. 製品として決めないと着手できないもの（オーナー判断待ち）
 
-1. **D-6 アカウント⇔チャンネル担当制 + E-3残課題（マルチテナント本実装）**
-   `account_channels` / `tenant_id` をどこまで配線するかというスキーマ設計の判断が要る。
-   `routes/tenants.js` は危険な削除ロジックをガード済みだが意図的に未マウント
-2. **D-7 httpOnly Cookie移行**
+1. **D-7 httpOnly Cookie移行**
    D-5（リフレッシュトークン）で足場は整っている。**着手時はCSRF対策の導入が必須**
    （現在CSRF対策が無いのは認証がBearerヘッダーのみだから。詳細はD-7の節）
-3. **E-5 Stripe課金**: バックエンド実装済み・フロント接続ゼロ。課金を製品に含めるかの判断待ち
-4. **D-9残り4件（`tests/api/settings.test.js`）**: テストが期待する仕様が製品として未確定
+2. **D-9残り4件（`tests/api/settings.test.js`）**: テストが期待する仕様が製品として未確定
+
+**2026-08-25に決着した項目**: E-5（Stripe課金）と D-6 / E-3残課題（マルチテナント）は
+オーナー判断により**両方とも削除**した。いずれも「未完成の機能」ではなく
+**構造上一度も動作したことがないコード**だったことが調査で判明している（各節を参照）。
 
 ### B. この実行環境では原理的に確認できないもの（手順と測定器は用意済み）
 

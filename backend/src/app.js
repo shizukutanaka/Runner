@@ -11,11 +11,9 @@ const moderationRouter = require('./routes/moderation');
 const notificationsRouter = require('./routes/notifications');
 const analyticsRouter = require('./routes/analytics');
 const settingsRouter = require('./routes/settings');
-const billingRouter = require('./routes/billing');
 const youtubeRouter = require('./routes/youtube');
 const twitchRouter = require('./routes/twitch');
 const communityInsightsRouter = require('./routes/communityInsights');
-const billingController = require('./controllers/billingController');
 const config = require('./config');
 const { errorHandler, notFoundHandler, requestTimeout } = require('./middleware/errorHandler');
 const {
@@ -183,7 +181,6 @@ app.use(validateOrigin);
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
-app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), billingController.handleWebhook);
 
 // 入力サイズ制限（DoS対策）
 app.use(express.json({
@@ -247,7 +244,6 @@ app.use('/api/moderation', moderationRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/settings', settingsRouter);
-app.use('/api/billing', billingRouter);
 app.use('/api/youtube', youtubeRouter);
 app.use('/api/twitch', twitchRouter);
 app.use('/api/insights',   communityInsightsRouter);
