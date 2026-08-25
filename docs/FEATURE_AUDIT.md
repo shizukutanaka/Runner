@@ -236,8 +236,22 @@ D-8（文化プロファイル/文脈分析UI）実装後、指示通り実際�
     - `GET /api/comments` → **401**（プロキシ経由でバックエンドに到達し、認証が効いている）
     - `GET /socket.io/?EIO=4&transport=polling` → **ハンドシェイク成功**（`{"sid":"...","upgrades":["websocket"]}`）。修正前の構成には存在しなかった経路
     - `GET /.env` → 403
-  - **未検証**: この環境にはDockerデーモンが無いため `docker build` / `docker compose up` は実行できていない。上記でnginx設定とアプリ間の疎通は確認済みだが、**イメージ自体がビルドされ起動すること**（特にsqlite3のネイティブビルド）の確認は残っている
-- **再検証**: Dockerデーモンのある環境で `docker compose up -d --build` を実行し、`http://localhost:8080` でログインできること、リアルタイム通知（socket.io）が届くことを確認する
+  - **イメージビルドの検証（2026-08-25 追記）**: Dockerデーモンは起動できたが、
+    `docker build` は **`registry-1.docker.io` への CONNECT がゲートウェイに403で拒否**され、
+    ベースイメージ（`node:18-alpine`）を取得できなかった。`auth.docker.io` も同様。
+    これはこの実行環境のネットワークポリシーによる遮断であり、
+    エージェントプロキシのREADMEが「回避せず報告すること」と明記している類のもの。
+    したがって**イメージのビルドと起動は未検証のまま**である
+  - 代わりに、そこで唯一実質的なリスクだった**sqlite3のネイティブバインディング**を単独で確認した。
+    旧Dockerfileの `npm ci --only=production --ignore-scripts` はinstallスクリプトごと止めるため
+    バイナリが生成されないという指摘に対し、新Dockerfileと同じ `npm ci --omit=dev`（スクリプト有効）を
+    クリーンなディレクトリで実行し、`node_sqlite3.node` が生成され
+    `new sqlite3.Database(':memory:')` でCREATE/INSERT/SELECTが通ることを確認した。
+    ただし**この検証はglibc環境で行っており、イメージのalpine(musl)での経路は依然未検証**。
+    musl向けのprebuiltが無い場合はソースからのコンパイルに落ちるため、
+    新Dockerfileは python3 / make / g++ を入れてある
+  - **再検証（Docker Hubに到達できる環境で）**: `docker compose up -d --build` を実行し、
+    `http://localhost:8080` でログインできること、リアルタイム通知（socket.io）が届くことを確認する
 
 ---
 
