@@ -13,6 +13,14 @@ setupWebSocket(server, app);
 
 const onListening = () => {
   logger.info(`[Server] Listening on port ${PORT}`);
+
+  // ecosystem.config.js は wait_ready: true を指定している。この合図を送らないと
+  // pm2 は listen_timeout（10秒）を待ってから「起動した」とみなすため、
+  // `pm2 reload` の切り替えが実際の待受開始と一致しない。
+  // pm2 以外から起動された場合は process.send が存在しないので何もしない
+  if (typeof process.send === 'function') {
+    process.send('ready');
+  }
 };
 
 const onError = (error) => {

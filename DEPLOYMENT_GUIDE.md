@@ -126,12 +126,10 @@ npm run env:check
 ```
 `backend/.env` と `frontend/.env` の必須キーが揃っているか自動検証します。未設定のキーがある場合は `.env.example` を参照して追記してください。
 
-### 4. データベース初期化
+### 4. データベース
 
-```bash
-cd backend
-npm run db:init
-```
+データベース（`backend/data/comments.db`）は**バックエンドの初回起動時に自動で作成**され、
+スキーマの追加も起動時に適用されます。手動の初期化コマンドはありません。
 
 ### 5. アプリケーション起動
 
@@ -150,15 +148,15 @@ npm run dev
 # バックエンド
 npm start
 
-# フロントエンド
+# フロントエンド（ビルド成果物をnginx等で配信する。preview はあくまで確認用）
 cd ../frontend
 npm run build
-npm run serve
+npm run preview
 ```
 
 ### 6. アクセス確認
 
-- フロントエンド: http://localhost:3001
+- フロントエンド: http://localhost:5173
 - バックエンドAPI: http://localhost:3000/api
 - ヘルスチェック: http://localhost:3000/health
 
@@ -562,107 +560,37 @@ docker-compose logs -f
 
 ## クラウドプラットフォーム
 
-### AWS EC2 + RDS
+以前ここには AWS EC2+RDS / GCP Compute Engine+Cloud SQL / Heroku / Vercel の
+手順が並んでいたが、いずれも**このアプリでは成立しない**ため削除した。
 
-#### 1. EC2インスタンス作成
-- AMI: Ubuntu Server 22.04 LTS
-- インスタンスタイプ: t3.medium以上
-- セキュリティグループ: HTTP(80), HTTPS(443), SSH(22)開放
+- **RDS / Cloud SQL（PostgreSQL）**: 手順は `DATABASE_URL=postgresql://...` を
+  設定させる内容だったが、本アプリに **PostgreSQLドライバは同梱されておらず**、
+  設定も `DATABASE_PATH`（SQLiteファイルのパス）しか読まない。この通りに設定しても
+  マネージドDBには一切接続されない
+- **Heroku**: dynoのファイルシステムは揮発性で、再起動のたびに消える。
+  SQLiteファイルをそこに置くと**モデレーション履歴が定期的に全消失**する。
+  手順にあった `heroku buildpacks:add heroku/python` に至っては、
+  このリポジトリにPythonコードが1行も無い
+- **Vercel**: 静的フロントは載るが、バックエンドは常駐プロセスとして
+  socket.io接続とEventSub WebSocketを保持し続ける必要があるため載らない。
+  手順が設定させていた `REACT_APP_API_BASE_URL` / `REACT_APP_WS_URL` は
+  Create React Appの命名で、本プロジェクト（Vite）が読むのは
+  `VITE_API_BASE_URL` / `VITE_SOCKET_URL` である
 
-#### 2. RDSインスタンス作成
-- エンジン: PostgreSQL 14
-- インスタンス: db.t3.micro
-- ストレージ: 20GB SSD
+### 実際に必要な条件
 
-#### 3. デプロイ
-```bash
-# インスタンスに接続
-ssh -i your-key.pem ubuntu@your-ec2-instance
+クラウドを使う場合、満たすべき条件は次の3つだけである。
 
-# アプリケーション配置（上記の手順に従う）
-# データベースURLをRDSに変更
-DATABASE_URL=postgresql://user:password@rds-endpoint:5432/commentmanager
-```
+1. **永続ディスクを持つ単一のインスタンス**（VM、またはボリュームを付けたコンテナ）。
+   SQLiteファイルを再起動をまたいで保持できること
+2. **バックエンドは1プロセス**。SQLiteの並行書き込みと、プロセス内に持つ
+   YouTubeポーリング・Twitch EventSub接続・レイド検知の状態が理由（「ロードバランシング」節を参照）
+3. **WebSocketを通すリバースプロキシ**。`/socket.io` の Upgrade ヘッダを落とさないこと
 
-### Google Cloud Platform
+この3条件を満たすなら、AWS EC2・GCP Compute Engine・Hetzner・さくらのVPSなど
+どのVMでも同じ手順（本ドキュメントの「本番環境デプロイ」節）で動く。
+コンテナで動かす場合はリポジトリルートの `docker-compose.yml` がそのまま使える。
 
-#### 1. Compute Engineインスタンス作成
-- OS: Ubuntu 20.04 LTS
-- マシンタイプ: n1-standard-2
-- ファイアウォール: HTTP, HTTPS許可
-
-#### 2. Cloud SQLインスタンス作成
-- データベース: PostgreSQL 14
-- ティア: db-f1-micro
-- ストレージ: 20GB SSD
-
-#### 3. デプロイ
-```bash
-# Cloud SQLのプライベートIPを取得
-gcloud sql instances describe your-instance --format="value(ipAddresses.ipAddress)"
-
-# アプリケーション配置
-# DATABASE_URLにCloud SQLの接続情報を設定
-```
-
-### Herokuデプロイ
-
-#### 1. Heroku CLIインストール
-```bash
-curl https://cli-assets.heroku.com/install.sh | sh
-```
-
-#### 2. Herokuアプリ作成
-```bash
-heroku create your-app-name
-```
-
-#### 3. ビルドパック設定
-```bash
-heroku buildpacks:add heroku/nodejs
-heroku buildpacks:add heroku/python  # 必要に応じて
-```
-
-#### 4. 環境変数設定
-```bash
-heroku config:set NODE_ENV=production
-heroku config:set JWT_SECRET=$(openssl rand -base64 64)
-heroku config:set OPENAI_API_KEY=your-openai-api-key
-heroku config:set YOUTUBE_API_KEY=your-youtube-api-key
-heroku config:set TWITCH_CLIENT_ID=your-twitch-client-id
-```
-
-#### 5. デプロイ
-```bash
-git push heroku main
-```
-
-### Vercelデプロイ
-
-#### 1. Vercel CLIインストール
-```bash
-npm i -g vercel
-```
-
-#### 2. プロジェクト設定
-```bash
-# フロントエンドディレクトリで
-cd frontend
-vercel
-
-# 初回設定時
-? Set up and deploy "~/frontend"? Y
-? Which scope? your-username
-? Link to existing project? N
-? What's your project's name? comment-manager-frontend
-? In which directory is your code located? ./
-```
-
-#### 3. 環境変数設定
-```bash
-vercel env add REACT_APP_API_BASE_URL
-vercel env add REACT_APP_WS_URL
-```
 
 ## 設定と環境変数
 

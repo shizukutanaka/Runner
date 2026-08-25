@@ -1,16 +1,24 @@
 /**
- * PM2 Ecosystem Configuration
+ * PM2 設定。
  *
- * This file configures PM2 cluster mode for optimal performance:
- * - Automatic scaling based on CPU cores
- * - Memory management with auto-restart
- * - Environment-specific configurations
- * - Graceful shutdown handling
+ * かつてこのファイルは `instances: 'max'` + `exec_mode: 'cluster'` を指定していたが、
+ * 本アプリは以下の理由で **単一プロセス専用** である:
+ *   - データベースが単一のSQLiteファイル。複数プロセスからの並行書き込みで破損する
+ *   - YouTubeのポーリング、TwitchのEventSub WebSocket接続、レイド検知の状態を
+ *     プロセス内に保持している。プロセスを増やすとAPIクォータを多重消費し、
+ *     同じコメントを重複取り込みし、レイド検知の閾値が壊れる
+ * 削除した k8s マニフェスト（replicas: 3 + HPA）と同じ誤りだった。
  *
- * Expected Performance Gains:
- * - Throughput: 200-300% improvement with cluster mode
- * - High availability: Zero-downtime deployments
- * - Resource optimization: Automatic memory management
+ * また `wait_ready: true` が指定されているのに src/server.js が
+ * `process.send('ready')` を送っていなかった。pm2はlisten_timeout経過で先に進むため
+ * 停止はしないが、`pm2 reload` の切り替え点が実際の待受開始とずれる。合図は
+ * server.js の onListening に追加した。
+ *
+ * なお `npm start` は JWT_SECRET / SESSION_SECRET / ENCRYPTION_KEY が未設定だと
+ * 起動に失敗する。これは src/config.js の意図的なガードであり、本番で秘密鍵が
+ * 空のまま動き出さないための正しい挙動なので、修正対象ではない。
+ *
+ * 水平スケールが必要になったら、まずDBを外部化し取り込み処理をワーカーへ分離すること。
  */
 
 module.exports = {
@@ -19,14 +27,12 @@ module.exports = {
       name: 'runner-backend',
       script: './src/server.js',
 
-      // Cluster Mode Configuration
-      instances: 'max', // Auto-scale based on available CPU cores
-      exec_mode: 'cluster', // Enable cluster mode for load balancing
+      // 単一プロセス。理由は上記
+      instances: 1,
+      exec_mode: 'fork',
 
-      // Memory Management
-      max_memory_restart: '1G', // Auto-restart if memory exceeds 1GB
+      max_memory_restart: '1G',
 
-      // Environment Variables
       env_production: {
         NODE_ENV: 'production',
         PORT: 4000
@@ -37,71 +43,29 @@ module.exports = {
       },
       env_development: {
         NODE_ENV: 'development',
-        PORT: 4000,
-        instances: 2 // Limit instances in development
+        PORT: 4000
       },
 
-      // Logging Configuration
       error_file: './logs/pm2-error.log',
       out_file: './logs/pm2-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
 
-      // Auto-restart Configuration
       autorestart: true,
       max_restarts: 10,
       min_uptime: '10s',
 
-      // Graceful Shutdown
-      kill_timeout: 5000,
-      listen_timeout: 3000,
+      // server.js が listen 後に 'ready' を送る。SIGTERM を受けたら
+      // graceful shutdown に入るので kill_timeout は余裕を持たせる
+      wait_ready: true,
+      listen_timeout: 10000,
+      kill_timeout: 10000,
       shutdown_with_message: true,
 
-      // Watch and Reload (disable in production)
       watch: false,
       ignore_watch: ['node_modules', 'logs', 'data', 'backups', 'uploads'],
 
-      // Advanced Features
-      instance_var: 'INSTANCE_ID',
-      increment_var: 'PORT',
-
-      // Performance Monitoring
-      pmx: true,
-      automation: false,
-
-      // Source Map Support
-      source_map_support: true,
-
-      // Process Management
-      wait_ready: true,
-      listen_timeout: 10000,
-      kill_timeout: 5000
+      source_map_support: true
     }
-  ],
-
-  // PM2 Deploy Configuration (Optional)
-  deploy: {
-    production: {
-      user: 'deploy',
-      host: 'production.example.com',
-      ref: 'origin/main',
-      repo: 'git@github.com:user/repo.git',
-      path: '/var/www/runner',
-      'post-deploy': 'npm install && pm2 reload ecosystem.config.js --env production',
-      env: {
-        NODE_ENV: 'production'
-      }
-    },
-    staging: {
-      user: 'deploy',
-      host: 'staging.example.com',
-      ref: 'origin/develop',
-      repo: 'git@github.com:user/repo.git',
-      path: '/var/www/runner-staging',
-      'post-deploy': 'npm install && pm2 reload ecosystem.config.js --env staging',
-      env: {
-        NODE_ENV: 'staging'
-      }
-    }
-  }
+  ]
 };

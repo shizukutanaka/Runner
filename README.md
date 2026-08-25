@@ -106,39 +106,13 @@ Enterprise-grade live streaming comment management platform that unifies YouTube
 - **Webhookセキュリティ / Webhook security**: HMAC署名検証、リプレイ攻撃防止
 
 ### 多言語・国際化対応 / Multilingual & Internationalization
-- **日英2言語対応 / Japanese & English**: 現在同梱するロケールは ja / en の2言語（i18n基盤は追加言語に対応可能な構造）
-- **自動翻訳生成 / Automatic translation generation**: Google Translate APIによる翻訳ファイル自動生成
-- **動的言語読み込み / Dynamic language loading**: 必要な言語のみを読み込み（パフォーマンス最適化）
-- **ブラウザ言語自動検出 / Auto browser language detection**: ユーザーの言語設定を自動認識
-- **RTL言語完全対応 / Full RTL language support**: アラビア語・ヘブライ語などの右から左への言語
-- **翻訳管理ツール / Translation management tools**: 統計・品質チェック・同期機能
-- **言語固有フォント / Language-specific fonts**: 各言語に最適化されたフォント設定
-- **地域設定対応 / Regional settings**: タイムゾーン・言語設定の自動適応
-- **ユニバーサルエンコーディング / Universal encoding**: UTF-8ベースの文字コード完全対応
+- **日英2言語対応 / Japanese & English**: 同梱するロケールは `frontend/src/locales/` の ja / en の2つです
+- **ブラウザ言語自動検出 / Auto browser language detection**: ユーザーの言語設定を自動認識（i18next-browser-languagedetector）
+- **拡張可能な構造 / Extensible**: i18n基盤自体は言語の追加に対応しています
 
-#### 対応言語 / Supported Languages
-- **アジア言語**: 日本語、日本語、中国語（簡体/繁体）、韓国語、ヒンディー語、タイ語、ベトナム語、インドネシア語、トルコ語
-- **欧米言語**: 英語、スペイン語、フランス語、ドイツ語、ポルトガル語（ブラジル）、ロシア語
-- **RTL言語**: アラビア語、ヘブライ語、ペルシャ語、ウルドゥー語
-- **その他**: 追加言語は翻訳生成ツールで簡単に追加可能
-
-#### 翻訳管理コマンド / Translation Management Commands
-```bash
-# 翻訳統計を表示
-npm run translation-stats
-
-# 欠落翻訳レポートを表示
-npm run translation-missing
-
-# 翻訳品質チェック
-npm run translation-quality
-
-# 翻訳ファイルの同期
-npm run translation-sync
-
-# 新しい言語の翻訳を生成
-npm run generate-translations
-```
+> 以前ここには20言語対応・RTL完全対応・Google Translate APIによる自動翻訳生成・
+> 翻訳管理ツールの記載がありましたが、いずれも実体がありませんでした
+> （ロケールは ja/en の2つのみ、翻訳管理スクリプトはリポジトリに存在せず）。
 
 ### ユーザーインターフェース / User Interface
 - **リアルタイムアラートバナー / Real-time alert banner**: 重大監視イベントを即時通知
@@ -200,7 +174,7 @@ cd backend && npm start &
 cd ../frontend && npm run dev
 ```
 
-詳細は [個人利用ガイド](./PERSONAL_USE_GUIDE.md) を参照してください。
+セットアップスクリプトの内容は `scripts/personal-setup.sh` を参照してください。
 
 ### 開発環境セットアップ
 
@@ -220,10 +194,7 @@ npm install
 # 環境設定ファイルの作成
 cp .env.example .env
 
-# データベース初期化
-npm run db:init
-
-# 開発サーバー起動
+# 開発サーバー起動（データベースは初回起動時に自動作成されます）
 npm run dev
 ```
 
@@ -323,14 +294,11 @@ npm install
 cp .env.example .env
 # .envファイルを編集し、必要なAPIキーを設定してください
 
-# データベース初期化
-npm run db:init
-
-# マイグレーション実行（データベース更新時）
-npm run db:migrate
-
 # 環境チェック（必須設定の確認）
 npm run env:check
+
+# データベース（backend/data/comments.db）は初回起動時に自動で作成され、
+# スキーマ変更も起動時に適用されます。手動の初期化・マイグレーション操作はありません
 ```
 
 #### ステップ4: フロントエンドセットアップ詳細
@@ -448,8 +416,8 @@ VITE_ENABLE_ANALYTICS=false
 
 ## 使用方法
 
-日常運用の詳細手順は `USER_GUIDE.md` に整理しています。必要に応じて本節と併読してください。
-Detailed daily procedures are compiled in `USER_GUIDE.md`; review it alongside this overview.
+日常運用の詳細手順は本節と [`DEPLOYMENT_GUIDE.md`](DEPLOYMENT_GUIDE.md) にまとめています。
+Daily operating procedures are covered in this section and in [`DEPLOYMENT_GUIDE.md`](DEPLOYMENT_GUIDE.md).
 
 ### 基本操作ガイド
 
@@ -466,7 +434,7 @@ Detailed daily procedures are compiled in `USER_GUIDE.md`; review it alongside t
 - **システム設定**: 言語・タイムゾーン・表示設定のカスタマイズ
 
 ### 運用Tips
-- **定期バックアップ**: `npm run backup:create` で定期的にバックアップを実行してください
+- **定期バックアップ**: `AUTO_BACKUP=true` を設定するとバックエンドが起動時にスケジュール実行します（`BACKUP_SCHEDULE` で頻度を指定）
 - **ログ確認**: ` npm run logs:tail` でリアルタイムログを確認してください
 - **パフォーマンス監視**: `npm run health:check` でシステム状態を定期的に確認してください
 - **セキュリティ更新**: `npm run security:check` でセキュリティ状態を確認してください
@@ -497,9 +465,8 @@ npm install
 # データベースファイルの権限を確認してください
 ls -la backend/data/
 
-# データベースをリセットしてください
-rm -f backend/data/database.sqlite
-npm run db:init
+# データベースをリセットしてください（次回起動時に空のDBが自動作成されます）
+rm -f backend/data/comments.db
 ```
 
 #### 実行時の問題
@@ -560,8 +527,9 @@ npm run logs:clear
 
 ## ユーザーガイド / User Guide
 
-詳細な操作手順と運用ベストプラクティスは [`USER_GUIDE.md`](USER_GUIDE.md) を参照してください。
-For a comprehensive bilingual walkthrough of daily operations, refer to [`USER_GUIDE.md`](USER_GUIDE.md).
+APIの詳細は [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md)、デプロイと運用は
+[`DEPLOYMENT_GUIDE.md`](DEPLOYMENT_GUIDE.md) を参照してください。
+For API details see [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md); for deployment and operations see [`DEPLOYMENT_GUIDE.md`](DEPLOYMENT_GUIDE.md).
 
 詳細なAPI仕様は [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md) を参照してください。
 

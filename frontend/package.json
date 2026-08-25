@@ -21,12 +21,6 @@
     "format:check": "prettier --check src/",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "generate-translations": "node generate-translations.js",
-    "translation-manager": "node translation-manager.js",
-    "translation-stats": "node translation-manager.js stats",
-    "translation-missing": "node translation-manager.js missing",
-    "translation-quality": "node translation-manager.js quality",
-    "translation-sync": "node translation-manager.js sync",
     "audit": "npm audit --audit-level=moderate",
     "audit:fix": "npm audit fix",
     "audit:production": "npm audit --audit-level=high --production"
