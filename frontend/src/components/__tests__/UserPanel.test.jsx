@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import UserPanel from '../UserPanel';
 import { fetchUsers, updateUser, fetchUser, fetchUserHistory } from '../../api/users';
@@ -31,15 +31,22 @@ vi.mock('../../api/users', () => ({
 
 const USER = { id: 'u-1', username: 'viewer1', platform: 'youtube', status: 'active' };
 
+// UserPanel は検索を300msデバウンスしており、その再描画が
+// クリックと競合すると「押したはずのボタンが差し替わっている」ことがある。
+// ボタンの並び順に頼らず、**ダイアログが開いたことを待ってから、
+// ダイアログの中のボタンを押す**ことで順序に依存しないようにする。
 const openBanDialogAndConfirm = async () => {
   const user = userEvent.setup();
   render(<UserPanel />);
   await screen.findByText('viewer1');
-  // 一覧・詳細どちらにもBANボタンがあるため、詳細側（最後）を押す
-  const banButtons = await screen.findAllByRole('button', { name: 'user_panel_action_ban' });
-  await user.click(banButtons[0]);
-  const confirmButtons = await screen.findAllByRole('button', { name: 'user_panel_action_ban' });
-  await user.click(confirmButtons[confirmButtons.length - 1]);
+
+  const [openButton] = await screen.findAllByRole('button', { name: 'user_panel_action_ban' });
+  await user.click(openButton);
+
+  const dialog = await screen.findByRole('dialog');
+  // `get` ではなく `find` を使う。デバウンス由来の再描画がこの2行の間に
+  // 挟まると `get` は一度きりで諦めてしまい、稀に落ちる
+  await user.click(await within(dialog).findByRole('button', { name: 'user_panel_action_ban' }));
   return user;
 };
 
@@ -69,7 +76,8 @@ describe('UserPanel の BAN', () => {
   it('反映できた場合は警告を出さない', async () => {
     await openBanDialogAndConfirm();
     await waitFor(() => expect(updateUser).toHaveBeenCalled());
-    await waitFor(() => expect(fetchUsers).toHaveBeenCalledTimes(2)); // 再読み込みまで待つ
+    // 再読み込みまで待つ。検索のデバウンスで余分に呼ばれることがあるので回数は下限で見る
+    await waitFor(() => expect(fetchUsers.mock.calls.length).toBeGreaterThanOrEqual(2));
     expect(screen.queryByText(/反映できていません/)).not.toBeInTheDocument();
   });
 
