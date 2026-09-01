@@ -78,3 +78,32 @@ global.sessionStorage = sessionStorageMock;
 
 // Mock fetch if needed
 global.fetch = vi.fn();
+
+// ---------------------------------------------------------------------------
+// jsdom に無いブラウザAPIの補完
+// ---------------------------------------------------------------------------
+// MUI のコンポーネント（特に @mui/x-charts）は matchMedia と ResizeObserver を
+// 前提にしている。jsdom はどちらも実装していないため、無いとレンダリング時に
+// `Cannot read properties of undefined (reading 'matches')` で落ちる。
+// これが無いせいでコンポーネントの描画テストが書けない状態だった。
+if (!window.matchMedia) {
+  window.matchMedia = (query) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},      // 非推奨だが古いMUIが使う
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false
+  });
+}
+
+if (!window.ResizeObserver) {
+  window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+  global.ResizeObserver = window.ResizeObserver;
+}
