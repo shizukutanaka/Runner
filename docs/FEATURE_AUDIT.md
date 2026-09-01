@@ -537,6 +537,73 @@ E-20（`.env.example`）と同じ検査をREADMEの**検証可能な主張**に�
 
 ---
 
+### E-26. ✅ 解決済み（2026-09-01） — モデレーター画面の見出し数字と履歴も捏造だった（E-25の同型）
+
+E-25 でアナリティクスの偽装を潰した直後に、**同じ嘘がより目立つ場所に残っている**ことが分かった。
+「この画面の数字は本当にDBから来ているか？」という問いを全画面に当て直した結果である。
+
+- **証拠1（見出しの4枚のカード）**: `ModeratorDashboard.js` の `moderationStats` は
+  `{ totalComments: 1247, flaggedComments: 23, bannedUsers: 5, mutedUsers: 12 }` で
+  初期化され、**`setModerationStats` はコード中で一度も呼ばれていなかった**
+  （`grep -n "setModerationStats" → 定義の1行のみ`）。
+  つまり誰がどの環境で開いても総コメント数は 1,247 件と表示される。
+  モデレーターが最初に見る4つの数字が、全部固定文字列だった
+- **証拠2（アクション履歴タブ）**: `recentActions` は
+  `troll_user123`（BAN）／`spam_bot`（ミュート）／`offensive_user`（削除）という
+  **架空のモデレーション実績3件**で初期化されていた。
+  実行された事実のない処罰が、実績として画面に出ていた
+- **証拠3（プラットフォーム反映の握り潰し）**: バックエンドは BAN のとき
+  `data.platformBan.ok` で「YouTube側にも反映できたか」を返している（R-28b）。
+  ところが `ModeratorDashboard` はこれを `platformApplied` として state に**入れるだけで
+  描画しておらず**、BAN専用の確認ダイアログを持つ `UserPanel` に至っては
+  **戻り値ごと捨てていた**。
+  結果、書き戻しが失敗しても画面上は成功と区別がつかない——
+  「ダッシュボードではBAN済みだが、当人は配信で発言し続けられる」という、
+  **R-28b が塞いだはずの穴が UI 側にそのまま残っていた**。
+  バックエンドは `logger.warn` を出すが、それを読むのはモデレーターではない
+- **実施した対応**:
+  1. 4枚のカードを `fetchAnalyticsOverview()` の実データに接続。
+     取得できない値は `0` ではなく `—`、取得失敗は警告バナーで明示（E-25と同じ規則）
+  2. 「ミュートユーザー」の実データ源が無かったため `/analytics/stats` に
+     `mutedCount` を追加。`status='muted'`（`updateUser` 経由）と
+     `mute_until`（タイムアウト経由）の両方を数え、BANは除く
+  3. `recentActions` の架空3件を削除し空で開始。
+     「このセッション中にこの画面から実行した分のみ／サーバ側に横断的な履歴APIは無い」と
+     画面に明記（無い履歴を作らず、無いことを言う）
+  4. `platformBan.ok` を両画面で描画。未反映なら
+     「ローカルのみ。プラットフォーム側には未反映（当人は配信で発言できます）」と理由付きで出す
+- **ついでに見つけた欠陥**: `useUser(id)` は `id` が `null` でも実行され、
+  `GET /api/users/null` と `/api/users/null/history` を叩いていた。
+  `UserPanel` はマウント直後この状態で始まるため**毎回必ず**404を2本出していた。
+  未選択時は発火しないようガードし、アンマウント後の setState も防いだ
+- **実装中に踏みかけた罠（テストで固定済み）**: `mutedCount` を
+  `mute_until > datetime('now')` と書くと誤る。`mute_until` は
+  `new Date().toISOString()` 由来の `'...T...Z'`、`datetime('now')` は
+  `'YYYY-MM-DD HH:MM:SS'` で、10文字目が `'T'`(0x54) と `' '`(0x20)。
+  **日付が同じなら必ずISO側が大きい**ため、既定300秒＝同日中に切れるミュートが
+  全部「継続中」に化ける。JS側で生成したISO文字列を渡して同じ表現同士で比較している
+- **検証**: `analyticsMutedCount.test.js`（5件）。
+  うち「同じ日に切れた mute_until を継続中に数えない」は、
+  **わざと `datetime('now')` 版に差し替えると失敗することを確認済み**（ガードが実際に効いている）。
+  フロントは `ModeratorDashboard.test.jsx`（12件）と `UserPanel.test.jsx`（5件）が
+  「旧固定値 1,247 が出ない」「未取得は — と出る」「架空ユーザー名が出ない」
+  「未反映BANを成功と見せない」を固定し、`noFabricatedState.test.jsx`（24件）が
+  同型の再発を全コンポーネントで禁止する
+- **同型の掃討（⑤自動化）**: 「1件見つけたら同型を全部探す」を人力に頼らないため、
+  `noFabricatedState.test.jsx` が **全コンポーネントを走査し、
+  初期値を持つのに setter が一度も呼ばれない `useState` を失敗させる**。
+  更新されない初期値は、非ゼロなら捏造、ゼロなら「常に0件」という嘘だからである。
+  この走査で `sentimentStats` が最後の1件として出た。sentiment は
+  `moderationService` が保留判定のために計算するだけで **comments テーブルに保存されておらず**、
+  集計する元データが存在しない。よってバックエンドを増やさず**感情分析タブと
+  関連2カードを削除**した（E-25 と同じ「持っていない指標は描かない」規則）。
+  ガードが実際に効くことは、架空の state を注入すると失敗することで確認済み
+- **再検証**:
+  `cd backend && npx jest tests/controllers/analyticsMutedCount.test.js` /
+  `cd frontend && npx vitest run src/components/__tests__/ModeratorDashboard.test.jsx src/components/__tests__/UserPanel.test.jsx`
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】

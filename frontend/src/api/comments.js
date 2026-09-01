@@ -256,6 +256,7 @@ export const fetchAnalyticsOverview = async () => {
     total: stats?.commentCount ?? null,
     activeUsers: stats?.activeUsers ?? null,
     bannedUsers: stats?.bannedCount ?? null,
+    mutedUsers: stats?.mutedCount ?? null,
     userCount: stats?.userCount ?? null,
     moderated: flagged,
     moderationRate: totalJudged ? Math.round((flagged / totalJudged) * 100) : null,

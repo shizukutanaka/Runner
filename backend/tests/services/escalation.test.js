@@ -22,7 +22,7 @@ describe('累犯エスカレーション（R-26）', () => {
     // 過去24時間以内に3件の違反履歴を作る
     for (let i = 0; i < 3; i++) {
       await dbRun(
-        "INSERT INTO comments (id,platform,user,content,timestamp,status) VALUES (?,?,?,?,datetime('now','-1 hours'),'deleted')",
+        'INSERT INTO comments (id,platform,user,content,timestamp,status) VALUES (?,?,?,?,datetime(\'now\',\'-1 hours\'),\'deleted\')',
         [`${repeatUser}_${i}`, platform, repeatUser, 'bad']
       );
     }

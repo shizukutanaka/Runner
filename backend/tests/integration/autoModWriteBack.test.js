@@ -35,7 +35,7 @@ describe('AutoMod保留の処理がTwitchへ返ること（R-32）', () => {
 
   afterEach(async () => {
     twitchIngestionService.manageAutoModMessage = original;
-    await dbRun("DELETE FROM held_messages WHERE source = 'twitch_automod'");
+    await dbRun('DELETE FROM held_messages WHERE source = \'twitch_automod\'');
   });
 
   const seedAutoModHold = async (messageId) => {

@@ -11,18 +11,35 @@ const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
 // ダッシュボード統計・グラフ用コントローラ
 exports.getStats = async (req, res, next) => {
   try {
-    const [commentRow, userRow, bannedRow, activeRow] = await Promise.all([
+    // ミュート中の判定に `datetime('now')` を使ってはいけない。
+    // `mute_until` は `new Date().toISOString()` 由来の 'YYYY-MM-DDTHH:MM:SS.sssZ' で、
+    // SQLite の `datetime('now')` は 'YYYY-MM-DD HH:MM:SS'。10文字目が 'T'(0x54) と
+    // ' '(0x20) で、日付が同じ場合は必ず ISO 側が大きくなる。既定のミュートは
+    // 300秒＝同日中に切れるため、**期限切れのミュートが全部「継続中」に化ける**。
+    // 既存の期限切れ処理（usersController の cleanupExpiredTimeouts）と同じく、
+    // JS 側で生成した ISO 文字列を渡して同じ表現同士で比較する。
+    const nowIso = new Date().toISOString();
+    const [commentRow, userRow, bannedRow, activeRow, mutedRow] = await Promise.all([
       dbGet('SELECT COUNT(*) as cnt FROM comments'),
       dbGet('SELECT COUNT(*) as cnt FROM users'),
       dbGet('SELECT COUNT(*) as cnt FROM users WHERE status = \'banned\''),
-      dbGet('SELECT COUNT(*) as cnt FROM users WHERE status = \'active\'')
+      dbGet('SELECT COUNT(*) as cnt FROM users WHERE status = \'active\''),
+      // status='muted'（updateUser 経由）と mute_until（タイムアウト経由）の
+      // どちらでもミュートになりうるため両方を数える。BAN はミュートに数えない
+      dbGet(
+        `SELECT COUNT(*) as cnt FROM users
+         WHERE status != 'banned'
+           AND (status = 'muted' OR (mute_until IS NOT NULL AND mute_until > ?))`,
+        [nowIso]
+      )
     ]);
 
     res.json({
       commentCount: commentRow?.cnt || 0,
       userCount: userRow?.cnt || 0,
       bannedCount: bannedRow?.cnt || 0,
-      activeUsers: activeRow?.cnt || 0
+      activeUsers: activeRow?.cnt || 0,
+      mutedCount: mutedRow?.cnt || 0
     });
   } catch (err) {
     logger.error('[Analytics] Error fetching stats', { error: err.message });

@@ -37,7 +37,7 @@ describe('Twitch AutoMod 連携（R-32）', () => {
   });
 
   afterEach(async () => {
-    await dbRun("DELETE FROM held_messages WHERE source = 'twitch_automod'");
+    await dbRun('DELETE FROM held_messages WHERE source = \'twitch_automod\'');
   });
 
   describe('保留キューへの取り込み', () => {

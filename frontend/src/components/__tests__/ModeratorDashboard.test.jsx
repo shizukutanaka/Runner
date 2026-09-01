@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ModeratorDashboard from '../ModeratorDashboard';
 import { updateUser } from '../../api/users';
-import { updateComment, deleteComment } from '../../api/comments';
+import { updateComment, deleteComment, fetchAnalyticsOverview } from '../../api/comments';
 
 // ---------------------------------------------------------------------------
 // なぜこの画面のテストが最優先だったか
@@ -21,7 +21,9 @@ const stableT = (_key, fallback) => fallback ?? _key;
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: stableT }) }));
 
 vi.mock('../../api/users', () => ({ updateUser: vi.fn() }));
-vi.mock('../../api/comments', () => ({ updateComment: vi.fn(), deleteComment: vi.fn() }));
+vi.mock('../../api/comments', () => ({
+  updateComment: vi.fn(), deleteComment: vi.fn(), fetchAnalyticsOverview: vi.fn()
+}));
 
 const COMMENT = {
   id: 'c-1', user: 'viewer1', content: '対象コメント',
@@ -42,6 +44,9 @@ describe('ModeratorDashboard のモデレーション操作', () => {
     updateUser.mockReset().mockResolvedValue({ success: true });
     updateComment.mockReset().mockResolvedValue({ success: true });
     deleteComment.mockReset().mockResolvedValue({ success: true });
+    fetchAnalyticsOverview.mockReset().mockResolvedValue({
+      total: 4321, moderated: 7, bannedUsers: 2, mutedUsers: 3
+    });
   });
 
   const clickAction = async (label) => {
@@ -107,5 +112,109 @@ describe('ModeratorDashboard の実装が退行していないこと', () => {
     expect(src).toMatch(/await updateComment\(/);
     // 失敗を握りつぶさず利用者に見せること
     expect(src).toMatch(/setActionError/);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// 上部の統計カードと「最近のアクション」タブ
+// ---------------------------------------------------------------------------
+// この画面には E-25（アナリティクスのデモデータ）と同じ嘘が2箇所残っていた:
+//
+//   1. `moderationStats` が 1247 / 23 / 5 / 12 で初期化され、
+//      `setModerationStats` は**コード中で一度も呼ばれていなかった**。
+//      誰がどの環境で開いても同じ数字が出る、実データ非依存の飾り。
+//   2. `recentActions` が troll_user123 / spam_bot / offensive_user という
+//      **架空のモデレーション履歴3件**で初期化されていた。
+//      実行された事実のないBAN・ミュート・削除が実績として表示されていた。
+describe('統計カードが実データを出すこと', () => {
+  beforeEach(() => {
+    updateUser.mockReset().mockResolvedValue({ success: true });
+    updateComment.mockReset().mockResolvedValue({ success: true });
+    deleteComment.mockReset().mockResolvedValue({ success: true });
+    fetchAnalyticsOverview.mockReset().mockResolvedValue({
+      total: 4321, moderated: 7, bannedUsers: 2, mutedUsers: 3
+    });
+  });
+
+  it('APIの値を表示し、旧ハードコード値を表示しない', async () => {
+    render(<ModeratorDashboard />);
+    await waitFor(() => expect(screen.getByText('4,321')).toBeInTheDocument());
+    // 旧固定値が残っていないこと
+    expect(screen.queryByText('1,247')).not.toBeInTheDocument();
+  });
+
+  it('取得できない値は 0 ではなく「—」と表示する', async () => {
+    fetchAnalyticsOverview.mockResolvedValue({
+      total: 10, moderated: null, bannedUsers: null, mutedUsers: null
+    });
+    render(<ModeratorDashboard />);
+    await waitFor(() => expect(screen.getByText('10')).toBeInTheDocument());
+    // null は「—」。0 と表示すると「該当なし」と誤読される
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('統計の取得に失敗したら黙らず、数字も捏造しない', async () => {
+    const rejected = Promise.reject(new Error('統計を取得できませんでした'));
+    rejected.catch(() => {});
+    fetchAnalyticsOverview.mockReturnValue(rejected);
+
+    render(<ModeratorDashboard />);
+    await waitFor(() => expect(screen.getByText(/統計を取得できませんでした/)).toBeInTheDocument());
+    expect(screen.queryByText('1,247')).not.toBeInTheDocument();
+  });
+});
+
+describe('モデレーション履歴に架空データを混ぜないこと', () => {
+  beforeEach(() => {
+    updateUser.mockReset().mockResolvedValue({ success: true });
+    updateComment.mockReset().mockResolvedValue({ success: true });
+    deleteComment.mockReset().mockResolvedValue({ success: true });
+    fetchAnalyticsOverview.mockReset().mockResolvedValue({
+      total: 1, moderated: 0, bannedUsers: 0, mutedUsers: 0
+    });
+  });
+
+  const openHistoryTab = async () => {
+    const user = userEvent.setup();
+    render(<ModeratorDashboard />);
+    await screen.findByText('対象コメント');
+    await user.click(screen.getByRole('tab', { name: '最近のアクション' }));
+  };
+
+  it('操作していなければ履歴は空で、架空のユーザー名が出ない', async () => {
+    await openHistoryTab();
+    await screen.findByText('まだ操作はありません。');
+    for (const fake of ['troll_user123', 'spam_bot', 'offensive_user']) {
+      expect(screen.queryByText(fake)).not.toBeInTheDocument();
+    }
+  });
+
+  it('プラットフォーム側へ反映できなかったBANをそう表示する（R-28b の後半）', async () => {
+    // バックエンドは platformBan.ok=false を返している。これを画面が捨てると
+    // 「ダッシュボードではBAN済みだが当人は発言し続けられる」状態が見えなくなる
+    updateUser.mockResolvedValue({ platformBan: { ok: false, reason: 'author_channel_id_unknown' } });
+
+    const user = userEvent.setup();
+    render(<ModeratorDashboard />);
+    await screen.findByText('対象コメント');
+    await user.click(screen.getAllByRole('button', { name: 'ユーザーをBAN' })[0]);
+    await waitFor(() => expect(updateUser).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('tab', { name: '最近のアクション' }));
+    expect(await screen.findByText(/プラットフォーム側には未反映/)).toBeInTheDocument();
+  });
+
+  it('反映できたBANは反映済みと表示する', async () => {
+    updateUser.mockResolvedValue({ platformBan: { ok: true } });
+
+    const user = userEvent.setup();
+    render(<ModeratorDashboard />);
+    await screen.findByText('対象コメント');
+    await user.click(screen.getAllByRole('button', { name: 'ユーザーをBAN' })[0]);
+    await waitFor(() => expect(updateUser).toHaveBeenCalled());
+
+    await user.click(screen.getByRole('tab', { name: '最近のアクション' }));
+    expect(await screen.findByText(/プラットフォーム側にも反映済み/)).toBeInTheDocument();
   });
 });

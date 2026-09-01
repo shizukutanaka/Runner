@@ -35,6 +35,7 @@ export default function UserPanel() {
   const [muteDialog, setMuteDialog] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState(null);
+  const [platformNotice, setPlatformNotice] = useState(null);
   const { t } = useTranslation();
 
   const loadUsers = useCallback(async (search) => {
@@ -56,13 +57,29 @@ export default function UserPanel() {
     return () => clearTimeout(timer);
   }, [searchTerm, loadUsers]);
 
+  // BAN / ミュートの実行。
+  //
+  // バックエンドは BAN のとき `data.platformBan` で
+  // 「YouTube側にも反映できたか」を返す（usersController の R-28b）。
+  // 旧実装はこの戻り値を**捨てていた**ため、プラットフォーム側への書き戻しが
+  // 失敗しても一覧のバッジが `banned` に変わるだけで、モデレーターには
+  // 成功と区別がつかなかった。当人は配信で発言し続けられる状態のまま、
+  // 画面上だけ「BAN済み」になる——R-28b が塞いだはずの穴が UI 側に残っていた。
   const handleAction = async (type) => {
     setActionLoading(true);
     setActionError(null);
+    setPlatformNotice(null);
     try {
-      await updateUser(selectedId, { action: type });
+      const result = await updateUser(selectedId, { action: type });
       setBanDialog(false);
       setMuteDialog(false);
+      if (type === 'ban' && result?.platformBan?.ok !== true) {
+        setPlatformNotice(
+          'ローカルではBANしましたが、プラットフォーム側には反映できていません'
+          + '（当人は配信で発言できます）。'
+          + `理由: ${result?.platformBan?.reason || '不明'}`
+        );
+      }
       loadUsers(searchTerm);
     } catch (e) {
       setActionError(e);
@@ -134,6 +151,12 @@ export default function UserPanel() {
           {actionError && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setActionError(null)}>
               {t('user_panel_action_error')}
+            </Alert>
+          )}
+
+          {platformNotice && (
+            <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setPlatformNotice(null)}>
+              {platformNotice}
             </Alert>
           )}
 

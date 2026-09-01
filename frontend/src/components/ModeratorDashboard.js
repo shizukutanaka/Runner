@@ -53,14 +53,12 @@ import {
   Settings as SettingsIcon,
   Refresh as RefreshIcon,
   FilterList as FilterIcon,
-  SentimentSatisfied as SentimentSatisfiedIcon,
-  SentimentDissatisfied as SentimentDissatisfiedIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
 import { useComments } from '../hooks/useComments';
 import HeldMessagesQueue from './HeldMessagesQueue';
 import { updateUser } from '../api/users';
-import { updateComment, deleteComment } from '../api/comments';
+import { updateComment, deleteComment, fetchAnalyticsOverview } from '../api/comments';
 
 export default function ModeratorDashboard({ platform = 'all' }) {
   const theme = useTheme();
@@ -74,54 +72,36 @@ export default function ModeratorDashboard({ platform = 'all' }) {
   // BAN/ミュートの失敗をモデレーターに見せるための状態（失敗を握りつぶさない）
   const [actionError, setActionError] = useState(null);
   const [userDialogOpen, setUserDialogOpen] = useState(false);
+  // 画面上部の4枚のカード。
+  //
+  // ここは 1247 / 23 / 5 / 12 という**固定値**で初期化され、`setModerationStats` は
+  // コード中で一度も呼ばれていなかった。つまり誰がどの環境で開いても同じ数字が出る、
+  // 実データを一切反映しない飾りだった。モデレーターが最初に見る数字がこれである。
+  //
+  // 実際に集計できる値（総コメント数・フラグ数・BAN数・ミュート数）を
+  // `/analytics/*` から取得する。取得できない項目は 0 ではなく null のままにし、
+  // 表示側で「—」と出す。0件と「取得できていない」は違う意味だからである（E-25）。
   const [moderationStats, setModerationStats] = useState({
-    totalComments: 1247,
-    flaggedComments: 23,
-    bannedUsers: 5,
-    mutedUsers: 12,
-    activeWarnings: 8,
+    totalComments: null,
+    flaggedComments: null,
+    bannedUsers: null,
+    mutedUsers: null,
   });
+  const [statsError, setStatsError] = useState(null);
   const [activeTimeouts, setActiveTimeouts] = useState([]);
   const [timeoutReasons, setTimeoutReasons] = useState([]);
   const [selectedUserForTimeout, setSelectedUserForTimeout] = useState(null);
   const [timeoutDialogOpen, setTimeoutDialogOpen] = useState(false);
-  const [recentActions, setRecentActions] = useState([
-    {
-      id: 1,
-      type: 'ban',
-      user: 'troll_user123',
-      reason: 'スパム行為',
-      moderator: 'mod_admin',
-      timestamp: new Date(Date.now() - 300000),
-      platform: 'YouTube',
-    },
-    {
-      id: 2,
-      type: 'mute',
-      user: 'spam_bot',
-      reason: '自動検知されたスパム',
-      moderator: 'AI',
-      timestamp: new Date(Date.now() - 600000),
-      platform: 'Twitch',
-    },
-    {
-      id: 3,
-      type: 'delete',
-      user: 'offensive_user',
-      reason: '不適切なコメント',
-      moderator: 'mod_john',
-      timestamp: new Date(Date.now() - 900000),
-      platform: 'YouTube',
-    },
-  ]);
-
-  const [sentimentStats, setSentimentStats] = useState({
-    totalAnalyzed: 0,
-    sentimentBreakdown: { positive: 0, neutral: 0, negative: 0 },
-    averageScore: 0,
-    topPositiveKeywords: [],
-    topNegativeKeywords: []
-  });
+  // モデレーションアクション履歴。
+  //
+  // ここは以前 troll_user123 / spam_bot / offensive_user という**架空の3件**で
+  // 初期化されていた。実行された事実のないBAN・ミュート・削除が、実績として
+  // 画面に出ていたことになる（E-25 でアナリティクスに見つけたのと同じ種類の嘘）。
+  //
+  // サーバ側にモデレーション履歴を横断で返すエンドポイントは**存在しない**ため、
+  // 架空データの代わりに実在の履歴を出すことはできない。よって空で始め、
+  // 「このセッション中に実行した分だけ」であることを画面に明記する。
+  const [recentActions, setRecentActions] = useState([]);
 
   // 最近のコメント（APIから取得したデータを表示用に変換）
   const [recentComments, setRecentComments] = useState([]);
@@ -139,6 +119,30 @@ export default function ModeratorDashboard({ platform = 'all' }) {
       }))
     );
   }, [fetchedComments]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAnalyticsOverview()
+      .then((data) => {
+        if (cancelled) return;
+        setModerationStats({
+          totalComments: data.total,
+          flaggedComments: data.moderated,
+          bannedUsers: data.bannedUsers,
+          mutedUsers: data.mutedUsers,
+        });
+        setStatsError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        // 取得に失敗したことを隠さない。数字は null のままなので「—」が出る
+        setStatsError(err?.message || '統計を取得できませんでした');
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // 統計カードの表示。null（未取得）を 0 と偽らない
+  const showStat = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString());
 
   // フィルタリングされたコメント
   const filteredComments = recentComments.filter(comment =>
@@ -261,6 +265,12 @@ export default function ModeratorDashboard({ platform = 'all' }) {
         {t('moderator_dashboard_title', 'モデレーターダッシュボード')}
       </Typography>
 
+      {statsError && (
+        <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setStatsError(null)}>
+          {statsError}（カードの数値は「—」と表示されます）
+        </Alert>
+      )}
+
       {/* 統計カード */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
@@ -269,7 +279,7 @@ export default function ModeratorDashboard({ platform = 'all' }) {
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <ChatIcon color="primary" sx={{ mr: 1 }} />
                 <Typography variant="h6" color="primary">
-                  {moderationStats.totalComments.toLocaleString()}
+                  {showStat(moderationStats.totalComments)}
                 </Typography>
               </Box>
               <Typography variant="body2" color="text.secondary">
@@ -282,11 +292,11 @@ export default function ModeratorDashboard({ platform = 'all' }) {
           <Card sx={{ borderRadius: 2 }}>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <Badge badgeContent={moderationStats.flaggedComments} color="error">
+                <Badge badgeContent={moderationStats.flaggedComments ?? 0} color="error">
                   <FlagIcon color="warning" sx={{ mr: 1 }} />
                 </Badge>
                 <Typography variant="h6" color="warning.main">
-                  {moderationStats.flaggedComments}
+                  {showStat(moderationStats.flaggedComments)}
                 </Typography>
               </Box>
               <Typography variant="body2" color="text.secondary">
@@ -301,7 +311,7 @@ export default function ModeratorDashboard({ platform = 'all' }) {
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <BlockIcon color="error" sx={{ mr: 1 }} />
                 <Typography variant="h6" color="error.main">
-                  {moderationStats.bannedUsers}
+                  {showStat(moderationStats.bannedUsers)}
                 </Typography>
               </Box>
               <Typography variant="body2" color="text.secondary">
@@ -316,41 +326,11 @@ export default function ModeratorDashboard({ platform = 'all' }) {
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <MuteIcon color="warning" sx={{ mr: 1 }} />
                 <Typography variant="h6" color="warning.main">
-                  {moderationStats.mutedUsers}
+                  {showStat(moderationStats.mutedUsers)}
                 </Typography>
               </Box>
               <Typography variant="body2" color="text.secondary">
                 ミュートユーザー
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 2 }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <SentimentSatisfiedIcon color="success" sx={{ mr: 1 }} />
-                <Typography variant="h6" color="success.main">
-                  {sentimentStats.sentimentBreakdown?.positive || 0}
-                </Typography>
-              </Box>
-              <Typography variant="body2" color="text.secondary">
-                ポジティブ感情
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 2 }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <SentimentDissatisfiedIcon color="error" sx={{ mr: 1 }} />
-                <Typography variant="h6" color="error.main">
-                  {sentimentStats.sentimentBreakdown?.negative || 0}
-                </Typography>
-              </Box>
-              <Typography variant="body2" color="text.secondary">
-                ネガティブ感情
               </Typography>
             </CardContent>
           </Card>
@@ -366,7 +346,6 @@ export default function ModeratorDashboard({ platform = 'all' }) {
         >
           <Tab label="リアルタイム監視" />
           <Tab label="最近のアクション" />
-          <Tab label="感情分析" />
           <Tab label="ユーザー管理" />
           <Tab label="保留メッセージキュー" />
         </Tabs>
@@ -566,8 +545,16 @@ export default function ModeratorDashboard({ platform = 'all' }) {
 
       {activeTab === 1 && (
         <Card sx={{ borderRadius: 2 }}>
-          <CardHeader title="最近のモデレーションアクション" />
+          <CardHeader
+            title="最近のモデレーションアクション"
+            subheader="このセッション中にこの画面から実行した分のみ。サーバ側に横断的な履歴APIが無いため、再読み込みで消えます"
+          />
           <CardContent>
+            {recentActions.length === 0 && (
+              <Typography variant="body2" color="text.secondary">
+                まだ操作はありません。
+              </Typography>
+            )}
             <List>
               {recentActions.map((action) => (
                 <ListItem key={action.id}>
@@ -602,6 +589,21 @@ export default function ModeratorDashboard({ platform = 'all' }) {
                         <Typography variant="body2" color="text.secondary">
                           {action.reason} • {action.moderator} • {formatRelativeTime(action.timestamp)}
                         </Typography>
+                        {/* BANがプラットフォーム側へ届いたかを必ず出す。
+                            届いていない場合、当人は配信で発言し続けられる。
+                            バックエンドは platformBan.ok を返しているのに、
+                            画面はそれを捨てていた（R-28b の後半が見えていなかった） */}
+                        {action.type === 'ban' && (
+                          action.platformApplied ? (
+                            <Typography variant="caption" color="success.main">
+                              プラットフォーム側にも反映済み
+                            </Typography>
+                          ) : (
+                            <Typography variant="caption" color="error.main">
+                              ローカルのみ。プラットフォーム側には未反映（当人は配信で発言できます）
+                            </Typography>
+                          )
+                        )}
                       </Box>
                     }
                   />
@@ -613,133 +615,6 @@ export default function ModeratorDashboard({ platform = 'all' }) {
       )}
 
       {activeTab === 2 && (
-        <Grid container spacing={3}>
-          {/* 感情分析概要 */}
-          <Grid item xs={12} md={6}>
-            <Card sx={{ borderRadius: 2 }}>
-              <CardHeader title="感情分析概要" />
-              <CardContent>
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="h4" sx={{ mb: 1 }}>
-                    {sentimentStats.averageScore?.toFixed(2) || '0.00'}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    平均感情スコア
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                  <Chip
-                    icon={<SentimentSatisfiedIcon />}
-                    label={`ポジティブ: ${sentimentStats.sentimentBreakdown?.positive || 0}`}
-                    color="success"
-                    variant="outlined"
-                  />
-                  <Chip
-                    label={`ニュートラル: ${sentimentStats.sentimentBreakdown?.neutral || 0}`}
-                    color="default"
-                    variant="outlined"
-                  />
-                  <Chip
-                    icon={<SentimentDissatisfiedIcon />}
-                    label={`ネガティブ: ${sentimentStats.sentimentBreakdown?.negative || 0}`}
-                    color="error"
-                    variant="outlined"
-                  />
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* 人気キーワード */}
-          <Grid item xs={12} md={6}>
-            <Card sx={{ borderRadius: 2 }}>
-              <CardHeader title="人気キーワード" />
-              <CardContent>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <Typography variant="subtitle2" gutterBottom sx={{ color: 'success.main' }}>
-                      ポジティブ
-                    </Typography>
-                    <Box>
-                      {(sentimentStats.topPositiveKeywords || []).slice(0, 3).map((keyword, index) => (
-                        <Chip
-                          key={index}
-                          label={`${keyword.word} (${keyword.count})`}
-                          size="small"
-                          color="success"
-                          variant="outlined"
-                          sx={{ mr: 1, mb: 1 }}
-                        />
-                      ))}
-                    </Box>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="subtitle2" gutterBottom sx={{ color: 'error.main' }}>
-                      ネガティブ
-                    </Typography>
-                    <Box>
-                      {(sentimentStats.topNegativeKeywords || []).slice(0, 3).map((keyword, index) => (
-                        <Chip
-                          key={index}
-                          label={`${keyword.word} (${keyword.count})`}
-                          size="small"
-                          color="error"
-                          variant="outlined"
-                          sx={{ mr: 1, mb: 1 }}
-                        />
-                      ))}
-                    </Box>
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* 感情トレンド */}
-          <Grid item xs={12}>
-            <Card sx={{ borderRadius: 2 }}>
-              <CardHeader title="感情トレンド" />
-              <CardContent>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  直近の感情分析結果
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', pb: 1 }}>
-                  {(sentimentStats.recentSentiments || []).map((sentiment, index) => (
-                    <Paper
-                      key={index}
-                      sx={{
-                        p: 2,
-                        minWidth: 200,
-                        borderRadius: 2,
-                        border: 1,
-                        borderColor: 
-                          sentiment.sentiment === 'positive' ? 'success.light' :
-                          sentiment.sentiment === 'negative' ? 'error.light' : 'grey.300'
-                      }}
-                    >
-                      <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>
-                        &quot;{sentiment.content.length > 30 ? sentiment.content.substring(0, 30) + '...' : sentiment.content}&quot;
-                      </Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {sentiment.sentiment === 'positive' && <SentimentSatisfiedIcon color="success" fontSize="small" />}
-                        {sentiment.sentiment === 'negative' && <SentimentDissatisfiedIcon color="error" fontSize="small" />}
-                        <Typography variant="caption" color="text.secondary">
-                          {sentiment.sentiment} ({sentiment.score})
-                        </Typography>
-                      </Box>
-                      <Typography variant="caption" color="text.secondary">
-                        {formatRelativeTime(new Date(sentiment.timestamp))}
-                      </Typography>
-                    </Paper>
-                  ))}
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      )}
-
-      {activeTab === 3 && (
         <Card sx={{ borderRadius: 2 }}>
           <CardHeader title="ユーザー管理" />
           <CardContent>
@@ -753,7 +628,7 @@ export default function ModeratorDashboard({ platform = 'all' }) {
         </Card>
       )}
 
-      {activeTab === 4 && <HeldMessagesQueue />}
+      {activeTab === 3 && <HeldMessagesQueue />}
       <Dialog
         open={userDialogOpen}
         onClose={() => setUserDialogOpen(false)}

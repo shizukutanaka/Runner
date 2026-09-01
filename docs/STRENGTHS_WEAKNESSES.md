@@ -48,7 +48,7 @@
 | **TLSを同梱**: 証明書なしでも自己署名で起動し、80番はHTTPSへ301。Secure Cookie が平文HTTPで死ぬ問題を構成ごと解決 | E-16追記、`frontend/docker-entrypoint.sh` |
 | **監査文書が証拠つき**: 23件のE番号エントリすべてに「証拠→対応→検証→再検証手順」 | `docs/FEATURE_AUDIT.md` |
 | **単一インスタンス制約の明文化**: 破ると壊れる理由と、スケールの正しい順序を1箇所に集約 | `DEPLOYMENT_GUIDE.md` 冒頭 |
-| **テスト**: backend 658 / frontend 58、失敗0・skip 0。過剰検知ガードを検知側より厚く配置 | `npx jest --silent` / `npx vitest run` |
+| **テスト**: backend 663 / frontend 93、失敗0・skip 0。過剰検知ガードを検知側より厚く配置 | `npx jest --silent` / `npx vitest run` |
 
 **マスク判定**: いずれも②（削除）と③（単純化）の産物である点が重要。
 このセッションで**追加した行より削除した行の方が多い**（偽装コード・虚偽文書 約15,000行削除）。
@@ -79,7 +79,8 @@
 
 | 短所 | 現状 |
 |------|------|
-| フロントのテストが 58件（28→58） | API契約・セッション判定に加え、**実際に起きた障害3件の描画を固定した**（E-15のホワイトスクリーン／E-25のデモデータ／保留キューのバッジ7種）。さらに `ModeratorDashboard` の操作系を固定した（削除・BAN・承認が実際にAPIを呼ぶこと、**APIが失敗したときに成功したように見えないこと**）。ただしカバレッジは依然低く、テストが無い画面（Dashboard / SettingsPanel / UserPanel / MonitoringDashboard / TriageQueue / Login / Register）の方が多い |
+| フロントのテストが 93件（28→93） | API契約・セッション判定に加え、**実際に起きた障害3件の描画を固定した**（E-15のホワイトスクリーン／E-25のデモデータ／保留キューのバッジ7種）。さらに `ModeratorDashboard` と `UserPanel` の操作系を固定した（削除・BAN・承認が実際にAPIを呼ぶこと、**APIが失敗したときに成功したように見えないこと**、**プラットフォームへ届かなかったBANを成功と見せないこと**）。ただしカバレッジは依然低く、テストが無い画面（Dashboard / SettingsPanel / MonitoringDashboard / TriageQueue / Login / Register）の方が多い |
+| **同じ嘘が別の画面に残っていた**（E-26で解消） | E-25でアナリティクスの捏造を潰した時点では「1画面の問題」と考えていた。全画面に同じ問いを当て直したところ、モデレーター画面の見出し4数字（1247/23/5/12）も固定値で、履歴タブは架空の処罰3件だった。**1件見つけたら同型を全部探すまで終わっていない**という教訓として残す |
 | レートリミッターが2系統 | `security.js` は `RATE_LIMIT_ENABLED` を見るが `rateLimiter.js`（ログイン5回/15分）は常時有効。挙動は妥当だが有効化条件の不一致は将来の混乱源（E-17） |
 | alpineベースのイメージビルド未検証 | 全コンテナレジストリがゲートウェイで403（網羅確認済み）。アプリ層の命令列は代替ベースで検証中 |
 | 実クレデンシャル疎通が未検証 | YouTube OAuth書き戻し・Twitch EventSub・SMTP。フェイルセーフ側のみテスト済み |
@@ -100,8 +101,12 @@
    ログイン→リアルタイム通知まで一周。ここまでのnginx/TLS/Cookie検証は実プロセスで済んでいる
 3. **✅ 一部実施（2026-09-01）** — 実際に起きた障害の描画を固定した:
    `AnalyticsPanel.test.jsx`（実データ描画・`—`表示・デモ復活の禁止）、
-   `HeldMessagesQueue.test.jsx`（バッジ7種）、`summaryRendering.test.jsx`（E-15）。
-   **残り**: 未テストの画面の方が依然多い（Dashboard・Settings・ユーザー管理等）。
+   `HeldMessagesQueue.test.jsx`（バッジ7種）、`summaryRendering.test.jsx`（E-15）、
+   `ModeratorDashboard.test.jsx`（操作が実APIを呼ぶこと・失敗を成功に見せないこと・
+   固定値1,247を出さないこと）、`UserPanel.test.jsx`（未反映BANの明示）、`noFabricatedState.test.jsx`（**全コンポーネントを走査し、更新されない初期値＝飾りの数字を機械的に禁止**）。
+   **この作業自体が E-26 を掘り当てた**——テストを書くために画面を読んだ結果、
+   見出しの4つの数字が固定値で、履歴タブが架空の処罰3件だと分かった。
+   **残り**: 未テストの画面の方が依然多い（Dashboard・Settings・監視・トリアージ・認証）。
    jsdomに `matchMedia` / `ResizeObserver` のポリフィルを入れたので、
    MUIコンポーネントの描画テストは今後書きやすくなっている
 4. **レートリミッターの統一**: 2系統を `rateLimiter.js` に寄せ、ログイン保護は
