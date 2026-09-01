@@ -452,6 +452,48 @@ E-20（`.env.example`）と同じ検査をREADMEの**検証可能な主張**に�
 
 ---
 
+### E-24. ✅ 解決済み（2026-09-01） — 本番イメージは起動できなかった（代替ベースでのビルド検証が2件の実バグを発見）
+
+全コンテナレジストリが遮断されている環境で、ホストのファイルシステムから
+`docker import` で作った Node 入りベースイメージ（`local-node-base:22`）を使い、
+**実際の `backend/Dockerfile` と FROM 2行 + `apk` 1行だけが異なる**検証用 Dockerfile
+（差分は必ず表示して確認）で本番ビルドを実行した。**2件の実バグが見つかった。**
+
+1. **`npm ci --omit=dev` が exit 127 で必ず失敗**
+   `"prepare": "husky install"` が原因。husky は devDependency なので
+   `--omit=dev` では存在しないが、npm は omit でも `prepare` を実行する。
+   つまり**本物の alpine ベースでも本番ビルドはこの行で必ず死んでいた**。
+   しかも `.husky/` ディレクトリは存在せず、フックは一つも配線されていない
+   ＝開発環境でも何の役にも立っていなかった。`prepare` スクリプトと
+   husky devDependency を削除
+2. **ビルドが通った後、コンテナが起動即クラッシュ**
+   `Cannot find module 'cookie-parser'`。D-7 で導入した `cookie-parser` と、
+   Twitch 取り込みの `ws` が **dependencies に未宣言**だった。開発環境では
+   devDependencies の推移的依存として node_modules に居るため誰も気づかない。
+   「手元では動くが本番では死ぬ」の典型形。さらに `connect-redis` も未宣言で、
+   compose が設定する `SESSION_STORE=redis` は**一度も実際に機能したことがなく**、
+   try/catch で静かにメモリセッションへフォールバックしていた。3件を dependencies に追加
+   （`@socket.io/redis-adapter` は複数インスタンス用のため**意図的に追加しない**。
+   単一インスタンス制約と矛盾する機能に依存を増やさない）
+
+- **修正後の実測**（検証イメージのコンテナ）: `/health` 200 ／ 実行uid=1000（非root）／
+  sqlite3 ネイティブバインディング存在 ／ HEALTHCHECK コマンド成功 ／
+  `/metrics` 未認証 401 ／ `/api/comments` 未認証 401
+- **検証の限界（正確に線を引く）**: 検証したのは**アプリ層の命令列**
+  （`npm ci --omit=dev`・マルチステージ COPY --chown・mkdir/chown・USER node・
+  HEALTHCHECK・CMD）である。`node:18-alpine` ベース層と `apk add` の行は
+  レジストリ遮断のため**依然未検証**。musl 環境での sqlite3 コンパイルも未検証
+  （そのために python3/make/g++ を入れてある）
+- **再発防止**: `tests/services/runtimeDependencies.test.js`。
+  src/ の全 require が dependencies に宣言されていること・`prepare` が
+  復活していないことを機械検査する。このクラスのバグはテスト環境
+  （devDependencies が全部ある）では原理的に検出できないため、宣言の照合そのものを検査する
+- **npm レジストリへの疎通で1つ学んだこと**: コンテナに `HTTPS_PROXY` を渡すと失敗する。
+  `registry.npmjs.org` はゲートウェイの noProxy 対象で**直接接続すべき**宛先であり、
+  プロキシ経由を強制すると拒否される。`--network host` + プロキシ変数なしが正解だった
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】
@@ -692,13 +734,14 @@ E-5（課金）と D-6/E-3残課題（マルチテナント）はオーナー判
 
 ### B. この実行環境では原理的に確認できないもの（手順と測定器は用意済み）
 
-5. **コンテナイメージのビルド**
-   Dockerデーモンは起動できるが、`registry-1.docker.io` / `auth.docker.io` /
-   `mirror.gcr.io` / `ghcr.io` / `quay.io` / `public.ecr.aws` のいずれもゲートウェイに
-   403で遮断されており、ベースイメージを取得できない。
-   nginx設定とアプリ間の疎通は実プロセスで確認済み（E-16参照）、
-   sqlite3のネイティブビルドも単独で確認済み。
-   **Docker Hubに到達できる環境で `docker compose up -d --build` を実行するだけ**
+5. **コンテナイメージのビルド — 大半は検証済みになった（E-24）**
+   全レジストリがゲートウェイで403のため `node:18-alpine` は取得できないが、
+   ホストから `docker import` した代替ベースで**実Dockerfileのアプリ層の命令列を
+   ビルド・起動まで検証した**（差分は FROM 2行 + apk 1行のみ）。
+   この検証が**本番ビルドを必ず壊していた実バグ2件**
+   （husky の prepare、cookie-parser/ws の依存未宣言）を発見・修正した。
+   残る未検証は alpine ベース層と musl での sqlite3 コンパイルのみ。
+   **Docker Hubに到達できる環境で `docker compose up -d --build` を実行して締める**
 6. **AI層（Policy-as-Prompt）の効果実測**
    `OPENAI_API_KEY` が要る。測定器は用意済みで、鍵を入れたら
    `node src/scripts/evaluateModeration.js --no-ai` と引数なしの差分を見る（W-3参照）。
