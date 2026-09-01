@@ -152,4 +152,7 @@ if (require.main === module) {
     });
 }
 
-module.exports = { evaluate, metricsFrom, isFlagged };
+module.exports = {
+  evaluate,
+  isFlagged
+};

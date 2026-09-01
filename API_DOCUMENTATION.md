@@ -167,8 +167,14 @@
 - **GET `/api/notifications`** 通知取得 / List notifications
   - **クエリ / Query** `includeRead` (default `false`), `limit`, `offset`
 - **POST `/api/notifications`** 通知作成 / Create notification (`title`, `message`, optional `type`, `level`, `metadata`)
-- **POST `/api/notifications/:id/read`** 既読化 / Mark as read
+- **PUT `/api/notifications/:id/read`** 既読化 / Mark as read
+- **PUT `/api/notifications/read-all`** 全既読化 / Mark all as read
 - **DELETE `/api/notifications/read`** 既読削除 / Delete read notifications
+- **DELETE `/api/notifications/:id`** 通知削除 / Delete a notification
+- **DELETE `/api/notifications`** 全削除 / Delete all notifications
+- **GET / PUT `/api/notifications/settings`** 通知設定 / Notification settings
+- **POST `/api/notifications/test`** テスト送信 / Send a test notification
+- **GET / PUT `/api/notifications/users/:id/settings`** ユーザー別通知設定 / Per-user settings
 
 ## 分析 API / Analytics API (`backend/src/routes/analytics.js`)
 

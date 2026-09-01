@@ -483,7 +483,6 @@ const requestLogger = (req, res, next) => {
 };
 
 module.exports = {
-  strictRateLimit,
   generalRateLimit,
   apiRateLimit,
   securityMiddleware,

@@ -361,7 +361,6 @@ const metricsHandler = (req, res) => {
 module.exports = {
   HealthCheck,
   healthCheck,
-  MetricsCollector,
   metricsCollector,
   metricsMiddleware,
   healthCheckHandler,

@@ -251,10 +251,5 @@ function createRetryableFunction(fn, options = {}) {
 }
 
 module.exports = {
-  RetryMechanism,
-  HttpRetry,
-  DatabaseRetry,
-  ApiRetry,
-  withRetry,
-  createRetryableFunction
+  withRetry
 };

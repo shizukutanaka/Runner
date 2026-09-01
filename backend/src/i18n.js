@@ -186,12 +186,6 @@ const translateMulti = (key, languages = ['en', 'ja']) => {
 module.exports = {
   initializeI18n,
   setLanguage,
-  createI18nResponse,
-  I18nError,
-  getSupportedLanguages,
-  getLanguageInfo,
   translate,
-  translateMulti,
-  detectLanguage,
-  SUPPORTED_LANGUAGES
+  detectLanguage
 };

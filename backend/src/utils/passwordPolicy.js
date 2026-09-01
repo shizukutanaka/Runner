@@ -261,12 +261,6 @@ function validatePassword(options = {}) {
 }
 
 module.exports = {
-  PASSWORD_STRENGTH,
-  PASSWORD_POLICY,
   validatePasswordStrength,
-  checkPasswordHistory,
-  validatePasswordConfirmation,
-  validatePassword,
-  passwordSchema,
-  COMMON_PASSWORDS
+  passwordSchema
 };

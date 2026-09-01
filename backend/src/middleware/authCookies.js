@@ -125,8 +125,6 @@ const csrfGuard = (req, res, next) => {
 };
 
 module.exports = {
-  ACCESS_COOKIE,
-  REFRESH_COOKIE,
   setAuthCookies,
   clearAuthCookies,
   readAccessToken,

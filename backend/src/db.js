@@ -181,7 +181,22 @@ const ensureCommentColumns = () => {
     // メッセージIDと著者チャンネルIDが必須。従来は取込時に捨てていたため、
     // 書き戻し機能を実装しようにも対象を指定できない状態だった
     { name: 'platform_message_id', definition: 'TEXT' },
-    { name: 'author_channel_id', definition: 'TEXT' }
+    { name: 'author_channel_id', definition: 'TEXT' },
+    // E-29: 公開範囲（/comments/:id/visibility）とAI閾値
+    // （/moderation/ai-threshold/comments/:id）はどちらも mount 済みだが、
+    // 参照する列が comments に一つも無く SQLITE_ERROR で必ず500になっていた。
+    // 列が無いだけで、ハンドラの読み書きの対応は取れている
+    { name: 'visibility', definition: 'TEXT NOT NULL DEFAULT \'public\'' },
+    { name: 'allowed_roles', definition: 'TEXT' },
+    { name: 'allowed_users', definition: 'TEXT' },
+    { name: 'visibility_expires_at', definition: 'DATETIME' },
+    { name: 'visibility_moderator_id', definition: 'TEXT' },
+    { name: 'visibility_set_at', definition: 'DATETIME' },
+    { name: 'ai_threshold_score', definition: 'REAL' },
+    { name: 'ai_threshold_enabled', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'ai_threshold_custom_settings', definition: 'TEXT' },
+    { name: 'ai_override_moderator_id', definition: 'TEXT' },
+    { name: 'ai_override_timestamp', definition: 'DATETIME' }
   ]);
 };
 
@@ -192,6 +207,21 @@ const ensureHeldMessageColumns = () => {
   ensureColumnDefinitions('held_messages', [
     { name: 'platform_message_id', definition: 'TEXT' },
     { name: 'author_channel_id', definition: 'TEXT' },
+    // E-29: 公開範囲（/comments/:id/visibility）とAI閾値
+    // （/moderation/ai-threshold/comments/:id）はどちらも mount 済みだが、
+    // 参照する列が comments に一つも無く SQLITE_ERROR で必ず500になっていた。
+    // 列が無いだけで、ハンドラの読み書きの対応は取れている
+    { name: 'visibility', definition: 'TEXT NOT NULL DEFAULT \'public\'' },
+    { name: 'allowed_roles', definition: 'TEXT' },
+    { name: 'allowed_users', definition: 'TEXT' },
+    { name: 'visibility_expires_at', definition: 'DATETIME' },
+    { name: 'visibility_moderator_id', definition: 'TEXT' },
+    { name: 'visibility_set_at', definition: 'DATETIME' },
+    { name: 'ai_threshold_score', definition: 'REAL' },
+    { name: 'ai_threshold_enabled', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'ai_threshold_custom_settings', definition: 'TEXT' },
+    { name: 'ai_override_moderator_id', definition: 'TEXT' },
+    { name: 'ai_override_timestamp', definition: 'DATETIME' },
     // R-32: 保留の発生源。'internal'（本製品の判定）か 'twitch_automod'（Twitch AutoModが保留）。
     // 承認/却下の書き戻し先が変わる（AutoMod経由は削除ではなくALLOW/DENYを返す）ため必要
     { name: 'source', definition: 'TEXT DEFAULT \'internal\'' }
@@ -226,7 +256,12 @@ const ensureUserColumns = () => {
     { name: 'subscription', definition: 'TEXT' },
     { name: 'auth_history', definition: 'TEXT DEFAULT \'[]\'' },
     { name: 'two_factor', definition: 'INTEGER NOT NULL DEFAULT 0' },
-    { name: 'email_verified', definition: 'INTEGER NOT NULL DEFAULT 0' }
+    { name: 'email_verified', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    // E-29: PUT /moderation/ai-threshold/users/:id が読み書きする列。
+    // comments 側と同じく、mount 済みなのに列が無く必ず500だった
+    { name: 'ai_default_threshold', definition: 'REAL' },
+    { name: 'ai_threshold_enabled', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'ai_threshold_settings', definition: 'TEXT' }
   ]);
 };
 
@@ -453,6 +488,135 @@ const initializeDB = async () => {
       culture_type TEXT NOT NULL,
       custom_overrides TEXT,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- ------------------------------------------------------------------
+    -- E-29: ルーティング済みなのにテーブルが無く、必ず500になっていた分
+    -- ------------------------------------------------------------------
+    -- 下の6テーブルは、routes に mount 済みのハンドラが SELECT/INSERT していたが
+    -- **スキーマに一度も存在しなかった**。実サーバーで
+    -- GET /api/users/timeouts/active を叩くと SQLITE_ERROR で 500 が返る。
+    -- 「実装されているが動かない」ではなく「呼べば必ず落ちる」状態だった。
+    -- 列はハンドラが実際に読み書きしている列から起こしている。
+
+    -- タイムアウト（一時的な発言停止）。ban/mute と別に、期限と理由を持つ
+    CREATE TABLE IF NOT EXISTS user_timeouts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      moderator_id TEXT,
+      platform TEXT,
+      reason TEXT,
+      timeout_duration INTEGER,
+      timeout_until DATETIME,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_user_timeouts_user ON user_timeouts(user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_user_timeouts_until ON user_timeouts(timeout_until);
+
+    CREATE TABLE IF NOT EXISTS user_timeout_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      moderator_id TEXT,
+      platform TEXT,
+      reason TEXT,
+      timeout_duration INTEGER,
+      timeout_until DATETIME,
+      status TEXT NOT NULL DEFAULT 'active',
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      ended_at DATETIME
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_user_timeout_history_user ON user_timeout_history(user_id);
+
+    -- タイムアウト理由のテンプレート。空でも API は 200 と空配列を返す
+    CREATE TABLE IF NOT EXISTS user_timeout_reasons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reason_code TEXT NOT NULL UNIQUE,
+      reason_text TEXT NOT NULL,
+      default_duration INTEGER DEFAULT 300,
+      severity INTEGER DEFAULT 1,
+      enabled INTEGER DEFAULT 1
+    );
+
+    -- AI閾値の変更履歴（誰がいつ何を変えたか）
+    CREATE TABLE IF NOT EXISTS ai_threshold_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comment_id TEXT,
+      user_id TEXT,
+      moderator_id TEXT,
+      action TEXT,
+      old_threshold REAL,
+      new_threshold REAL,
+      old_settings TEXT,
+      new_settings TEXT,
+      reason TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ai_threshold_history_comment ON ai_threshold_history(comment_id);
+
+    -- 外部連携の操作ログ
+    CREATE TABLE IF NOT EXISTS external_integration_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      service_id TEXT,
+      action TEXT,
+      status TEXT,
+      data TEXT,
+      reason TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_external_integration_logs_created ON external_integration_logs(created_at);
+
+    -- ユーザーへのモデレーション履歴（チャンネル活動の集計に使う）
+    CREATE TABLE IF NOT EXISTS moderation_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      target_user TEXT NOT NULL,
+      action TEXT NOT NULL,
+      reason TEXT,
+      moderator TEXT,
+      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_moderation_history_target ON moderation_history(target_user, timestamp DESC);
+
+    -- コメントの公開範囲の変更履歴。setCommentVisibility が書き、
+    -- getCommentVisibilityHistory が読む。両方 mount 済みだった
+    CREATE TABLE IF NOT EXISTS comment_visibility_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      comment_id TEXT NOT NULL,
+      moderator_id TEXT,
+      action TEXT,
+      old_visibility TEXT,
+      new_visibility TEXT,
+      old_allowed_roles TEXT,
+      new_allowed_roles TEXT,
+      old_allowed_users TEXT,
+      new_allowed_users TEXT,
+      expires_at DATETIME,
+      reason TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_comment_visibility_history_comment
+      ON comment_visibility_history(comment_id, created_at DESC);
+
+    -- 監視設定の永続化。updateMonitoringSettings が
+    -- INSERT OR REPLACE INTO system_settings (category, key, value, type, updated_at)
+    -- で書く形に合わせている（読み側は E-29 でこの形に直した）
+    CREATE TABLE IF NOT EXISTS system_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT,
+      type TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(category, key)
     );
   `;
 

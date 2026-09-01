@@ -870,11 +870,7 @@ module.exports = {
   summarizeComments,
   autoAnswer,
   validateCommentData,
-  extractVideoIds,
-  getCacheStats,
   clearCache,
   invalidateCommentCache,
-  invalidateCommentListCache,
-  insertBatch,
-  updateBatch
+  invalidateCommentListCache
 };

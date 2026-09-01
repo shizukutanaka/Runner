@@ -1,8 +1,25 @@
+// ---------------------------------------------------------------------------
+// 削除記録（2026-09-01・E-29）
+// ---------------------------------------------------------------------------
+// ここには通知テンプレート／チャネル管理／イベント配信／ユーザー別履歴の
+// 9ハンドラ（386行）があり、routes にも mount されていた。
+// しかし参照するテーブル8種（notification_templates / notification_channels /
+// notification_events / notification_history / notification_deliveries /
+// notification_groups / notification_variable_schemas /
+// notification_conditions）が**スキーマに1つも無く、呼べば必ず500**だった。
+//
+// テーブルを足す選択肢もあったが、要件から疑い直した:
+// 本製品は個人〜小規模の配信者が自分のチャットを見るためのもので、
+// 「テンプレート変数のスキーマ管理」「配信チャネルのルーティング」は
+// 課金・マルチテナントと同じ、**存在しない規模のための足場**である。
+// 実際に必要な通知（一覧・既読・設定・テスト送信）は notifications テーブルで
+// 動いており、そちらは残してある。
+//
+// 全文は git log に残っている。
+// ---------------------------------------------------------------------------
+
 const db = require('../db');
 const logger = require('../logger');
-const NotificationEventProcessor = require('../services/notificationEventProcessor');
-const NotificationChannelService = require('../services/notificationChannelService');
-const NotificationTemplateEngine = require('../services/notificationTemplateEngine');
 
 const serializeNotification = (row) => ({
   id: row.id,
@@ -121,86 +138,6 @@ exports.updateUserNotificationSettings = (req, res, next) => {
 };
 
 // ユーザーごとの通知履歴取得
-exports.getUserNotificationHistory = (req, res, next) => {
-  const { id } = req.params;
-  const { limit = 50, offset = 0, type } = req.query;
-
-  let sql = 'SELECT * FROM notification_history WHERE user_id = ?';
-  const params = [id];
-
-  if (type) {
-    sql += ' AND type = ?';
-    params.push(type);
-  }
-
-  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-  params.push(Number(limit), Number(offset));
-
-  db.all(sql, params, (err, rows) => {
-    if (err) {
-      logger.error('[Notifications] History fetch error', { error: err.message, userId: id });
-      return next({ status: 500, message: 'Failed to fetch notification history', details: err });
-    }
-
-    const history = rows.map((row) => ({
-      id: row.id,
-      type: row.type,
-      title: row.title,
-      message: row.message,
-      data: row.data ? JSON.parse(row.data) : null,
-      read: Boolean(row.read_at),
-      createdAt: row.created_at,
-      readAt: row.read_at
-    }));
-
-    res.json({
-      status: 200,
-      data: {
-        history,
-        pagination: {
-          limit: Number(limit),
-          offset: Number(offset),
-          total: history.length
-        }
-      },
-      message: 'Notification history fetched'
-    });
-  });
-};
-
-// ユーザーごとの通知履歴削除
-exports.clearUserNotificationHistory = (req, res, next) => {
-  const { id } = req.params;
-  const { before, type } = req.query;
-
-  let sql = 'DELETE FROM notification_history WHERE user_id = ?';
-  const params = [id];
-
-  if (before) {
-    sql += ' AND created_at < ?';
-    params.push(before);
-  }
-
-  if (type) {
-    sql += ' AND type = ?';
-    params.push(type);
-  }
-
-  db.run(sql, params, function(err) {
-    if (err) {
-      logger.error('[Notifications] History clear error', { error: err.message, userId: id });
-      return next({ status: 500, message: 'Failed to clear notification history', details: err });
-    }
-
-    res.json({
-      status: 200,
-      data: { deleted: this.changes },
-      message: 'Notification history cleared'
-    });
-  });
-};
-
-// ユーザーごとの通知設定取得
 exports.getUserNotificationSettings = (req, res, next) => {
   const { id } = req.params;
 
@@ -245,103 +182,6 @@ exports.getUserNotificationSettings = (req, res, next) => {
 };
 
 // 通知テンプレート取得
-exports.getNotificationTemplates = (req, res, next) => {
-  const sql = 'SELECT * FROM notification_templates ORDER BY type, id';
-
-  db.all(sql, (err, rows) => {
-    if (err) {
-      logger.error('[Notifications] Templates fetch error', { error: err.message });
-      return next({ status: 500, message: 'Failed to fetch notification templates', details: err });
-    }
-
-    const templates = rows.map((row) => ({
-      id: row.id,
-      type: row.type,
-      titleTemplate: row.title_template,
-      messageTemplate: row.message_template,
-      variables: row.variables ? JSON.parse(row.variables) : [],
-      enabled: Boolean(row.enabled),
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    }));
-
-    res.json({
-      status: 200,
-      data: templates,
-      message: 'Notification templates fetched'
-    });
-  });
-};
-
-// 通知テンプレート更新
-exports.updateNotificationTemplate = (req, res, next) => {
-  const { id } = req.params;
-  const {
-    titleTemplate,
-    messageTemplate,
-    variables,
-    enabled
-  } = req.body;
-
-  // バリデーション
-  const Joi = require('joi');
-  const templateSchema = Joi.object({
-    titleTemplate: Joi.string().required(),
-    messageTemplate: Joi.string().required(),
-    variables: Joi.array().items(Joi.string()).optional(),
-    enabled: Joi.boolean().optional()
-  });
-
-  const { error, value } = templateSchema.validate({
-    titleTemplate,
-    messageTemplate,
-    variables,
-    enabled
-  });
-
-  if (error) {
-    return next({ status: 400, message: 'Invalid template data', details: error.details });
-  }
-
-  const updateFields = [];
-  const params = [];
-
-  updateFields.push('title_template = ?');
-  params.push(value.titleTemplate);
-
-  updateFields.push('message_template = ?');
-  params.push(value.messageTemplate);
-
-  updateFields.push('updated_at = CURRENT_TIMESTAMP');
-
-  if (value.variables !== undefined) {
-    updateFields.push('variables = ?');
-    params.push(JSON.stringify(value.variables));
-  }
-
-  if (value.enabled !== undefined) {
-    updateFields.push('enabled = ?');
-    params.push(value.enabled ? 1 : 0);
-  }
-
-  params.push(id);
-
-  const sql = `UPDATE notification_templates SET ${updateFields.join(', ')} WHERE id = ?`;
-
-  db.run(sql, params, function(err) {
-    if (err) {
-      logger.error('[Notifications] Template update error', { error: err.message, templateId: id });
-      return next({ status: 500, message: 'Failed to update notification template', details: err });
-    }
-
-    if (this.changes === 0) {
-      return next({ status: 404, message: 'Notification template not found' });
-    }
-
-  });
-};
-
-// 通知一覧取得
 exports.getNotifications = (req, res, next) => {
   const userId = req.user.id;
   const { limit = 50, offset = 0, type, level, read, unreadOnly = false } = req.query;
@@ -457,34 +297,6 @@ exports.createNotification = async (req, res, next) => {
 };
 
 // テンプレートエンジン通知作成（Laravel風）
-exports.createTemplateNotification = async (req, res, next) => {
-  const { templateId, variables, userId, channels = ['websocket'] } = req.body;
-
-  try {
-    const templateEngine = new NotificationTemplateEngine();
-    const result = await templateEngine.createNotification(
-      templateId,
-      variables,
-      { userId, channels }
-    );
-
-    res.json({
-      status: 201,
-      data: result,
-      message: 'Template notification created successfully'
-    });
-
-  } catch (error) {
-    logger.error('[Notifications] Create template notification error', { error: error.message, userId, templateId });
-    return next({
-      status: 500,
-      message: 'Failed to create template notification',
-      details: error.message
-    });
-  }
-};
-
-// 通知を既読にする
 exports.markAsRead = (req, res, next) => {
   const userId = req.user.id;
   const { id } = req.params;
@@ -710,183 +522,3 @@ exports.sendTestNotification = async (req, res, next) => {
 };
 
 // Event-Driven API: 通知イベントを作成
-exports.createNotificationEvent = async (req, res, next) => {
-  const { eventType, eventData, priority = 5, userId, targetUsers, scheduledAt, deliveryChannels } = req.body;
-
-  // バリデーション
-  const Joi = require('joi');
-  const eventSchema = Joi.object({
-    eventType: Joi.string().required(),
-    eventData: Joi.object().required(),
-    priority: Joi.number().integer().min(1).max(10).optional(),
-    userId: Joi.string().optional(),
-    targetUsers: Joi.array().items(Joi.string()).optional(),
-    scheduledAt: Joi.date().optional(),
-    deliveryChannels: Joi.array().items(Joi.string()).default(['websocket'])
-  });
-
-  const { error, value } = eventSchema.validate({
-    eventType,
-    eventData,
-    priority,
-    userId,
-    targetUsers,
-    scheduledAt,
-    deliveryChannels
-  });
-
-  if (error) {
-    return next({ status: 400, message: 'Invalid event data', details: error.details });
-  }
-
-  try {
-    const result = await NotificationEventProcessor.createEvent(
-      value.eventType,
-      value.eventData,
-      {
-        priority: value.priority,
-        userId: value.userId,
-        targetUsers: value.targetUsers,
-        scheduledAt: value.scheduledAt,
-        deliveryChannels: value.deliveryChannels
-      }
-    );
-
-    res.json({
-      status: 201,
-      data: result,
-      message: 'Notification event created successfully'
-    });
-  } catch (error) {
-    logger.error('[Notifications] Create event error', { error: error.message, eventType: value.eventType });
-    return next({ status: 500, message: 'Failed to create notification event', details: error.message });
-  }
-};
-
-// Event-Driven API: イベントステータスを取得
-exports.getEventStatus = async (req, res, next) => {
-  const { limit = 20, offset = 0, status } = req.query;
-
-  let sql = 'SELECT * FROM notification_events';
-  const params = [];
-
-  if (status) {
-    sql += ' WHERE status = ?';
-    params.push(status);
-  }
-
-  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-  params.push(Number(limit), Number(offset));
-
-  db.all(sql, params, (err, rows) => {
-    if (err) {
-      logger.error('[Notifications] Get event status error', { error: err.message });
-      return next({ status: 500, message: 'Failed to fetch event status', details: err.message });
-    }
-
-    const events = rows.map((row) => ({
-      ...row,
-      eventData: JSON.parse(row.event_data),
-      targetUsers: row.target_users ? JSON.parse(row.target_users) : null
-    }));
-
-    res.json({
-      status: 200,
-      data: {
-        events,
-        pagination: {
-          limit: Number(limit),
-          offset: Number(offset)
-        }
-      },
-      message: 'Event status fetched'
-    });
-  });
-};
-
-// 通知チャネルを取得
-exports.getNotificationChannels = async (req, res, next) => {
-  const channelService = new NotificationChannelService();
-  const channels = channelService.getAvailableChannels();
-
-  res.json({
-    status: 200,
-    data: channels,
-    message: 'Notification channels fetched'
-  });
-};
-
-// 通知チャネルを更新
-exports.updateNotificationChannel = async (req, res, next) => {
-  const { id } = req.params;
-  const { enabled, config, rateLimitPerMinute, rateLimitPerHour } = req.body;
-
-  // バリデーション
-  const Joi = require('joi');
-  const channelSchema = Joi.object({
-    enabled: Joi.boolean().optional(),
-    config: Joi.object().optional(),
-    rateLimitPerMinute: Joi.number().integer().min(1).optional(),
-    rateLimitPerHour: Joi.number().integer().min(1).optional()
-  });
-
-  const { error, value } = channelSchema.validate({
-    enabled,
-    config,
-    rateLimitPerMinute,
-    rateLimitPerHour
-  });
-
-  if (error) {
-    return next({ status: 400, message: 'Invalid channel data', details: error.details });
-  }
-
-  const updateFields = [];
-  const params = [];
-
-  if (value.enabled !== undefined) {
-    updateFields.push('enabled = ?');
-    params.push(value.enabled ? 1 : 0);
-  }
-
-  if (value.config !== undefined) {
-    updateFields.push('config = ?');
-    params.push(JSON.stringify(value.config));
-  }
-
-  if (value.rateLimitPerMinute !== undefined) {
-    updateFields.push('rate_limit_per_minute = ?');
-    params.push(value.rateLimitPerMinute);
-  }
-
-  if (value.rateLimitPerHour !== undefined) {
-    updateFields.push('rate_limit_per_hour = ?');
-    params.push(value.rateLimitPerHour);
-  }
-
-  if (updateFields.length === 0) {
-    return next({ status: 400, message: 'No fields to update' });
-  }
-
-  updateFields.push('updated_at = CURRENT_TIMESTAMP');
-  params.push(id);
-
-  const sql = `UPDATE notification_channels SET ${updateFields.join(', ')} WHERE id = ?`;
-
-  db.run(sql, params, function(err) {
-    if (err) {
-      logger.error('[Notifications] Channel update error', { error: err.message, channelId: id });
-      return next({ status: 500, message: 'Failed to update notification channel', details: err.message });
-    }
-
-    if (this.changes === 0) {
-      return next({ status: 404, message: 'Notification channel not found' });
-    }
-
-    res.json({
-      status: 200,
-      data: null,
-      message: 'Notification channel updated'
-    });
-  });
-};

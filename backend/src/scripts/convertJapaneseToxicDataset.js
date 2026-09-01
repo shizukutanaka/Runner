@@ -134,4 +134,6 @@ if (require.main === module) {
   console.log(JSON.stringify({ cases }, null, 2));
 }
 
-module.exports = { convert, parseCsv };
+module.exports = {
+  convert
+};

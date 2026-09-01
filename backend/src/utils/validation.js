@@ -258,12 +258,7 @@ module.exports = {
   UnauthorizedError,
   ForbiddenError,
   RateLimitError,
-  commonSchemas,
   commentSchemas,
-  userSchemas,
-  moderationSchemas,
   validate,
-  validateQuery,
-  validateParams,
   Joi
 };

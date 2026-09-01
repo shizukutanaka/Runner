@@ -264,6 +264,5 @@ const circuitBreakerManager = new CircuitBreakerManager();
 
 module.exports = {
   CircuitBreaker,
-  CircuitBreakerManager,
   circuitBreakerManager
 };

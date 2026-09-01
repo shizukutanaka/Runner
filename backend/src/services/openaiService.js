@@ -575,7 +575,6 @@ module.exports = {
   translateText,
   getCostStats,
   resetCostTracking,
-  initializeOpenAI,
   OpenAIError,
   RateLimitError,
   TimeoutError,

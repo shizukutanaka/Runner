@@ -8,6 +8,8 @@ const os = require('os');
 const si = require('systeminformation');
 const logger = require('../logger');
 const { metricsCollector } = require('../middleware/monitoring');
+const fs = require('fs').promises;
+const path = require('path');
 
 // システム統計情報取得
 exports.getSystemStats = async (req, res, next) => {
@@ -247,215 +249,142 @@ exports.getAppStats = async (req, res, next) => {
 
 // ログ情報取得
 exports.getLogs = async (req, res, next) => {
+  // E-29: ここは存在しないテーブル `logs` を引いており、監視ダッシュボードの
+  // 「最近のログ」タブは**必ず失敗**していた（画面にはエラーが出る）。
+  //
+  // ログを溜める場所を新設するのではなく、**既に書かれている場所を読む**。
+  // winston-daily-rotate-file が `backend/logs/application-YYYY-MM-DD.log` に
+  // 1行1JSONで書き出しているので、それが唯一の実在するログである。
+  // DBにテーブルを足しても、そこへ書く経路が無い以上いつまでも空のままになる。
   try {
-    const {
-      level = 'all',
-      limit = 100,
-      offset = 0,
-      startDate,
-      endDate,
-      source = 'all'
-    } = req.query;
+    const { level = 'all', limit = 100, offset = 0, startDate, endDate } = req.query;
+    const max = Math.min(parseInt(limit, 10) || 100, 500);
+    const skip = Math.max(parseInt(offset, 10) || 0, 0);
 
-    let query = `
-      SELECT
-        id,
-        timestamp,
-        level,
-        message,
-        source,
-        metadata,
-        user_id,
-        ip_address,
-        user_agent
-      FROM logs
-      WHERE 1=1
-    `;
-
-    const params = [];
-
-    // レベルフィルタ
-    if (level !== 'all') {
-      query += ' AND level = ?';
-      params.push(level.toLowerCase());
+    const logDir = path.resolve(__dirname, '..', '..', 'logs');
+    let files = [];
+    try {
+      files = (await fs.readdir(logDir))
+        .filter((f) => f.startsWith('application-') && f.endsWith('.log'))
+        .sort()
+        .reverse();
+    } catch (dirErr) {
+      // ログディレクトリがまだ無いのは異常ではない（初回起動直後など）。
+      // 「取得できない」ではなく「まだ無い」として空で返す
+      if (dirErr.code !== 'ENOENT') throw dirErr;
     }
 
-    // ソースフィルタ
-    if (source !== 'all') {
-      query += ' AND source = ?';
-      params.push(source);
-    }
+    const wanted = level === 'all' ? null : String(level).toLowerCase();
+    const from = startDate ? new Date(startDate).getTime() : null;
+    const to = endDate ? new Date(endDate).getTime() : null;
+    const stats = { total: 0, errors: 0, warnings: 0, infos: 0, debugs: 0 };
+    const collected = [];
 
-    // 日付範囲フィルタ
-    if (startDate) {
-      query += ' AND timestamp >= ?';
-      params.push(startDate);
-    }
+    // 新しい日付のファイルから読み、必要な件数が集まったら止める。
+    // 1ファイルあたりの読み込みは末尾から見る（新しい行が下にある）
+    for (const file of files) {
+      if (collected.length >= skip + max) break;
+      let text;
+      try {
+        text = await fs.readFile(path.join(logDir, file), 'utf8');
+      } catch (readErr) {
+        // ローテーション中に消えることがある。1ファイルの失敗で全体を落とさない
+        if (readErr.code === 'ENOENT') continue;
+        throw readErr;
+      }
 
-    if (endDate) {
-      query += ' AND timestamp <= ?';
-      params.push(endDate);
-    }
-
-    query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
-    params.push(parseInt(limit), parseInt(offset));
-
-    const logs = await new Promise((resolve, reject) => {
-      db.all(query, params, (err, rows) => {
-        if (err) {
-          reject(err);
-          return;
+      const lines = text.split('\n').filter(Boolean).reverse();
+      for (const line of lines) {
+        let entry;
+        try {
+          entry = JSON.parse(line);
+        } catch (parseErr) {
+          continue; // 開発時のテキスト形式など、JSONでない行は飛ばす
         }
-        resolve(rows || []);
-      });
-    });
 
-    // ログ統計
-    const logStats = await new Promise((resolve, reject) => {
-      db.get(`
-        SELECT
-          COUNT(*) as total,
-          COUNT(CASE WHEN level = 'error' THEN 1 END) as errors,
-          COUNT(CASE WHEN level = 'warn' THEN 1 END) as warnings,
-          COUNT(CASE WHEN level = 'info' THEN 1 END) as infos,
-          COUNT(CASE WHEN level = 'debug' THEN 1 END) as debugs
-        FROM logs
-        WHERE timestamp >= datetime('now', '-24 hours')
-      `, (err, row) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve(row);
-      });
-    });
+        const ts = entry.timestamp ? new Date(entry.timestamp).getTime() : null;
+        if (from !== null && (ts === null || ts < from)) continue;
+        if (to !== null && (ts === null || ts > to)) continue;
+
+        const lvl = String(entry.level || 'info').toLowerCase();
+        stats.total += 1;
+        if (lvl === 'error') stats.errors += 1;
+        else if (lvl === 'warn') stats.warnings += 1;
+        else if (lvl === 'info') stats.infos += 1;
+        else if (lvl === 'debug') stats.debugs += 1;
+
+        if (wanted && lvl !== wanted) continue;
+        collected.push({
+          timestamp: entry.timestamp || null,
+          level: lvl,
+          message: entry.message || '',
+          source: entry.service || entry.source || 'runner-backend'
+        });
+      }
+    }
 
     res.json({
       status: 200,
       data: {
-        logs,
-        stats: logStats,
-        pagination: {
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          total: logStats.total
-        }
+        logs: collected.slice(skip, skip + max),
+        stats,
+        pagination: { limit: max, offset: skip, total: collected.length }
       },
       message: 'ログ情報を取得しました'
     });
   } catch (error) {
-    next({
-      status: 500,
-      message: 'ログ情報の取得に失敗しました',
-      details: error.message
-    });
+    logger.error('[Monitoring] Error fetching logs', { error: error.message });
+    next({ status: 500, message: 'ログ情報の取得中にエラーが発生しました', details: error });
   }
 };
 
-// パフォーマンスメトリクス取得
 exports.getPerformanceMetrics = async (req, res, next) => {
+  // E-29: ここは存在しない `performance_metrics` テーブルを引いていた。
+  // 追加しても**書く経路が無い**（リクエストの計測はプロセス内の
+  // metricsCollector が持っており、DBには一切保存していない）ので、
+  // テーブルを足せば永久に空のグラフが出るだけになる。実在する集計を返す。
+  //
+  // 制約は正直に書いておく: metricsCollector はプロセス内のメモリなので、
+  // **再起動で消え、期間指定もできない**（保持は直近1000リクエスト）。
+  // 期間を指定しても同じ集計を返すため、応答に period と、
+  // 期間で絞れないことを示す `windowed: false` を含める。
   try {
     const { period = '1h' } = req.query;
+    const metrics = metricsCollector.getMetrics();
 
-    // 期間の計算
-    const now = new Date();
-    const startDate = new Date();
-
-    switch (period) {
-    case '5m':
-      startDate.setMinutes(now.getMinutes() - 5);
-      break;
-    case '1h':
-      startDate.setHours(now.getHours() - 1);
-      break;
-    case '24h':
-      startDate.setDate(now.getDate() - 1);
-      break;
-    case '7d':
-      startDate.setDate(now.getDate() - 7);
-      break;
-    default:
-      startDate.setMinutes(now.getMinutes() - 5);
-    }
-
-    // パフォーマンスメトリクスを取得
-    const metrics = await new Promise((resolve, reject) => {
-      db.all(`
-        SELECT
-          timestamp,
-          response_time,
-          status_code,
-          endpoint,
-          method,
-          user_agent,
-          ip_address
-        FROM performance_metrics
-        WHERE timestamp >= ?
-        ORDER BY timestamp DESC
-        LIMIT 1000
-      `, [startDate.toISOString()], (err, rows) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-
-        // メトリクスの集計
-        const aggregated = {
-          totalRequests: rows.length,
-          averageResponseTime: rows.reduce((sum, row) => sum + (row.response_time || 0), 0) / rows.length || 0,
-          statusCodes: {},
-          endpoints: {},
-          responseTimeRanges: {
-            '<100ms': 0,
-            '100-500ms': 0,
-            '500-1000ms': 0,
-            '1000-2000ms': 0,
-            '>2000ms': 0
-          }
-        };
-
-        rows.forEach((row) => {
-          // ステータスコード集計
-          aggregated.statusCodes[row.status_code] = (aggregated.statusCodes[row.status_code] || 0) + 1;
-
-          // エンドポイント集計
-          aggregated.endpoints[row.endpoint] = (aggregated.endpoints[row.endpoint] || 0) + 1;
-
-          // レスポンスタイム範囲集計
-          const rt = row.response_time || 0;
-          if (rt < 100) aggregated.responseTimeRanges['<100ms']++;
-          else if (rt < 500) aggregated.responseTimeRanges['100-500ms']++;
-          else if (rt < 1000) aggregated.responseTimeRanges['500-1000ms']++;
-          else if (rt < 2000) aggregated.responseTimeRanges['1000-2000ms']++;
-          else aggregated.responseTimeRanges['>2000ms']++;
-        });
-
-        resolve({
-          period,
-          startDate: startDate.toISOString(),
-          endDate: now.toISOString(),
-          data: rows,
-          aggregated,
-          timestamp: now.toISOString()
-        });
-      });
-    });
+    const statusCodes = metrics.requests.by_status || {};
+    const errorResponses = Object.entries(statusCodes)
+      .filter(([code]) => Number(code) >= 400)
+      .reduce((sum, [, count]) => sum + count, 0);
+    const totalRequests = metrics.requests.total || 0;
 
     res.json({
       status: 200,
-      data: metrics,
+      data: {
+        period,
+        // プロセス内メモリのため期間で絞り込めない。UI がこれを見て注記できる
+        windowed: false,
+        source: 'in-process',
+        uptimeSeconds: Math.round(metrics.uptime),
+        totalRequests,
+        averageResponseTime: metrics.requests.avg_response_time || 0,
+        statusCodes,
+        methods: metrics.requests.by_method || {},
+        errors: {
+          total: metrics.errors.total || 0,
+          byType: metrics.errors.by_type || {},
+          rate: totalRequests ? Math.round((errorResponses / totalRequests) * 10000) / 100 : 0
+        },
+        memory: metrics.memory
+      },
       message: 'パフォーマンスメトリクスを取得しました'
     });
   } catch (error) {
-    next({
-      status: 500,
-      message: 'パフォーマンスメトリクスの取得に失敗しました',
-      details: error.message
-    });
+    logger.error('[Monitoring] Error fetching performance metrics', { error: error.message });
+    next({ status: 500, message: 'パフォーマンスメトリクスの取得中にエラーが発生しました', details: error });
   }
 };
 
-// アラート情報取得
 exports.getAlerts = async (req, res, next) => {
   try {
     const {
@@ -670,15 +599,14 @@ exports.getHealthStatus = async (req, res, next) => {
 // 監視設定取得
 exports.getMonitoringSettings = async (req, res, next) => {
   try {
+    // E-29: 読み側は `settings` という列を期待していたが、書き側
+    // （updateMonitoringSettings）は (category, key, value, type) で書いている。
+    // テーブルが存在しなかったため誰も気づかなかった食い違い。書き側に合わせる。
     const settings = await new Promise((resolve, reject) => {
       db.get(`
-        SELECT
-          id,
-          settings,
-          updated_at
+        SELECT id, value, updated_at
         FROM system_settings
-        WHERE category = 'monitoring'
-        ORDER BY updated_at DESC
+        WHERE category = 'monitoring' AND key = 'config'
         LIMIT 1
       `, (err, row) => {
         if (err) {
@@ -686,7 +614,21 @@ exports.getMonitoringSettings = async (req, res, next) => {
           return;
         }
 
-        resolve(row || {
+        if (row) {
+          let parsed = null;
+          try {
+            parsed = JSON.parse(row.value);
+          } catch (parseErr) {
+            parsed = null; // 壊れた値は既定値で上書きせず、既定値を返す
+          }
+          if (parsed) {
+            resolve({ id: row.id, settings: parsed, updated_at: row.updated_at });
+            return;
+          }
+        }
+
+        // 未設定なら既定値を返す（500にはしない）
+        resolve({
           settings: {
             enabled: true,
             intervals: {

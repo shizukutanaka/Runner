@@ -307,6 +307,5 @@ process.once('beforeExit', cleanup);
 module.exports = {
   initializeRedisAdapter,
   getScalingStats,
-  cleanup,
-  isInitialized: () => isInitialized
+  cleanup
 };

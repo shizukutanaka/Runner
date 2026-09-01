@@ -661,6 +661,91 @@ E-25 でアナリティクスの偽装を潰した直後に、**同じ嘘がよ�
 
 ---
 
+### E-28. ✅ 解決済み（2026-09-01） — 到達できず、繋いでも動かないコード 1,410行
+
+- **証拠**: `commentsController.js` の「通報」「有効期限」「ピン留め表示」15ハンドラは
+  routes に一切現れない。それだけなら「未接続の実装」だが、参照している8テーブル
+  （`comment_reports` / `report_categories` / `report_statistics` /
+  `expiry_cleanup_settings` / `pinning_display_settings` /
+  `comment_expiry_history` / `comment_pinning_display_history`）が
+  **`db.js` のスキーマに1つも存在しない**。配線しても全て `no such table` で落ちる
+- **なぜ無害でないか**: コードだけ読めば通報機能は完成して見える。
+  「あとは繋ぐだけ」と信じた人は、繋いでから初めて動かないことを知る
+- **実施した対応**: 15ハンドラを削除（1,410行）。同時に `validation/universal.js`(408) /
+  `schemas.js`(306) / `billing.js`(24) も削除した——ルートが使うのは
+  `validation/{auth,comment,commentActions,moderation,settings,user}.js` の方で、
+  この3つはどこからも `require` されない**並行する第2のスキーマ体系**だった
+  （`billing.js` は本セッションで削除した課金機構の残骸）。
+  E-18 の `config/index.js` と同じ形で、片方を直しても API の挙動は変わらない
+- **さらに**: `src` の公開エクスポート45件が src からも tests からも参照されていなかった。
+  削除または内部関数へ降格した（`dynamicRateLimiter` の tier 判定のように、
+  **存在しない仕様を説明してしまう**ものが含まれていた）
+- **検証**: `tests/architecture/deadExports.test.js` が
+  「src の公開エクスポートは src か tests のどこかから参照されること」を機械検査する
+- **再検証**: `cd backend && npx jest tests/architecture`
+
+---
+
+### E-29. ✅ 解決済み（2026-09-01） — mount 済みの26エンドポイントが呼べば必ず500だった
+
+E-28 の走査を「テーブルが実在するか」まで広げたところ、
+**未接続どころか接続済みで壊れているもの**が大量に見つかった。
+
+- **最初の証拠**: 実サーバーで
+  `GET /api/users/timeouts/active` → **500 `SQLITE_ERROR`**。
+  タイムアウトは配信のモデレーションで最も使われる操作である。
+  テストが1件も無かったため、誰も気づいていなかった
+- **全容**: SQL文字列リテラルが参照するテーブル名を
+  `CREATE TABLE IF NOT EXISTS` の集合と突き合わせた結果、
+  **mount 済みで必ず500になるエンドポイントが26件**あった
+- **直したもの（16件）— 動くようにした**:
+
+  | 対象 | 欠けていたもの |
+  |------|----------------|
+  | タイムアウト7件 | `user_timeouts` / `user_timeout_history` / `user_timeout_reasons` |
+  | AI閾値3件 | `ai_threshold_history` と、comments/users 側の列8個 |
+  | 公開範囲3件 | `comment_visibility_history` と comments 側の列6個 |
+  | チャンネル活動1件 | `moderation_history` |
+  | 外部連携1件 | `external_integration_logs` |
+  | 編集履歴1件 | テーブル名の誤り。実体は `comment_edit_history`（`commentService` が書いている）で、存在しない `comment_edits` を存在しない列で引いていた |
+
+- **直したもの（3件）— テーブルを足さず、実在するデータ源に繋ぎ替えた**:
+  - `GET /api/monitoring/logs`: 監視ダッシュボードの「最近のログ」タブは毎回エラーだった。
+    `logs` テーブルを新設しても**そこへ書く経路が無い**（ログは winston が
+    `backend/logs/application-YYYY-MM-DD.log` に1行1JSONで書いている）。
+    足せば永久に空になるので、**実在するログファイルを読む**実装に置き換えた
+  - `GET /api/monitoring/metrics`: 同様に `performance_metrics` へ書く経路が無い。
+    プロセス内の `metricsCollector` の実測を返す。
+    **再起動で消え期間指定ができない**という制約は隠さず、
+    応答に `windowed: false` と `source: "in-process"` を含める
+  - `GET/PUT /api/monitoring/settings`: `system_settings` を追加。
+    加えて**書き側と読み側で列が食い違っていた**（書きは `(category,key,value,type)`、
+    読みは `settings` 列）。テーブルが無かったので誰も気づかなかった。読み側を書き側に合わせた
+- **削除したもの（7件・約1,500行）— 要件から疑い直した**:
+  通知テンプレート／チャネル管理／イベント配信／ユーザー別通知履歴。
+  参照テーブル8種がいずれも存在しない。
+  個人〜小規模配信者のための製品に「テンプレート変数のスキーマ管理」や
+  「配信チャネルのルーティング」は、課金・マルチテナントと同じ
+  **存在しない規模のための足場**である。実際に要る通知（一覧・既読・設定・
+  テスト送信）は `notifications` テーブルで動いており、そちらは残した。
+  併せて未ルートの外部連携統計・認証履歴8ハンドラ（788行）も削除
+- **検証**: `tests/api/missingTables.test.js`（23件）が
+  **実アプリに対して各エンドポイントを叩き、500でないこと**を確認する。
+  ログは実際に1行書いてから読み出せることまで見る。
+  さらに `deadExports.test.js` が
+  「SQL文字列が参照するテーブルはスキーマに存在すること」を機械検査する
+  （SQLらしき文字列リテラルの中だけを見る。ソース全体を走査すると
+  コメントの英文をテーブル名と誤認し、誤検知だらけのガードは無視されて死ぬ）
+- **実測**: 起動して7経路を確認
+
+  ```
+  /health 200 / /api/comments 200 / /api/users/timeouts/active 200
+  /api/monitoring/logs 200 / metrics 200 / settings 200 / /api/notifications 200
+  ```
+- **再検証**: `cd backend && npx jest tests/api/missingTables.test.js tests/architecture`
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】

@@ -644,8 +644,6 @@ module.exports = {
   errorHandler,
   notFoundHandler,
   asyncHandler,
-  getErrorMetrics,
   circuitBreaker,
-  requestTimeout,
-  gracefulShutdown
+  requestTimeout
 };

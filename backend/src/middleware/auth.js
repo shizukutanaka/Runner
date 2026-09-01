@@ -385,10 +385,6 @@ const createApiKey = (userId, permissions = ['read']) => {
 
 module.exports = {
   generateToken,
-  verifyToken,
   authenticateToken,
-  requireRole,
-  requirePermission,
-  createApiKey,
-  apiKeyManager
+  requireRole
 };

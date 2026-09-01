@@ -801,7 +801,5 @@ class EmailAlertChannel {
 }
 
 module.exports = {
-  monitoringService: new MonitoringService(),
-  WebSocketAlertChannel,
-  EmailAlertChannel
+  monitoringService: new MonitoringService()
 };
