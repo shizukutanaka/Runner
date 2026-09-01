@@ -76,3 +76,21 @@
 `QUICK_WINS_IMPLEMENTATION_SUMMARY.md` は "Expected Improvements" という見出しで
 書き始めながら、冒頭の要約では達成済みのように読める形になっていました。
 その2つが混ざった瞬間に、記録は資産ではなく負債になります。
+
+---
+
+## 追記（2026-09-01）: `feature_checklist.md` も削除
+
+ルートの機能チェックリスト（117行）は全27項目を「完了 / Completed・済 / Tested」と
+表示していたが、少なくとも次の2行は虚偽だった:
+
+- **「閾値設定 / モデレーション閾値設定API」**: `/api/moderation/thresholds` は
+  ハードコード値をエコーするだけのダミーで、E-1 でルートごと削除済み。
+  現在 `routes/moderation.js` に thresholds は**0件**
+- **「コメント編集 / Comment Editing」**: 本文を編集するエンドポイントは
+  **一度も実装されていない**（存在するのは編集履歴の取得のみ。
+  D-9 の調査でテスト側も「未実装のためskip」と明記していた）
+
+証拠なしの「全部済み」表は、機械検査つきの `docs/FEATURE_AUDIT.md` と
+`API_DOCUMENTATION.md`（全エンドポイント実在照合済み）に完全に置き換えられている。
+
