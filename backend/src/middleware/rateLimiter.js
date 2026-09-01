@@ -1,184 +1,66 @@
-const rateLimit = require('express-rate-limit');
-const { createClient } = require('redis');
-const RedisStore = require('rate-limit-redis').default;
-const logger = require('../logger');
-const config = require('../config');
+// 認証系エンドポイント専用のレートリミッタ。
+//
+// ---------------------------------------------------------------------------
+// なぜこのファイルが小さいのか（旧版は約180行あった）
+// ---------------------------------------------------------------------------
+// このプロジェクトにはレートリミッタが2系統あった。`security.js` の
+// `strict / general / api`（`RATE_LIMIT_ENABLED` で有効化）と、ここにあった
+// `limiters` 8種 + `dynamicRateLimiter` + `ddosProtection` + `securityHeaders`。
+//
+// 実際にどこかへ **mount されていたのは `auth` と `authWrite` の2つだけ**で、
+// 残りは一度も使われていなかった:
+//
+//   limiters.api / createComment / moderation / upload / export / websocket
+//     → 参照0件
+//   dynamicRateLimiter
+//     → 参照0件。しかも `req.user.tier` の enterprise/pro/standard は
+//       本セッションで削除した課金・マルチテナント機構の遺物で、
+//       tier は決して設定されない。全員 free の枝に落ちるだけだった
+//   ddosProtection
+//     → 参照0件。加えて、単一プロセス内の 50 req/s カウンタを
+//       「DDoS対策」と名付けるのは誤りである。分散攻撃はアプリに届く前の層で止める
+//   securityHeaders
+//     → 参照0件。`X-RateLimit-Policy: fixed-window` という、
+//       何の制限も表していないヘッダを付けるだけだった
+//
+// さらに旧版はモジュール読み込み時に `REDIS_URL` で **2本目の Redis 接続**を
+// 開いていた。`security.js` は別のキー（`RATE_LIMIT_STORE` / `RATE_LIMIT_REDIS_URL`）を
+// 見るため、両者の有効条件は一致しない。既定（`RATE_LIMIT_STORE=memory`）のまま
+// `REDIS_URL` だけ設定すると、認証用リミッタだけが Redis を使うという
+// 説明のつかない状態になっていた。
+//
+// よって、実際に使われている2つだけを `security.js` の `createRateLimiter` の上に
+// 残す。ストアの選択もクリーンアップも1箇所に集約される。
+//
+// ---------------------------------------------------------------------------
+// `RATE_LIMIT_ENABLED` との関係（意図的な非対称）
+// ---------------------------------------------------------------------------
+// `security.js` の3つは `config.rateLimit.enabled` が false なら素通りになる。
+// **ここの2つは設定に関わらず常に有効**である。ログインの総当たり防御は
+// 「開発中は邪魔だから切る」種類の機能ではなく、切れる設定にしておくと
+// 本番で切れていても誰も気づかないからである。
+// この非対称はかつて「2系統の有効化条件の不一致」として短所に数えていたが、
+// 挙動としては正しい。偶然そうなっていたものを、明示的な仕様にする。
+const { createRateLimiter } = require('./security');
 
-// Redis client for distributed rate limiting
-let redisClient = null;
-if (config.getEnv('REDIS_URL')) {
-  redisClient = createClient({
-    url: config.getEnv('REDIS_URL'),
-    socket: {
-      reconnectStrategy: (retries) => Math.min(retries * 100, 3000)
-    }
-  });
+const WINDOW_MS = 15 * 60 * 1000;
 
-  redisClient.on('error', (err) => logger.error('[RateLimiter] Redis error:', err));
-  redisClient.connect().catch((err) => {
-    logger.error('[RateLimiter] Failed to connect to Redis:', err);
-    redisClient = null;
-  });
-}
-
-// Security headers for rate limiting
-const securityHeaders = (req, res, next) => {
-  res.setHeader('X-RateLimit-Policy', 'fixed-window');
-  res.setHeader('X-RateLimit-Service', 'comment-manager');
-  next();
-};
-
-// Create rate limiter with Redis store for distributed systems
-const createLimiter = (options) => {
-  const defaultOptions = {
-    standardHeaders: true,
-    legacyHeaders: false,
-    handler: (req, res) => {
-      logger.warn('[RateLimiter] Rate limit exceeded', {
-        ip: req.ip,
-        path: req.path,
-        userId: req.user?.id
-      });
-      res.status(429).json({
-        status: 429,
-        error: 'Too many requests',
-        message: 'Rate limit exceeded. Please try again later.',
-        retryAfter: res.getHeader('Retry-After')
-      });
-    }
-  };
-
-  if (redisClient) {
-    return rateLimit({
-      ...defaultOptions,
-      ...options,
-      store: new RedisStore({
-        client: redisClient,
-        prefix: `rl:${options.prefix || 'default'}:`
-      })
-    });
-  }
-
-  return rateLimit({
-    ...defaultOptions,
-    ...options
-  });
-};
-
-// Different rate limiters for different endpoints
 const limiters = {
-  // Strict limit for login attempts (brute-force protection)
-  auth: createLimiter({
-    windowMs: 15 * 60 * 1000, // 15 minutes
+  // ログイン試行（総当たり防御）。15分に5回
+  auth: createRateLimiter({
+    windowMs: WINDOW_MS,
     max: 5,
-    prefix: 'auth-login',
-    skipSuccessfulRequests: false
+    message: 'Too many login attempts. Please try again later.'
   }),
 
-  // Separate, more lenient limit for registration/password-reset flows
-  // (kept independent from login so login brute-force protection isn't
-  // exhausted by unrelated account-management requests)
-  authWrite: createLimiter({
-    windowMs: 15 * 60 * 1000, // 15 minutes
+  // 登録・パスワードリセット・トークン更新。15分に20回。
+  // ログインとカウンタを分けるのは、無関係なアカウント操作で
+  // 総当たり防御の枠を食い潰させないため
+  authWrite: createRateLimiter({
+    windowMs: WINDOW_MS,
     max: 20,
-    prefix: 'auth-write'
-  }),
-
-  // Standard API rate limit
-  api: createLimiter({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100,
-    prefix: 'api',
-    skip: (req) => req.user?.role === 'admin'
-  }),
-
-  // Comments creation limit
-  createComment: createLimiter({
-    windowMs: 60 * 1000, // 1 minute
-    max: 10,
-    prefix: 'comment-create',
-    keyGenerator: (req) => req.user?.id || req.ip
-  }),
-
-  // AI moderation limit
-  moderation: createLimiter({
-    windowMs: 60 * 1000, // 1 minute
-    max: 30,
-    prefix: 'moderation'
-  }),
-
-  // File upload limit
-  upload: createLimiter({
-    windowMs: 60 * 60 * 1000, // 1 hour
-    max: 20,
-    prefix: 'upload'
-  }),
-
-  // Export/download limit
-  export: createLimiter({
-    windowMs: 60 * 60 * 1000, // 1 hour
-    max: 10,
-    prefix: 'export'
-  }),
-
-  // WebSocket connection limit
-  websocket: createLimiter({
-    windowMs: 60 * 1000, // 1 minute
-    max: 5,
-    prefix: 'websocket'
+    message: 'Too many requests. Please try again later.'
   })
 };
 
-// Dynamic rate limiting based on user tier
-const dynamicRateLimiter = (req, res, next) => {
-  const userTier = req.user?.tier || 'free';
-  const tierLimits = {
-    enterprise: 10000,
-    pro: 1000,
-    standard: 500,
-    free: 100
-  };
-
-  const limiter = createLimiter({
-    windowMs: 15 * 60 * 1000,
-    max: tierLimits[userTier],
-    prefix: `tier-${userTier}`,
-    keyGenerator: (req) => req.user?.id || req.ip
-  });
-
-  limiter(req, res, next);
-};
-
-// Distributed DDoS protection
-const ddosProtection = createLimiter({
-  windowMs: 1000, // 1 second
-  max: 50, // 50 requests per second max
-  prefix: 'ddos',
-  skipSuccessfulRequests: false,
-  handler: (req, res) => {
-    logger.error('[DDoS] Potential attack detected', {
-      ip: req.ip,
-      userAgent: req.get('User-Agent'),
-      path: req.path
-    });
-    res.status(503).json({
-      status: 503,
-      error: 'Service temporarily unavailable'
-    });
-  }
-});
-
-// Cleanup on shutdown
-const cleanup = async () => {
-  if (redisClient) {
-    await redisClient.quit();
-  }
-};
-
-module.exports = {
-  securityHeaders,
-  limiters,
-  dynamicRateLimiter,
-  ddosProtection,
-  cleanup
-};
+module.exports = { limiters };

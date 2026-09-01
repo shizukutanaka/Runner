@@ -604,6 +604,63 @@ E-25 でアナリティクスの偽装を潰した直後に、**同じ嘘がよ�
 
 ---
 
+### E-27. ✅ 解決済み（2026-09-01） — レートリミッタは2系統あり、片方はほぼ全部が未使用だった
+
+長所短所文書で「有効化条件の不一致は将来の混乱源」として短所に挙げていた項目。
+実際に中を見ると、混乱源どころか**大半が最初から動いていなかった**。
+
+- **証拠**: `middleware/rateLimiter.js` は `limiters` 8種 + `dynamicRateLimiter` +
+  `ddosProtection` + `securityHeaders` を公開していたが、
+  mount されていたのは `routes/auth.js` の **`auth` と `authWrite` の2つだけ**
+  （`limiters.api` / `createComment` / `moderation` / `upload` / `export` /
+  `websocket` / 他3つはいずれも参照0件）
+- **未使用が無害でない理由**:
+  - `dynamicRateLimiter` の tier（`enterprise` / `pro` / `standard`）は
+    **本セッションで削除した課金・マルチテナント機構の遺物**で、
+    `req.user.tier` は決して設定されない。「有料プランは制限が緩い」という
+    実在しない仕様がコードとして残っていた
+  - `ddosProtection` は単一プロセス内の 50 req/s カウンタである。
+    分散攻撃はアプリに届く前の層で止めるもので、この名前は読んだ人に
+    「DDoS対策済み」と誤解させる
+  - `securityHeaders` は `X-RateLimit-Policy: fixed-window` という、
+    何の制限も表していないヘッダを付けるだけだった
+- **証拠2（設定すると壊れる）**: `security.js` の `getRedisClient()` は
+  `createClient({ url: config.rateLimit.redisUrl })` を呼ぶが、
+  **`config.rateLimit.redisUrl` は存在しなかった**。node-redis は url 未指定で
+  localhost:6379 に接続するため、`.env.example` の案内どおり
+  `RATE_LIMIT_STORE=redis` にしても `REDIS_URL` は無視され、
+  到達できなければレートリミット対象の全リクエストがストア側で失敗する。
+  **設定した人ほど壊れる**種類の欠陥である（E-20と同型）
+- **証拠3（2本目のRedis接続）**: 旧 `rateLimiter.js` はモジュール読み込み時に
+  `REDIS_URL` で独自の Redis クライアントを開いていた。`security.js` は
+  別のキーを見るため、既定（`RATE_LIMIT_STORE=memory`）のまま `REDIS_URL` を
+  設定すると**認証用リミッタだけが Redis を使う**という説明のつかない状態になった
+- **実施した対応**:
+  1. `rateLimiter.js` を約180行 → 68行に縮小。実際に使われている
+     `auth`（15分5回）と `authWrite`（15分20回）だけを、
+     `security.js` の `createRateLimiter` の上に残した。
+     ストアの選択もクリーンアップも1箇所に集約される
+  2. `config.rateLimit.redisUrl` を追加
+     （`RATE_LIMIT_REDIS_URL` → `REDIS_URL` → localhost の順）。
+     `.env.example` にもキーを追加した
+  3. 「`RATE_LIMIT_ENABLED` が false でもログイン保護は常時有効」という
+     非対称を**意図的な仕様としてコードとコメントに明記**した。
+     総当たり防御は「開発中は邪魔だから切る」種類の機能ではなく、
+     切れる設定にすると本番で切れていても誰も気づかないためである
+- **検証**: `rateLimiterSurface.test.js`（5件）が公開面を `limiters` の2つに固定し、
+  削除した名前（`enterprise` / `dynamicRateLimiter` / `ddosProtection` /
+  2本目の `createClient`）が戻らないことと、`RATE_LIMIT_ENABLED=false` でも
+  認証リミッタが noop に差し替わらないことを確認する。
+  加えて**実プロセスで実測**した:
+
+  ```
+  RATE_LIMIT_ENABLED=false で POST /api/users/login を7回:
+  401 401 401 401 401 429 429    ← 6回目から429。ログイン保護は生きている
+  ```
+- **再検証**: `cd backend && npx jest tests/middleware/rateLimiterSurface.test.js`
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】

@@ -139,6 +139,16 @@ const config = {
       ? process.env.RATE_LIMIT_ENABLED === 'true'
       : (process.env.NODE_ENV || 'development') === 'production',
     store: process.env.RATE_LIMIT_STORE || 'memory', // 'memory' | 'redis'
+    // `RATE_LIMIT_STORE=redis` のとき security.js が
+    // `createClient({ url: config.rateLimit.redisUrl })` に渡す接続先。
+    // **このキーは以前存在せず、常に undefined が渡っていた**。
+    // node-redis は url 未指定で localhost:6379 に繋ぐため、
+    // `REDIS_URL` に本番の Redis を設定していても無視され、
+    // 到達できなければレートリミット対象の全リクエストがストア側で失敗する。
+    // 設定したのに効かないどころか、設定した人ほど壊れる状態だった
+    redisUrl: process.env.RATE_LIMIT_REDIS_URL
+      || process.env.REDIS_URL
+      || 'redis://localhost:6379',
     redisPrefix: process.env.RATE_LIMIT_REDIS_PREFIX || 'runner:ratelimit:',
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000,
     maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
