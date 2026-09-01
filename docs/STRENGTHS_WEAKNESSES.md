@@ -43,7 +43,7 @@
 | **誤検知しない**: Precision 100%・誤検知0件を**3セットで**維持（自作45件・外部dev155件・外部test154件） | R-34/R-36、`node src/scripts/evaluateModeration.js` |
 | **フェイルセーフ**: APIキー未設定でも起動し、該当機能だけ無効化。書き戻し失敗時もローカル判断は保持 | `twitchAutoMod.test.js` の not_configured 系、起動確認は E-16 |
 | **自動処罰しない**: 検知は必ず保留（人間のレビュー）へ。LLMの助言は決定論的判定を覆せない | `evaluationHarnessAi.test.js`（arXiv:2607.12149 の制約） |
-| **主張と実装の一致が機械検査される**: `.env.example` の全キー（E-20）、APIドキュメントの全81エンドポイント（実在照合済み）、評価性能の下限（`moderationEval.test.js`） | `envExample.test.js` ほか |
+| **主張と実装の一致が機械検査される**: `.env.example` の全キー（E-20）、APIドキュメントの全81エンドポイント、**フロント・バックエンドのAPI契約**（E-25）、実行時依存の宣言（E-24）、評価性能の下限 | `envExample.test.js` / `apiContract.test.js` / `runtimeDependencies.test.js` ほか |
 | **認証がXSS耐性**: httpOnly + Secure + SameSite=Strict Cookie、CSRF二重防御、実ブラウザで検証済み | D-7、`authCookies.test.js`（14件） |
 | **TLSを同梱**: 証明書なしでも自己署名で起動し、80番はHTTPSへ301。Secure Cookie が平文HTTPで死ぬ問題を構成ごと解決 | E-16追記、`frontend/docker-entrypoint.sh` |
 | **監査文書が証拠つき**: 23件のE番号エントリすべてに「証拠→対応→検証→再検証手順」 | `docs/FEATURE_AUDIT.md` |
@@ -79,7 +79,7 @@
 
 | 短所 | 現状 |
 |------|------|
-| フロントのテストが薄い（28件） | UIの回帰はブラウザ手動検証に依存。D-7では実際にuseAuthの無限リロードを実装後の実ブラウザ確認で発見した |
+| フロントのテストが薄い（36件） | 28→36に増やし、API契約とセッション判定は機械検査するようにしたが、**コンポーネントの描画テストは依然ほぼ無い**。D-7の無限リロードもE-25のデモデータ表示も、テストではなく実ブラウザ検証と機械照合で見つかった |
 | レートリミッターが2系統 | `security.js` は `RATE_LIMIT_ENABLED` を見るが `rateLimiter.js`（ログイン5回/15分）は常時有効。挙動は妥当だが有効化条件の不一致は将来の混乱源（E-17） |
 | alpineベースのイメージビルド未検証 | 全コンテナレジストリがゲートウェイで403（網羅確認済み）。アプリ層の命令列は代替ベースで検証中 |
 | 実クレデンシャル疎通が未検証 | YouTube OAuth書き戻し・Twitch EventSub・SMTP。フェイルセーフ側のみテスト済み |
@@ -98,8 +98,9 @@
    見るべきは held-out（`--split=test`）の recall と precision の変化。dev の数字は成果ではない
 2. **Docker Hub に到達できる環境で `docker compose up -d --build`**（所有者のみ可能）
    ログイン→リアルタイム通知まで一周。ここまでのnginx/TLS/Cookie検証は実プロセスで済んでいる
-3. **フロントのユニットテスト拡充**: 最低限、useAuth のセッション判定と保留キューの
-   バッジ描画（`extractReasonBadges`）。無限リロードの回帰は `sessionProbe.test.js` で固定済みだが層が薄い
+3. **フロントの描画テスト拡充**: API契約（`apiContract.test.js`）とセッション判定
+   （`sessionProbe.test.js`）は機械検査するようにしたが、**コンポーネントの描画は未テスト**。
+   保留キューのバッジ（`extractReasonBadges`）とダッシュボードのタブ描画が候補
 4. **レートリミッターの統一**: 2系統を `rateLimiter.js` に寄せ、ログイン保護は
    設定に関わらず常時有効という現在の妥当な挙動を明示的なコードにする
 5. **第2の外部ベンチマーク確保**: 現在の test 側は R-35/R-36 の報告で1回ずつ消費した。

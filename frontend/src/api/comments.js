@@ -206,30 +206,6 @@ export const fetchAutoAnswer = async (comment) => {
   }
 };
 
-// コメントリアクション追加
-export const addCommentReaction = async (commentId, reactionType) => {
-  try {
-    const res = await axios.put(`${API_BASE_URL}/comments/${commentId}/reaction`, {
-      reactionType
-    });
-    return res.data;
-  } catch (error) {
-    handleAPIError(error, 'リアクションの追加に失敗しました');
-  }
-};
-
-// コメントタグ追加
-export const addCommentTag = async (commentId, tag) => {
-  try {
-    const res = await axios.put(`${API_BASE_URL}/comments/${commentId}/tag`, {
-      tag
-    });
-    return res.data;
-  } catch (error) {
-    handleAPIError(error, 'タグの追加に失敗しました');
-  }
-};
-
 // コメントピン固定
 export const pinComment = async (commentId, pinned = true) => {
   try {
@@ -242,41 +218,51 @@ export const pinComment = async (commentId, pinned = true) => {
   }
 };
 
-// コメントモデレーション
-export const moderateComment = async (commentId, action, reason) => {
-  try {
-    const res = await axios.put(`${API_BASE_URL}/comments/${commentId}/moderate`, {
-      action,
-      reason,
-      timestamp: new Date().toISOString()
-    });
-    return res.data;
-  } catch (error) {
-    handleAPIError(error, 'コメントのモデレーションに失敗しました');
-  }
-};
+// ダッシュボードの分析タブ用の集計。
+//
+// **経緯**: 以前ここには `getCommentStats()` があり `/api/comments/stats` を叩いていたが、
+// **そのエンドポイントはバックエンドに存在しない**。つまり分析タブは常に404を受け取り、
+// 毎回デモデータ（ハードコードされた1240件等）にフォールバックしていた。
+// 「APIが利用不可のためデモデータを表示しています」というバナーは出るものの、
+// **一度も実データを表示したことがなかった**。
+//
+// 実在する分析エンドポイントを合成して、表示できるものは実データにする。
+// バックエンドが持っていない指標（時系列のプラットフォーム別内訳・感情分布）は
+// **捏造せず null を返し**、UI側で「データなし」として扱う。
+export const fetchAnalyticsOverview = async () => {
+  const [statsRes, graphRes, modRes] = await Promise.allSettled([
+    axios.get(`${API_BASE_URL}/analytics/stats`),
+    axios.get(`${API_BASE_URL}/analytics/graph`),
+    axios.get(`${API_BASE_URL}/analytics/moderation`)
+  ]);
 
-// コメント検索
-export const searchComments = async (query, filters = {}) => {
-  try {
-    const params = new URLSearchParams({
-      q: query,
-      ...filters
-    });
+  const ok = (r) => (r.status === 'fulfilled' ? r.value.data : null);
+  const stats = ok(statsRes);
+  const graph = ok(graphRes);
+  const mod = ok(modRes);
 
-    const res = await axios.get(`${API_BASE_URL}/comments/search?${params}`);
-    return res.data;
-  } catch (error) {
-    handleAPIError(error, 'コメントの検索に失敗しました');
+  // 3つすべて失敗した場合のみ「取得不能」とする（部分的に取れたら実データを出す）
+  if (!stats && !graph && !mod) {
+    const err = new Error('分析データを取得できませんでした');
+    err.allFailed = true;
+    throw err;
   }
-};
 
-// コメント統計取得
-export const getCommentStats = async (timeframe = '24h') => {
-  try {
-    const res = await axios.get(`${API_BASE_URL}/comments/stats?timeframe=${timeframe}`);
-    return res.data;
-  } catch (error) {
-    handleAPIError(error, '統計データの取得に失敗しました');
-  }
+  const flagged = mod?.stats?.flagged ?? null;
+  const passed = mod?.stats?.passed ?? null;
+  const totalJudged = flagged !== null && passed !== null ? flagged + passed : null;
+
+  return {
+    total: stats?.commentCount ?? null,
+    activeUsers: stats?.activeUsers ?? null,
+    bannedUsers: stats?.bannedCount ?? null,
+    userCount: stats?.userCount ?? null,
+    moderated: flagged,
+    moderationRate: totalJudged ? Math.round((flagged / totalJudged) * 100) : null,
+    byStatus: mod?.stats?.byStatus ?? null,
+    // 日別のコメント数とBAN数（バックエンドが実際に返す唯一の時系列）
+    timelineLabels: graph?.labels ?? null,
+    timelineComments: graph?.comments ?? null,
+    timelineBans: graph?.bans ?? null
+  };
 };
