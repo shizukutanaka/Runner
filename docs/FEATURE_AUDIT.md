@@ -746,6 +746,56 @@ E-28 の走査を「テーブルが実在するか」まで広げたところ、
 
 ---
 
+### E-30. ✅ 解決済み（2026-09-01） — テーブルは在るが列が無い。監視の「アプリケーション統計」は一度も表示されたことがなかった
+
+E-29 のガードは**テーブル名だけ**を検査していた。その一つ下の層が残っていた。
+
+- **見つけ方**: 「500でないこと」の次の問い——
+  **「200を返すが、フロントが読む項目が入っていないのでは？」**を立て、
+  `MonitoringDashboard.js` が実際に参照する項目を列挙して実応答と突き合わせた
+  （`tests/api/monitoringContract.test.js`）。
+  `systemStats` の14項目と `alerts` は通り、`appStats.summary.*` の4項目が落ちた
+- **証拠**: `GET /api/monitoring/app/stats` は **500**。
+  原因は `SELECT DATE(created_at) ... FROM comments WHERE created_at >= ?` で、
+  **`comments` に `created_at` 列は無い**（実体は `timestamp`）。
+  `comments` テーブル自体は実在するため、E-29 のテーブル検査は素通りしていた
+- **同時に見つかった2つ目**: 同じクエリの
+  `COUNT(CASE WHEN status = 'moderated' ...)` の `'moderated'` は
+  **この製品に存在しない状態値**（実際は visible / hidden / deleted / active）。
+  列名だけ直しても「モデレーション済み 0件」が永遠に出るだけなので、
+  `analyticsController.getModerationStats` と**同じ定義**
+  （deleted / hidden / flagged / muted）に揃えた。
+  2画面が同じ言葉で違う数を出す状態を作らないため
+- **3つ目（静的検査が見つけた）**: `users` の
+  `external_integration_*` **6列が存在しなかった**。
+  `PUT /api/users/:id/external-integration` は mount 済み（admin限定）である
+- **自分のテストの欠陥も見つかった**: E-29 でこのエンドポイントを
+  「500でない」と確認したつもりだったが、送っていた本文
+  `{serviceId, action, status}` はこのハンドラのスキーマ
+  （`{enabled, services, webhookUrl, ...}`）に合わず、
+  **SQLに到達する前に400で弾かれていた**。
+  通っているように見えて、検査対象の行を一度も実行していなかった。
+  **「落ちないこと」を確かめるテストは、そこまで到達していることも確かめる必要がある**
+- **実施した対応**: 列名と状態値を修正し、`external_integration_*` 6列を追加。
+  E-29 のテストは有効な本文を送り `200` を要求する形に直した
+- **検証**: `sqlColumns.test.js` が
+  **単一テーブルのSQLが参照する列はスキーマに存在すること**を機械検査する。
+  列定義を1つ削ると、その列名を挙げて失敗することを確認済み。
+  JOIN や別名つきのクエリは所属が静的に決まらないため**あえて対象外**にしている
+  （誤検知の多いガードは無視されて死ぬ）。
+  設計中、別名判定の正規表現が `FROM comments WHERE ...` の `WHERE` を
+  別名と誤認し、**検査対象がほぼ空のまま「合格」していた**時期があった。
+  ガードは「通ること」ではなく「本物の不具合で落ちること」で検証すること
+- **実測**: 起動して確認
+
+  ```
+  /api/monitoring/app/stats 200  {"summary":{"activeConnections":0,"totalComments":0,...}}
+  /api/monitoring/system/stats 200 / /api/monitoring/alerts 200
+  ```
+- **再検証**: `cd backend && npx jest tests/api/monitoringContract.test.js tests/architecture`
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】

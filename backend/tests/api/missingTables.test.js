@@ -114,9 +114,15 @@ describe('存在しないテーブルで500になっていたエンドポイン�
     });
 
     it('PUT /:id/external-integration（external_integration_logs）', async () => {
+      // E-30の教訓: 最初この本文は { serviceId, action, status } だった。
+      // このハンドラのスキーマは { enabled, services, webhookUrl, ... } なので
+      // **SQLに到達する前に400で弾かれ**、テストは「500でない」を満たしてしまう。
+      // 通っているように見えて、実は検査対象の行を一度も実行していなかった。
+      // 「500でない」を確かめるテストは、**そこまで到達していること**も要る。
       const res = await auth(request(app).put(`/api/users/${userId}/external-integration`))
-        .send({ serviceId: 'discord', action: 'link', status: 'enabled' });
+        .send({ enabled: true, services: ['discord'], syncFrequency: 'manual', reason: 'E-30' });
       expectNotServerError(res);
+      expect(res.status).toBe(200); // 400ならSQLまで届いていない
     });
 
     it('GET /comments/:id/edit-history は空配列を返す（500ではない）', async () => {

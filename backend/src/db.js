@@ -259,6 +259,15 @@ const ensureUserColumns = () => {
     { name: 'email_verified', definition: 'INTEGER NOT NULL DEFAULT 0' },
     // E-29: PUT /moderation/ai-threshold/users/:id が読み書きする列。
     // comments 側と同じく、mount 済みなのに列が無く必ず500だった
+    // E-30: PUT /:id/external-integration（mount 済み・admin限定）が読み書きする列。
+    // 6列すべて存在しなかった。E-29 の検査は「テーブルが実在するか」しか見ておらず、
+    // users テーブル自体はあるので素通りしていた
+    { name: 'external_integration_enabled', definition: 'INTEGER NOT NULL DEFAULT 0' },
+    { name: 'external_integration_services', definition: 'TEXT' },
+    { name: 'external_integration_webhook_url', definition: 'TEXT' },
+    { name: 'external_integration_api_key', definition: 'TEXT' },
+    { name: 'external_integration_sync_frequency', definition: 'TEXT' },
+    { name: 'external_integration_last_sync', definition: 'DATETIME' },
     { name: 'ai_default_threshold', definition: 'REAL' },
     { name: 'ai_threshold_enabled', definition: 'INTEGER NOT NULL DEFAULT 0' },
     { name: 'ai_threshold_settings', definition: 'TEXT' }

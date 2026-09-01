@@ -170,19 +170,29 @@ exports.getAppStats = async (req, res, next) => {
     }
 
     // コメント集計データ取得
+    // E-30: この2本のクエリは `comments.created_at` を読んでいたが、
+    // その列は存在しない（実体は `timestamp`）。よって毎回 SQLITE_ERROR で500になり、
+    // 監視ダッシュボードの「アプリケーション統計」は**一度も表示されたことがなかった**。
+    //
+    // もう1点、`status = 'moderated'` という状態値はこの製品に存在しない
+    // （実際は visible / hidden / deleted / active）。列名だけ直しても
+    // 「モデレーション済み 0件」が永遠に出るだけなので、
+    // analyticsController.getModerationStats と**同じ定義**
+    // （deleted / hidden / flagged / muted）に揃える。
+    // 2つの画面が同じ言葉で違う数を出すのは、どちらが正しいか分からなくなる。
     const rows = await new Promise((resolve, reject) => {
       db.all(
         `
           SELECT
-            DATE(created_at) as date,
+            DATE(timestamp) as date,
             platform,
             COUNT(*) as total_comments,
-            COUNT(CASE WHEN status = 'moderated' THEN 1 END) as moderated_comments,
+            COUNT(CASE WHEN status IN ('deleted', 'hidden', 'flagged', 'muted') THEN 1 END) as moderated_comments,
             COUNT(DISTINCT user) as unique_users,
             AVG(CASE WHEN LENGTH(content) > 0 THEN LENGTH(content) END) as avg_content_length
           FROM comments
-          WHERE created_at >= ?
-          GROUP BY DATE(created_at), platform
+          WHERE timestamp >= ?
+          GROUP BY DATE(timestamp), platform
           ORDER BY date DESC
           LIMIT 100
         `,
@@ -202,7 +212,7 @@ exports.getAppStats = async (req, res, next) => {
         `
           SELECT COUNT(DISTINCT user) as unique_users
           FROM comments
-          WHERE created_at >= ?
+          WHERE timestamp >= ?
         `,
         [startDate.toISOString()],
         (err, row) => {
