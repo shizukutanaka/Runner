@@ -114,6 +114,65 @@ exports.getGraph = async (req, res, next) => {
   }
 };
 
+// 横断的なモデレーション操作履歴（E-38）
+//
+// モデレーター画面の「最近のモデレーションアクション」は、
+// **サーバ側に横断的な履歴APIが無いという理由で、その画面で実行した分しか
+// 出せなかった**（再読み込みで消える）。実際には E-36 で分かったとおり、
+// 操作は全て audit_logs に残っている。無いのはAPIだけだった。
+//
+// 誰が・いつ・誰に・何を・なぜ、そしてBANについては
+// **プラットフォーム側へ届いたか**まで返す。
+// 届いたかどうかを記録していない古い行は `platformApplied: null` にする。
+// false（届かなかった）と null（記録が無い）を混ぜないこと——
+// 混ぜると「届かなかった」と誤って表示することになる。
+exports.getModerationActions = async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const rows = await dbAll(
+      `SELECT a.id, a.action, a.actor_id, a.resource_id, a.timestamp, a.metadata,
+              u.username, u.platform
+       FROM audit_logs a
+       LEFT JOIN users u ON u.id = a.resource_id
+       WHERE a.resource_type = 'users'
+         AND a.action IN ('users.status_update', 'users.timeout', 'users.timeout_remove')
+       ORDER BY a.timestamp DESC
+       LIMIT ?`,
+      [limit]
+    );
+
+    const actions = rows.map((row) => {
+      let meta = {};
+      try {
+        meta = row.metadata ? JSON.parse(row.metadata) : {};
+      } catch (parseErr) {
+        meta = {};
+      }
+      const type = row.action === 'users.status_update'
+        ? (meta.status || 'status_update')
+        : row.action.replace(/^users\./, '');
+      return {
+        id: `audit-${row.id}`,
+        type,
+        userId: row.resource_id,
+        user: row.username || row.resource_id,
+        platform: row.platform || null,
+        reason: meta.reason ?? null,
+        moderator: row.actor_id,
+        timestamp: row.timestamp,
+        // 記録が無い行は null。false と区別する
+        platformApplied: typeof meta.platformApplied === 'boolean' ? meta.platformApplied : null,
+        platformReason: meta.platformReason ?? null
+      };
+    });
+
+    res.json({ actions, count: actions.length });
+  } catch (err) {
+    logger.error('[Analytics] Error fetching moderation actions', { error: err.message });
+    next({ status: 500, message: 'モデレーション履歴の取得中にエラーが発生しました', details: err });
+  }
+};
+
 // 期間指定統計（from/to クエリで期間を絞ってコメント数・ユニークユーザー数を集計）
 exports.getPeriodStats = async (req, res, next) => {
   try {

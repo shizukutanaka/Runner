@@ -212,6 +212,24 @@ export const fetchAutoAnswer = async (comment) => {
 // **そのエンドポイントはバックエンドに存在しない**。つまり分析タブは常に404を受け取り、
 // 毎回デモデータ（ハードコードされた1240件等）にフォールバックしていた。
 // 「APIが利用不可のためデモデータを表示しています」というバナーは出るものの、
+// 横断的なモデレーション操作履歴（E-38）。
+//
+// モデレーター画面の履歴パネルは「サーバ側にAPIが無い」という理由で
+// **その画面で実行した分しか出せなかった**（再読み込みで消える）。
+// 実際には操作は audit_logs に残っており、無かったのはAPIだけだった。
+//
+// BAN の `platformApplied` は3状態である: true=届いた / false=届かなかった /
+// null=記録が無い（この機能より前の行）。**null を false として扱わないこと**——
+// 「届かなかった」と誤って表示することになる。
+export const fetchModerationActions = async (limit = 50) => {
+  try {
+    const res = await axios.get(`${API_BASE_URL}/analytics/moderation-actions`, { params: { limit } });
+    return res.data?.actions ?? [];
+  } catch (error) {
+    handleAPIError(error, 'モデレーション履歴の取得に失敗しました');
+  }
+};
+
 // **一度も実データを表示したことがなかった**。
 //
 // 実在する分析エンドポイントを合成して、表示できるものは実データにする。

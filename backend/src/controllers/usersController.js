@@ -126,7 +126,16 @@ exports.updateUser = (req, res, next) => {
   const sql = 'UPDATE users SET status = ?, ban_until = ?, mute_until = ? WHERE id = ?';
   db.run(sql, [status, banUntil, muteUntil, id], function(err) {
     if (err) return next({ status: 500, message: 'Database error', details: err });
-    logDataMod(req.user?.id || 'system', 'users', 'status_update', id, { status, banUntil, muteUntil, reason: sanitizeToStorage(reason) });
+
+    // E-38: 監査記録は「モデレーション履歴」画面の唯一の情報源である
+    // （docs/FEATURE_AUDIT.md の E-36 参照）。BANについては
+    // **プラットフォームへ届いたかどうか**まで記録しないと、
+    // 履歴を後から見た人が「BAN済み」としか読めない。
+    // よってBANのときだけ、書き戻しの結果が出てから記録する
+    const auditStatusUpdate = (extra = {}) => logDataMod(
+      req.user?.id || 'system', 'users', 'status_update', id,
+      { status, banUntil, muteUntil, reason: sanitizeToStorage(reason), ...extra }
+    );
 
     // R-28b: BAN をプラットフォーム側へ書き戻す。
     // これが無いと「ダッシュボードではBAN済みだが、当人は配信で発言し続けられる」
@@ -134,6 +143,7 @@ exports.updateUser = (req, res, next) => {
     // 対象ユーザーのチャンネルIDは users には無いため、直近コメントから引く。
     // OAuth未設定/チャンネルID不明/配信監視なしのいずれでもローカルBANは維持する
     if (action !== 'ban') {
+      auditStatusUpdate();
       return res.json({ status: 200, data: null, message: 'User updated' });
     }
     db.get(
@@ -156,6 +166,10 @@ exports.updateUser = (req, res, next) => {
         if (!platformBan.ok) {
           logger.warn('[Users] Local ban applied but platform write-back did not', { id, reason: platformBan.reason });
         }
+        auditStatusUpdate({
+          platformApplied: platformBan.ok === true,
+          platformReason: platformBan.reason || null
+        });
         res.json({
           status: 200,
           data: { platformBan },

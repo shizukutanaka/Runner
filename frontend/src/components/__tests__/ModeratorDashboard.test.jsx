@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ModeratorDashboard from '../ModeratorDashboard';
 import { updateUser } from '../../api/users';
-import { updateComment, deleteComment, fetchAnalyticsOverview } from '../../api/comments';
+import { updateComment, deleteComment, fetchAnalyticsOverview, fetchModerationActions } from '../../api/comments';
 
 // ---------------------------------------------------------------------------
 // なぜこの画面のテストが最優先だったか
@@ -22,7 +22,8 @@ vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: stableT }) }));
 
 vi.mock('../../api/users', () => ({ updateUser: vi.fn() }));
 vi.mock('../../api/comments', () => ({
-  updateComment: vi.fn(), deleteComment: vi.fn(), fetchAnalyticsOverview: vi.fn()
+  updateComment: vi.fn(), deleteComment: vi.fn(), fetchAnalyticsOverview: vi.fn(),
+  fetchModerationActions: vi.fn()
 }));
 
 const COMMENT = {
@@ -44,6 +45,7 @@ describe('ModeratorDashboard のモデレーション操作', () => {
     updateUser.mockReset().mockResolvedValue({ success: true });
     updateComment.mockReset().mockResolvedValue({ success: true });
     deleteComment.mockReset().mockResolvedValue({ success: true });
+    fetchModerationActions.mockReset().mockResolvedValue([]);
     fetchAnalyticsOverview.mockReset().mockResolvedValue({
       total: 4321, moderated: 7, bannedUsers: 2, mutedUsers: 3
     });
@@ -132,6 +134,7 @@ describe('統計カードが実データを出すこと', () => {
     updateUser.mockReset().mockResolvedValue({ success: true });
     updateComment.mockReset().mockResolvedValue({ success: true });
     deleteComment.mockReset().mockResolvedValue({ success: true });
+    fetchModerationActions.mockReset().mockResolvedValue([]);
     fetchAnalyticsOverview.mockReset().mockResolvedValue({
       total: 4321, moderated: 7, bannedUsers: 2, mutedUsers: 3
     });
@@ -170,6 +173,7 @@ describe('モデレーション履歴に架空データを混ぜないこと', (
     updateUser.mockReset().mockResolvedValue({ success: true });
     updateComment.mockReset().mockResolvedValue({ success: true });
     deleteComment.mockReset().mockResolvedValue({ success: true });
+    fetchModerationActions.mockReset().mockResolvedValue([]);
     fetchAnalyticsOverview.mockReset().mockResolvedValue({
       total: 1, moderated: 0, bannedUsers: 0, mutedUsers: 0
     });
@@ -216,5 +220,79 @@ describe('モデレーション履歴に架空データを混ぜないこと', (
 
     await user.click(screen.getByRole('tab', { name: '最近のアクション' }));
     expect(await screen.findByText(/プラットフォーム側にも反映済み/)).toBeInTheDocument();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// モデレーション履歴パネル（E-38）
+// ---------------------------------------------------------------------------
+// このパネルは以前「サーバ側に横断的な履歴APIが無い」という理由で、
+// **その画面で実行した分しか出せなかった**（再読み込みで消える）。
+// 実際には操作は監査記録に残っており、無かったのはAPIだけだった。
+//
+// もう一つ固定するのは **BANがプラットフォームへ届いたかの3状態**である:
+//   true=届いた / false=届かなかった / null=記録が無い（古い行）。
+// null を false として描くと、**古い記録を「未反映」と誤って断言する**ことになる。
+describe('モデレーション履歴パネルがサーバの記録を出すこと', () => {
+  const ACTIONS = [
+    {
+      id: 'audit-1', type: 'ban', user: 'troll_a', platform: 'youtube',
+      reason: '繰り返しの迷惑行為', moderator: 'mod_x',
+      timestamp: new Date().toISOString(), platformApplied: false, platformReason: 'author_channel_id_unknown'
+    },
+    {
+      id: 'audit-2', type: 'ban', user: 'troll_b', platform: 'twitch',
+      reason: '古い記録', moderator: 'mod_y',
+      timestamp: new Date().toISOString(), platformApplied: null, platformReason: null
+    },
+    {
+      id: 'audit-3', type: 'mute', user: 'noisy_c', platform: 'youtube',
+      reason: '警告1回目', moderator: 'mod_x',
+      timestamp: new Date().toISOString(), platformApplied: null, platformReason: null
+    }
+  ];
+
+  beforeEach(() => {
+    updateUser.mockReset().mockResolvedValue({ success: true });
+    updateComment.mockReset().mockResolvedValue({ success: true });
+    deleteComment.mockReset().mockResolvedValue({ success: true });
+    fetchAnalyticsOverview.mockReset().mockResolvedValue({
+      total: 1, moderated: 0, bannedUsers: 0, mutedUsers: 0
+    });
+    fetchModerationActions.mockReset().mockResolvedValue(ACTIONS);
+  });
+
+  const openHistory = async () => {
+    const user = userEvent.setup();
+    render(<ModeratorDashboard platform="all" />);
+    await user.click(await screen.findByRole('tab', { name: '最近のアクション' }));
+  };
+
+  it('サーバから取得した操作が表示される（この画面で実行した分に限られない）', async () => {
+    await openHistory();
+    expect(await screen.findByText('troll_a')).toBeInTheDocument();
+    expect(screen.getByText('noisy_c')).toBeInTheDocument();
+    expect(screen.getByText(/繰り返しの迷惑行為/)).toBeInTheDocument();
+  });
+
+  it('プラットフォームへ届かなかったBANは、そう明示される', async () => {
+    await openHistory();
+    expect(await screen.findByText(/プラットフォーム側には未反映/)).toBeInTheDocument();
+  });
+
+  it('記録が無いBANを「未反映」と断言しない', async () => {
+    await openHistory();
+    await screen.findByText('troll_b');
+    // 未反映の断言は troll_a の分の1件だけであること
+    expect(screen.getAllByText(/プラットフォーム側には未反映/)).toHaveLength(1);
+    expect(screen.getByText(/反映結果は記録されていません/)).toBeInTheDocument();
+  });
+
+  it('取得に失敗したら、空の履歴を「操作なし」と偽らない', async () => {
+    fetchModerationActions.mockRejectedValueOnce(new Error('履歴API停止中'));
+    await openHistory();
+    expect(await screen.findByText(/履歴API停止中/)).toBeInTheDocument();
+    expect(screen.queryByText('まだ操作はありません。')).not.toBeInTheDocument();
   });
 });

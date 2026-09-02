@@ -58,7 +58,7 @@ import { useTranslation } from 'react-i18next';
 import { useComments } from '../hooks/useComments';
 import HeldMessagesQueue from './HeldMessagesQueue';
 import { updateUser } from '../api/users';
-import { updateComment, deleteComment, fetchAnalyticsOverview } from '../api/comments';
+import { updateComment, deleteComment, fetchAnalyticsOverview, fetchModerationActions } from '../api/comments';
 
 export default function ModeratorDashboard({ platform = 'all' }) {
   const theme = useTheme();
@@ -88,6 +88,7 @@ export default function ModeratorDashboard({ platform = 'all' }) {
     mutedUsers: null,
   });
   const [statsError, setStatsError] = useState(null);
+  const [historyError, setHistoryError] = useState(null);
   const [activeTimeouts, setActiveTimeouts] = useState([]);
   const [selectedUserForTimeout, setSelectedUserForTimeout] = useState(null);
   const [timeoutDialogOpen, setTimeoutDialogOpen] = useState(false);
@@ -140,6 +141,36 @@ export default function ModeratorDashboard({ platform = 'all' }) {
     return () => { cancelled = true; };
   }, []);
 
+  // E-38: 履歴はサーバから取る。
+  // 以前は「横断的な履歴APIが無い」という理由でこの画面の操作しか出せず、
+  // 再読み込みで消えていた。実際には操作は監査記録に残っており、
+  // 足りなかったのはAPIだけだった
+  useEffect(() => {
+    let cancelled = false;
+    fetchModerationActions(20)
+      .then((actions) => {
+        if (cancelled || !Array.isArray(actions)) return;
+        setRecentActions(actions.map((a) => ({
+          id: a.id,
+          type: a.type,
+          user: a.user,
+          reason: a.reason,
+          moderator: a.moderator,
+          timestamp: new Date(a.timestamp),
+          platform: a.platform === 'youtube' ? 'YouTube' : a.platform === 'twitch' ? 'Twitch' : (a.platform || '—'),
+          // 3状態を保つ。null（記録なし）を false（届かなかった）に潰さない
+          platformApplied: a.platformApplied
+        })));
+        setHistoryError(null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        // 取得できなかったことを隠さない。空の履歴を「操作なし」と偽らないため
+        setHistoryError(err?.message || 'モデレーション履歴を取得できませんでした');
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   // 統計カードの表示。null（未取得）を 0 と偽らない
   const showStat = (v) => (v === null || v === undefined ? '—' : Number(v).toLocaleString());
 
@@ -174,7 +205,7 @@ export default function ModeratorDashboard({ platform = 'all' }) {
         timestamp: new Date(),
         platform: platform === 'all' ? 'YouTube' : platform,
         // プラットフォーム側へ反映できたかを併記する（できていなければ隠さない）
-        platformApplied: result?.platformBan?.ok === true
+        platformApplied: action === 'ban' ? result?.platformBan?.ok === true : null
       }, ...prev.slice(0, 9)]);
     } catch (err) {
       // 失敗を成功に見せかけない
@@ -546,10 +577,13 @@ export default function ModeratorDashboard({ platform = 'all' }) {
         <Card sx={{ borderRadius: 2 }}>
           <CardHeader
             title="最近のモデレーションアクション"
-            subheader="このセッション中にこの画面から実行した分のみ。サーバ側に横断的な履歴APIが無いため、再読み込みで消えます"
+            subheader="監査記録から取得した直近20件。この画面からの操作もその場で反映されます"
           />
           <CardContent>
-            {recentActions.length === 0 && (
+            {historyError && (
+              <Alert severity="warning" sx={{ mb: 2 }}>{historyError}</Alert>
+            )}
+            {!historyError && recentActions.length === 0 && (
               <Typography variant="body2" color="text.secondary">
                 まだ操作はありません。
               </Typography>
@@ -592,16 +626,22 @@ export default function ModeratorDashboard({ platform = 'all' }) {
                             届いていない場合、当人は配信で発言し続けられる。
                             バックエンドは platformBan.ok を返しているのに、
                             画面はそれを捨てていた（R-28b の後半が見えていなかった） */}
-                        {action.type === 'ban' && (
-                          action.platformApplied ? (
-                            <Typography variant="caption" color="success.main">
-                              プラットフォーム側にも反映済み
-                            </Typography>
-                          ) : (
-                            <Typography variant="caption" color="error.main">
-                              ローカルのみ。プラットフォーム側には未反映（当人は配信で発言できます）
-                            </Typography>
-                          )
+                        {action.type === 'ban' && action.platformApplied === true && (
+                          <Typography variant="caption" color="success.main">
+                            プラットフォーム側にも反映済み
+                          </Typography>
+                        )}
+                        {action.type === 'ban' && action.platformApplied === false && (
+                          <Typography variant="caption" color="error.main">
+                            ローカルのみ。プラットフォーム側には未反映（当人は配信で発言できます）
+                          </Typography>
+                        )}
+                        {/* E-38: 記録が無い古い行を「未反映」と表示してはいけない。
+                            届かなかった(false)と、記録が無い(null)は別のことである */}
+                        {action.type === 'ban' && action.platformApplied === null && (
+                          <Typography variant="caption" color="text.secondary">
+                            プラットフォームへの反映結果は記録されていません
+                          </Typography>
                         )}
                       </Box>
                     }

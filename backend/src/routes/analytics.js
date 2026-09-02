@@ -23,6 +23,8 @@ router.get('/export', requireRole('admin'), ctrl.exportAnalytics);
 router.post('/import', requireRole('admin'), ctrl.importAnalytics);
 // 履歴取得
 router.get('/history', requireRole('analyst'), ctrl.getHistory);
+// 横断的なモデレーション操作履歴（E-38）。モデレーターが自分の画面で使うため analyst ではなく moderator
+router.get('/moderation-actions', requireRole('moderator'), ctrl.getModerationActions);
 // 外部連携
 router.post('/external', requireRole('admin'), ctrl.externalIntegration);
 // 利用率取得

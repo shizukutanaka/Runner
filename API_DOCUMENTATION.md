@@ -185,6 +185,9 @@
 - **GET `/api/analytics/export`** エクスポート / Export analytics data
 - **POST `/api/analytics/import`** インポート / Import analytics payload
 - **GET `/api/analytics/history`** 履歴取得 / Analytics history
+- **GET `/api/analytics/moderation-actions`** 横断的なモデレーション操作履歴 / Cross-user moderation action history
+  - **クエリ / Query** `limit`（1-200、既定50）
+  - BAN については `platformApplied` がプラットフォームへの反映結果（`null` は記録が無い古い行）
 - **POST `/api/analytics/external`** 外部連携 / External integration callback
 - **GET `/api/analytics/usage`** 利用率 / Usage ratio
 - **GET `/api/analytics/peak`** ピーク時間 / Peak usage time
