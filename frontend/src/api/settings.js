@@ -23,3 +23,27 @@ export const updateSettings = async (userId, settings) => {
     handleAPIError(error, '設定の更新に失敗しました');
   }
 };
+
+// スローモード設定（E-39）。
+//
+// user_settings に保存される項目のうち、**実際に読む側がいるのはこれだけ**である
+// （バックエンドの `commentsController.checkSlowMode` が取り込み経路で読み、
+// 間隔内の連続投稿を実際に拒否する）。他の項目は保存はされるが読み手がいない。
+// 詳細と根拠は docs/FEATURE_AUDIT.md の E-39 を参照。
+export const getSlowMode = async (userId) => {
+  try {
+    const res = await axios.get(`${API_BASE_URL}/settings/user/${userId}/slow-mode`);
+    return res.data.data;
+  } catch (error) {
+    handleAPIError(error, 'スローモード設定の取得に失敗しました');
+  }
+};
+
+export const setSlowMode = async (userId, slowModeSettings) => {
+  try {
+    const res = await axios.put(`${API_BASE_URL}/settings/user/${userId}/slow-mode`, slowModeSettings);
+    return res.data.data;
+  } catch (error) {
+    handleAPIError(error, 'スローモード設定の更新に失敗しました');
+  }
+};

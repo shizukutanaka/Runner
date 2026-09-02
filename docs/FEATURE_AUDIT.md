@@ -1155,6 +1155,63 @@ E-36・E-37 で `audit_logs` に全モデレーション操作が残っている
 
 ---
 
+### E-39. ✅ 解決済み（2026-09-02） — 設定画面のスローモードは、**取り込みが読まない場所**に保存していた
+
+E-32 で「保存したと言いながら保存していないAPI」を消した。その次の問いは
+**「保存はされているとして、それを読む側はいるのか？」**である。
+
+- **やり方**: `user_settings` に保存される項目を列挙し、
+  設定モジュールの外に読み手がいるかを数えた
+
+  | 保存される項目 | 設定モジュール外の読み手 |
+  |----------------|--------------------------|
+  | `slowMode` | **1件**（`commentsController.checkSlowMode`。取り込み経路で実際に効く） |
+  | `commentMaxLength` / `pinLimit` / `autoDeleteTime` / `autoNGWord` / `autoTranslation` | 0件 |
+  | `individualThresholds` / `modelVersion` | 0件 |
+  | `theme` / `primaryColor` / `secondaryColor` | 0件（実際のテーマは `ThemeContext` が localStorage から読む） |
+
+- **本題の欠陥**: 唯一効く `slowMode` について、画面と取り込みが**別の場所を見ていた**。
+
+  ```
+  画面が書いていた場所    user_settings の moderation.slowMode
+  取り込みが読む場所      user_settings の slowMode（最上位）
+  ```
+
+  設定画面のスローモード欄は最初から**存在していた**。スイッチも動き、
+  保存APIも200を返す。**しかし判定は一切変わらない**。
+  「効く設定の唯一の入口が、効かない場所に書いていた」ことになる。
+  専用の `GET/PUT /api/settings/user/:userId/slow-mode` は正しい場所に書くのに、
+  画面はそれを使わず汎用の `PUT /user/:userId` を使っていた
+- **実施した対応**: スローモードの各操作（有効/無効・間隔・プラットフォーム別）を
+  専用APIに繋ぎ替えた。取得も専用APIから行い、
+  取得失敗時は既定値を「現在の設定」と偽らずに明示する
+- **ガード（いずれも本物の不具合で落ちることを確認済み）**:
+  - `backend/tests/api/slowModeEffect.test.js`（4件）—
+    **「200が返った」ではなく「2回目の投稿が実際に拒否された」**を見る。
+    無効なら連続投稿が通り、有効にすると2回目が `rate_limited` になり、
+    無効に戻すとまた通ること、範囲外の値が400で弾かれること。
+    `checkSlowMode` が設定を読まないよう改変すると2件が落ちる
+  - `frontend/src/components/__tests__/SettingsPanelSlowMode.test.jsx`（4件）—
+    専用APIから読むこと、スイッチ操作で**汎用APIに `moderation.slowMode` を
+    書かない**こと、保存失敗を成功に見せないこと。
+    元の汎用保存に戻すと2件が落ちる
+  - テスト設計の注意: スローモードは「前回投稿からの経過時間」で判定するため、
+    **テストごとに新しい利用者を作ること**。使い回すと前のテストの投稿が残り、
+    1回目から拒否されて検査の意味が変わる（実際に一度そうなった）
+- **残る限界（所有者の判断が要る）**: 上表の「読み手0件」の項目は、
+  保存はされるが**どこにも効かない**。今回は削除していない——
+  どれを実装しどれを消すかは製品判断であり、
+  勝手に画面から機能を消すのは越権だと判断した。
+  ただし**効かないまま置いておけば、いずれ誰かが「設定したのに効かない」と困る**。
+  実装するなら読み手を足す場所は次のとおり:
+  `commentMaxLength` は取り込みの検証、`autoDeleteTime` は定期削除、
+  `autoNGWord` は学習経路、`theme` 系は `ThemeContext`（現在は localStorage）
+- **実測**: backend 756件 / frontend 105件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/api/slowModeEffect.test.js`、
+  `cd frontend && npx vitest run src/components/__tests__/SettingsPanelSlowMode.test.jsx`
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】

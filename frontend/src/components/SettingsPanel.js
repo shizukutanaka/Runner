@@ -37,7 +37,7 @@ import {
 import { useTheme } from '@mui/material/styles';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../hooks/useAuth';
-import { getSettings, updateSettings as persistSettings } from '../api/settings';
+import { getSettings, updateSettings as persistSettings, getSlowMode, setSlowMode } from '../api/settings';
 import CultureProfilePanel from './CultureProfilePanel';
 
 export default function SettingsPanel({ platform = 'YouTube' }) {
@@ -46,6 +46,12 @@ export default function SettingsPanel({ platform = 'YouTube' }) {
   const { account } = useAuth();
   const [activeTab, setActiveTab] = useState('moderation');
   const [settings, setSettings] = useState({});
+  // E-39: スローモードは user_settings のうち**唯一、実際に読まれて効く設定**である
+  // （取り込み経路の checkSlowMode が読み、間隔内の連続投稿を実際に拒否する）。
+  // それが設定画面に無かったので、ここに出す。他の項目と違い専用APIを持つ
+  const [slowMode, setSlowModeState] = useState({ enabled: false, intervalSeconds: 30, platformSpecific: {} });
+  const [slowModeError, setSlowModeError] = useState(null);
+  const [slowModeSaved, setSlowModeSaved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(null);
@@ -93,8 +99,43 @@ export default function SettingsPanel({ platform = 'YouTube' }) {
   useEffect(() => {
     if (account?.id) {
       loadSettings();
+      loadSlowMode(account.id);
     }
   }, [platform, account?.id]);
+
+  const loadSlowMode = async (accountId) => {
+    try {
+      const data = await getSlowMode(accountId);
+      if (data) {
+        setSlowModeState({
+          enabled: !!data.enabled,
+          intervalSeconds: data.intervalSeconds ?? 30,
+          platformSpecific: data.platformSpecific || {}
+        });
+      }
+      setSlowModeError(null);
+    } catch (err) {
+      // 取得できなかったことを隠さない。既定値を「現在の設定」と偽らないため
+      setSlowModeError('slow_mode_load_error');
+    }
+  };
+
+  const handleSlowModeSave = async (next) => {
+    setSlowModeError(null);
+    setSlowModeSaved(false);
+    try {
+      await setSlowMode(account.id, {
+        enabled: next.enabled,
+        intervalSeconds: next.intervalSeconds,
+        platformSpecific: next.platformSpecific
+      });
+      setSlowModeState(next);
+      setSlowModeSaved(true);
+    } catch (err) {
+      // 失敗したら画面の値も戻さない（保存できていないのに反映済みに見せない）
+      setSlowModeError('slow_mode_save_error');
+    }
+  };
 
   const loadSettings = async () => {
     setLoading(true);
@@ -286,17 +327,30 @@ export default function SettingsPanel({ platform = 'YouTube' }) {
               <Grid item xs={12}>
                 <Divider sx={{ my: 2 }} />
                 <Typography variant="subtitle1" gutterBottom>{t('settings_slow_mode_title')}</Typography>
+                {/* E-39: 保存できなかったことを隠さない。
+                    スイッチだけ動いて保存に失敗していると、
+                    「設定した」と思ったまま実際には効いていない状態になる */}
+                {slowModeError && (
+                  <Alert severity="error" sx={{ mb: 2 }}>
+                    {slowModeError === 'slow_mode_load_error'
+                      ? t('settings_slow_mode_load_error', '現在のスローモード設定を取得できませんでした（表示は既定値です）')
+                      : t('settings_slow_mode_save_error', 'スローモード設定を保存できませんでした')}
+                  </Alert>
+                )}
+                {!slowModeError && slowModeSaved && (
+                  <Typography variant="caption" color="success.main" sx={{ display: 'block', mb: 1 }}>
+                    {t('settings_slow_mode_saved', '保存しました。取り込み時の連続投稿判定に反映されます')}
+                  </Typography>
+                )}
                 <Grid container spacing={2}>
                   <Grid item xs={12} md={4}>
                     <FormControlLabel
                       control={
                         <Switch
-                          checked={settings.moderation?.slowMode?.enabled || false}
-                          onChange={(e) => handleSave('moderation', {
-                            slowMode: {
-                              ...settings.moderation?.slowMode,
+                          checked={slowMode.enabled || false}
+                          onChange={(e) => handleSlowModeSave({
+                              ...slowMode,
                               enabled: e.target.checked
-                            }
                           })}
                         />
                       }
@@ -308,12 +362,10 @@ export default function SettingsPanel({ platform = 'YouTube' }) {
                       fullWidth
                       label={t('settings_slow_mode_interval_label')}
                       type="number"
-                      value={settings.moderation?.slowMode?.intervalSeconds || 30}
-                      onChange={(e) => handleSave('moderation', {
-                        slowMode: {
-                          ...settings.moderation?.slowMode,
+                      value={slowMode.intervalSeconds || 30}
+                      onChange={(e) => handleSlowModeSave({
+                          ...slowMode,
                           intervalSeconds: parseInt(e.target.value)
-                        }
                       })}
                       InputProps={{ inputProps: { min: 0, max: 300 } }}
                       helperText={t('settings_slow_mode_interval_help')}
@@ -342,18 +394,16 @@ export default function SettingsPanel({ platform = 'YouTube' }) {
                             control={
                               <Switch
                                 size="small"
-                                checked={settings.moderation?.slowMode?.platformSpecific?.youtube?.enabled || false}
-                                onChange={(e) => handleSave('moderation', {
-                                  slowMode: {
-                                    ...settings.moderation?.slowMode,
+                                checked={slowMode.platformSpecific?.youtube?.enabled || false}
+                                onChange={(e) => handleSlowModeSave({
+                                    ...slowMode,
                                     platformSpecific: {
-                                      ...settings.moderation?.slowMode?.platformSpecific,
+                                      ...slowMode.platformSpecific,
                                       youtube: {
-                                        ...settings.moderation?.slowMode?.platformSpecific?.youtube,
+                                        ...slowMode.platformSpecific?.youtube,
                                         enabled: e.target.checked
                                       }
                                     }
-                                  }
                                 })}
                               />
                             }
@@ -363,18 +413,16 @@ export default function SettingsPanel({ platform = 'YouTube' }) {
                             size="small"
                             label={t('settings_slow_mode_interval_label')}
                             type="number"
-                            value={settings.moderation?.slowMode?.platformSpecific?.youtube?.intervalSeconds || 30}
-                            onChange={(e) => handleSave('moderation', {
-                              slowMode: {
-                                ...settings.moderation?.slowMode,
+                            value={slowMode.platformSpecific?.youtube?.intervalSeconds || 30}
+                            onChange={(e) => handleSlowModeSave({
+                                ...slowMode,
                                 platformSpecific: {
-                                  ...settings.moderation?.slowMode?.platformSpecific,
+                                  ...slowMode.platformSpecific,
                                   youtube: {
-                                    ...settings.moderation?.slowMode?.platformSpecific?.youtube,
+                                    ...slowMode.platformSpecific?.youtube,
                                     intervalSeconds: parseInt(e.target.value)
                                   }
                                 }
-                              }
                             })}
                             InputProps={{ inputProps: { min: 0, max: 300 } }}
                             sx={{ width: 120 }}
@@ -390,18 +438,16 @@ export default function SettingsPanel({ platform = 'YouTube' }) {
                             control={
                               <Switch
                                 size="small"
-                                checked={settings.moderation?.slowMode?.platformSpecific?.twitch?.enabled || false}
-                                onChange={(e) => handleSave('moderation', {
-                                  slowMode: {
-                                    ...settings.moderation?.slowMode,
+                                checked={slowMode.platformSpecific?.twitch?.enabled || false}
+                                onChange={(e) => handleSlowModeSave({
+                                    ...slowMode,
                                     platformSpecific: {
-                                      ...settings.moderation?.slowMode?.platformSpecific,
+                                      ...slowMode.platformSpecific,
                                       twitch: {
-                                        ...settings.moderation?.slowMode?.platformSpecific?.twitch,
+                                        ...slowMode.platformSpecific?.twitch,
                                         enabled: e.target.checked
                                       }
                                     }
-                                  }
                                 })}
                               />
                             }
@@ -411,18 +457,16 @@ export default function SettingsPanel({ platform = 'YouTube' }) {
                             size="small"
                             label={t('settings_slow_mode_interval_label')}
                             type="number"
-                            value={settings.moderation?.slowMode?.platformSpecific?.twitch?.intervalSeconds || 30}
-                            onChange={(e) => handleSave('moderation', {
-                              slowMode: {
-                                ...settings.moderation?.slowMode,
+                            value={slowMode.platformSpecific?.twitch?.intervalSeconds || 30}
+                            onChange={(e) => handleSlowModeSave({
+                                ...slowMode,
                                 platformSpecific: {
-                                  ...settings.moderation?.slowMode?.platformSpecific,
+                                  ...slowMode.platformSpecific,
                                   twitch: {
-                                    ...settings.moderation?.slowMode?.platformSpecific?.twitch,
+                                    ...slowMode.platformSpecific?.twitch,
                                     intervalSeconds: parseInt(e.target.value)
                                   }
                                 }
-                              }
                             })}
                             InputProps={{ inputProps: { min: 0, max: 300 } }}
                             sx={{ width: 120 }}
