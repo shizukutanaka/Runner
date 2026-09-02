@@ -629,26 +629,6 @@ exports.getAllActiveTimeouts = (req, res, next) => {
   });
 };
 
-// タイムアウト理由テンプレート取得
-exports.getTimeoutReasons = (req, res, next) => {
-  db.all('SELECT * FROM user_timeout_reasons WHERE enabled = 1 ORDER BY severity DESC, reason_text ASC', (err, reasons) => {
-    if (err) return next({ status: 500, message: 'Database error', details: err });
-
-    res.json({
-      status: 200,
-      data: reasons.map((reason) => ({
-        id: reason.id,
-        code: reason.reason_code,
-        text: reason.reason_text,
-        defaultDuration: reason.default_duration,
-        severity: reason.severity,
-        enabled: reason.enabled === 1
-      })),
-      message: 'Timeout reasons retrieved'
-    });
-  });
-};
-
 // 期限切れタイムアウトのクリーンアップ
 exports.cleanupExpiredTimeouts = (req, res, next) => {
   const currentTime = new Date().toISOString();

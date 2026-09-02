@@ -74,7 +74,6 @@ router.put('/user/:userId/comment-reaction', requireRole('admin'), validateUserB
 router.put('/user/:userId/comment-tag', requireRole('admin'), validateUserBody(settingsSchema.setCommentTag), ctrl.setCommentTag);
 
 // AI判定ログ取得
-router.get('/ai-moderation-logs/:commentId', requireRole('admin'), validateCommentQuery(settingsSchema.getAIModerationLogs), ctrl.getAIModerationLogs);
 // コメント編集履歴取得
 router.get('/comment-edit-history/:commentId', requireRole('admin'), validateCommentQuery(settingsSchema.getCommentEditHistory), ctrl.getCommentEditHistory);
 

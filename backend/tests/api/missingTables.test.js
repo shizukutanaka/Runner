@@ -64,7 +64,7 @@ describe('存在しないテーブルで500になっていたエンドポイン�
     );
   });
 
-  describe('タイムアウト（user_timeouts / user_timeout_history / user_timeout_reasons）', () => {
+  describe('タイムアウト（user_timeouts / user_timeout_history）', () => {
     it('POST /:id/timeout でタイムアウトを付与できる', async () => {
       const res = await auth(request(app).post(`/api/users/${userId}/timeout`))
         .send({ duration: 300, reason: 'test', platform: 'youtube' });
@@ -81,13 +81,6 @@ describe('存在しないテーブルで500になっていたエンドポイン�
       const res = await auth(request(app).get('/api/users/timeouts/active'));
       expectNotServerError(res);
       expect(res.status).toBe(200);
-    });
-
-    it('GET /timeouts/reasons はテンプレートが空でも200と空配列', async () => {
-      const res = await auth(request(app).get('/api/users/timeouts/reasons'));
-      expectNotServerError(res);
-      expect(res.status).toBe(200);
-      expect(Array.isArray(res.body.data)).toBe(true);
     });
 
     it('GET /:id/timeout-history', async () => {

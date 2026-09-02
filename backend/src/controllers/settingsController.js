@@ -1600,38 +1600,6 @@ exports.setCommentTag = (req, res, next) => {
 };
 
 // AI判定ログ取得
-exports.getAIModerationLogs = (req, res, next) => {
-  const { commentId } = req.params;
-  const { limit = 50, offset = 0 } = req.query;
-
-  if (!commentId) {
-    return next({ status: 400, message: 'コメントIDを指定してください' });
-  }
-
-  const sql = `
-    SELECT * FROM ai_moderation_logs
-    WHERE comment_id = ?
-    ORDER BY created_at DESC
-    LIMIT ? OFFSET ?
-  `;
-
-  db.all(sql, [commentId, limit, offset], (err, rows) => {
-    if (err) {
-      return next({
-        status: 500,
-        message: 'AI判定ログの取得中にエラーが発生しました',
-        details: err
-      });
-    }
-
-    res.json({
-      status: 200,
-      data: rows,
-      message: 'AI判定ログを取得しました'
-    });
-  });
-};
-
 // コメント編集履歴取得
 exports.getCommentEditHistory = (req, res, next) => {
   const { commentId } = req.params;

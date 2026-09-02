@@ -39,7 +39,6 @@ router.get('/:id/timeout-history', requireRole('moderator'), usersController.get
 
 // 全ユーザータイムアウト関連
 router.get('/timeouts/active', requireRole('moderator'), usersController.getAllActiveTimeouts);
-router.get('/timeouts/reasons', requireRole('moderator'), usersController.getTimeoutReasons);
 router.post('/timeouts/cleanup', requireRole('admin'), usersController.cleanupExpiredTimeouts);
 
 // ユーザーのチャンネルアクティビティと詳細情報取得

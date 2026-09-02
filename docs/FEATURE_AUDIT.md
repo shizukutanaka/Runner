@@ -1059,6 +1059,54 @@ E-35 で「実在する記録を読む」形にしたので、同じ問いを記
 
 ---
 
+### E-37. ✅ 解決済み（2026-09-02） — 同じ形を全部探した: 書き手のいないテーブルが、あと4つあった
+
+E-36 で「読み手だけがあり書き手がいない」テーブルを1つ見つけた。
+**1件見つけたら同型を全部探すまで終わっていない**（E-26 の教訓）。機械的に走査した。
+
+- **走査の規則**: スキーマにある表について、src 内の
+  `FROM` / `JOIN`（読み手）と `INSERT` / `UPDATE ... SET` / `DELETE FROM`（書き手）を数える
+- **結果**（23表中4件）:
+
+  | テーブル | 状態 | 画面に出ていたこと |
+  |----------|------|--------------------|
+  | `ai_moderation_logs` | 読み手のみ | AI判定ログは**永久に空**（admin限定エンドポイント） |
+  | `user_timeout_reasons` | 読み手のみ | タイムアウト理由テンプレートは**永久に空** |
+  | `analytics_snapshots` | 読み手も書き手も無し | — |
+  | `moderation_settings` | 読み手も書き手も無し | E-32 で消したAPIの残骸 |
+
+- **自分のテストが「空でよい」と書いていた**: `missingTables.test.js` には
+  **「GET /timeouts/reasons はテンプレートが空でも200と空配列」**という
+  自分で書いたテストがあった。空を許すと書いた瞬間、
+  **配線が切れていることとデータが無いことを区別できなくなる**。
+  E-36 の教訓はここにも当てはまる
+- **判断**: 4件とも削除した。
+  - `moderation_settings` / `analytics_snapshots` — 誰も触らない。削除
+  - `user_timeout_reasons` — 読むエンドポイントは mount 済みだが、
+    フロントの `timeoutReasons` state は**取得も描画もされていなかった**。
+    タイムアウトの理由は現在も自由記述で機能している。
+    テンプレートの中身を決めるのは製品判断なので、勝手に作らずに削除
+  - `ai_moderation_logs` — AI判定の説明可能性は本来価値があるが、
+    **書き手を作るには実在しない値が要る**（`confidence` / `processing_time` /
+    `model_version` はいずれも NOT NULL で、AIが実際に走ったときにしか存在しない）。
+    無い値を埋めれば、それは捏造である。よって表とエンドポイントを削除した。
+    **後で実装するなら**、書く場所は `commentsController.ingestComment`
+    （comment id と判定結果が両方そろう唯一の地点）で、
+    `OPENAI_API_KEY` が設定され `moderationService.analyzeComment` の
+    AI分岐（`openaiService.isAvailable()`）が実際に走ったときだけ書くこと
+- **ガード**: `tests/architecture/tableWriters.test.js`（3件）—
+  **SELECT される表には INSERT/UPDATE/DELETE のいずれかが存在すること**、
+  読み手も書き手も無い表がスキーマに残っていないこと、
+  そして走査が空振りしていないこと。
+  例外は `READ_ONLY_BY_DESIGN` に**「誰が書くのか」を書いて**登録させる（現在は空）。
+  書き手のないテーブルを1つ戻すと
+  `moderation_history <- 読み手: controllers/usersController.js（書き手なし）`
+  と名指しして落ちることを確認済み
+- **実測**: backend 746件 / frontend 97件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/architecture/tableWriters.test.js`
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】

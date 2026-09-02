@@ -377,26 +377,10 @@ const initializeDB = async () => {
     CREATE INDEX IF NOT EXISTS idx_accounts_username ON accounts(username);
     CREATE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);
 
-    CREATE TABLE IF NOT EXISTS moderation_settings (
-      platform TEXT PRIMARY KEY,
-      thresholds TEXT,
-      banned_words TEXT,
-      regex_patterns TEXT,
-      last_updated DATETIME
-    );
-
-    CREATE TABLE IF NOT EXISTS analytics_snapshots (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      captured_at DATETIME NOT NULL,
-      total_comments INTEGER NOT NULL DEFAULT 0,
-      active_comments INTEGER NOT NULL DEFAULT 0,
-      hidden_comments INTEGER NOT NULL DEFAULT 0,
-      muted_comments INTEGER NOT NULL DEFAULT 0,
-      total_users INTEGER NOT NULL DEFAULT 0,
-      banned_users INTEGER NOT NULL DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
+    -- E-37: ここにあった moderation_settings / analytics_snapshots /
+    -- ai_moderation_logs / user_timeout_reasons の4表は削除した。
+    -- 前2つは読み手も書き手も無く、後2つは**読み手だけがあり書き手が無かった**
+    -- （画面には常に空が出続ける）。詳細は docs/FEATURE_AUDIT.md の E-37 を参照。
     CREATE TABLE IF NOT EXISTS user_settings (
       user_id TEXT PRIMARY KEY,
       settings TEXT NOT NULL,
@@ -444,18 +428,6 @@ const initializeDB = async () => {
       FOREIGN KEY (comment_id) REFERENCES comments(id)
     );
 
-    CREATE TABLE IF NOT EXISTS ai_moderation_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      comment_id TEXT NOT NULL,
-      ai_score REAL NOT NULL,
-      ai_decision TEXT NOT NULL,
-      confidence REAL NOT NULL,
-      processing_time INTEGER NOT NULL,
-      model_version TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (comment_id) REFERENCES comments(id)
-    );
-
     CREATE TABLE IF NOT EXISTS held_messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       message_id TEXT,
@@ -493,8 +465,6 @@ const initializeDB = async () => {
     );
 
     CREATE INDEX IF NOT EXISTS idx_comment_deletion_history_comment_id ON comment_deletion_history(comment_id);
-
-    CREATE INDEX IF NOT EXISTS idx_analytics_captured_at ON analytics_snapshots(captured_at DESC);
 
     CREATE TABLE IF NOT EXISTS alerts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -563,15 +533,6 @@ const initializeDB = async () => {
     CREATE INDEX IF NOT EXISTS idx_user_timeout_history_user ON user_timeout_history(user_id);
 
     -- タイムアウト理由のテンプレート。空でも API は 200 と空配列を返す
-    CREATE TABLE IF NOT EXISTS user_timeout_reasons (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      reason_code TEXT NOT NULL UNIQUE,
-      reason_text TEXT NOT NULL,
-      default_duration INTEGER DEFAULT 300,
-      severity INTEGER DEFAULT 1,
-      enabled INTEGER DEFAULT 1
-    );
-
     -- AI閾値の変更履歴（誰がいつ何を変えたか）
     CREATE TABLE IF NOT EXISTS ai_threshold_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -89,7 +89,6 @@ export default function ModeratorDashboard({ platform = 'all' }) {
   });
   const [statsError, setStatsError] = useState(null);
   const [activeTimeouts, setActiveTimeouts] = useState([]);
-  const [timeoutReasons, setTimeoutReasons] = useState([]);
   const [selectedUserForTimeout, setSelectedUserForTimeout] = useState(null);
   const [timeoutDialogOpen, setTimeoutDialogOpen] = useState(false);
   // モデレーションアクション履歴。

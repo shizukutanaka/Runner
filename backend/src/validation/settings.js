@@ -189,11 +189,6 @@ exports.setCommentTag = Joi.object({
 });
 
 // AI判定ログ取得
-exports.getAIModerationLogs = Joi.object({
-  limit: Joi.number().integer().min(1).max(100).default(50),
-  offset: Joi.number().integer().min(0).default(0)
-});
-
 // コメント編集履歴取得
 exports.getCommentEditHistory = Joi.object({
   limit: Joi.number().integer().min(1).max(100).default(50),

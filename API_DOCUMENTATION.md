@@ -242,7 +242,6 @@
 
 ### ログ取得 / Logs
 
-- **GET `/api/settings/ai-moderation-logs/:commentId`** AI 判定ログ / Fetch AI moderation logs
 - **GET `/api/settings/comment-edit-history/:commentId`** コメント編集履歴 / Fetch comment edit history
 
 ## 監視 API / Monitoring API (`backend/src/routes/monitoring.js`)
