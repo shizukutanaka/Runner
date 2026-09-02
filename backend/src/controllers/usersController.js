@@ -717,21 +717,48 @@ exports.getUserChannelActivity = (req, res, next) => {
       db.all(commentQuery, [id, parseInt(limit), parseInt(offset)], (commentErr, commentRows) => {
         if (commentErr) return next({ status: 500, message: 'Failed to fetch comments', details: commentErr });
 
-        // モデレーション履歴を取得
+        // モデレーション履歴を取得。
+        //
+        // E-36: ここは `moderation_history` テーブルを読んでいたが、
+        // **そのテーブルに書き込むコードは製品のどこにも無かった**。
+        // つまり昨日BANしたユーザーを開いても
+        // 「モデレーション操作 0件 / BAN 0回 / ミュート 0回」と出続ける。
+        // 常に空を返す読み取りは、履歴が無いことの証明ではなく、記録の断線である。
+        //
+        // 履歴は既に `audit_logs` にある（updateUser と timeout 系が logDataMod で
+        // 書いている）。書き手の無いテーブルを増やさず、実在する記録を読む。
         const moderationQuery = `
-          SELECT
-            action,
-            reason,
-            timestamp,
-            moderator
-          FROM moderation_history
-          WHERE target_user = ?
+          SELECT action, actor_id, timestamp, metadata
+          FROM audit_logs
+          WHERE resource_type = 'users'
+            AND resource_id = ?
+            AND action IN ('users.status_update', 'users.timeout', 'users.timeout_remove')
           ORDER BY timestamp DESC
           LIMIT 20
         `;
 
-        db.all(moderationQuery, [id], (modErr, modRows) => {
+        db.all(moderationQuery, [id], (modErr, rawModRows) => {
           if (modErr) return next({ status: 500, message: 'Failed to fetch moderation history', details: modErr });
+
+          // audit_logs の行を、この画面が読む {action, reason, timestamp, moderator} に写す。
+          // status_update の実際の操作は metadata.status（ban/mute/warn/active）にある
+          const modRows = (rawModRows || []).map((row) => {
+            let meta = {};
+            try {
+              meta = row.metadata ? JSON.parse(row.metadata) : {};
+            } catch (parseErr) {
+              meta = {};
+            }
+            const action = row.action === 'users.status_update'
+              ? (meta.status || 'status_update')
+              : row.action.replace(/^users\./, '');
+            return {
+              action,
+              reason: meta.reason ?? null,
+              timestamp: row.timestamp,
+              moderator: row.actor_id
+            };
+          });
 
           // 統計情報を計算
           const stats = {

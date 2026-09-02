@@ -603,17 +603,10 @@ const initializeDB = async () => {
 
     CREATE INDEX IF NOT EXISTS idx_external_integration_logs_created ON external_integration_logs(created_at);
 
-    -- ユーザーへのモデレーション履歴（チャンネル活動の集計に使う）
-    CREATE TABLE IF NOT EXISTS moderation_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      target_user TEXT NOT NULL,
-      action TEXT NOT NULL,
-      reason TEXT,
-      moderator TEXT,
-      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_moderation_history_target ON moderation_history(target_user, timestamp DESC);
+    -- E-36: moderation_history テーブルはここにあったが、**書き込むコードが
+    -- 製品のどこにも無かった**。読み手（usersController のユーザー活動画面）は
+    -- 常に空を受け取り、BAN済みのユーザーでも「操作0件」と表示していた。
+    -- 履歴は audit_logs に実在するので、そちらを読むように直して本表は削除した。
 
     -- コメントの公開範囲の変更履歴。setCommentVisibility が書き、
     -- getCommentVisibilityHistory が読む。両方 mount 済みだった
