@@ -346,7 +346,7 @@ exports.processHeldMessage = async (req, res, next) => {
       const { v4: uuidv4 } = require('uuid');
       await dbRun(
         `INSERT INTO comments (id, platform, user, content, timestamp, status, moderator)
-         VALUES (?, ?, ?, ?, ?, 'active', ?)`,
+         VALUES (?, ?, ?, ?, ?, 'visible', ?)`,
         [uuidv4(), held.platform, held.user, held.content, processedAt, moderatorId]
       );
     }
@@ -443,7 +443,7 @@ exports.bulkProcessHeldMessages = async (req, res, next) => {
       if (action === 'approve') {
         await dbRun(
           `INSERT INTO comments (id, platform, user, content, timestamp, status, moderator)
-           VALUES (?, ?, ?, ?, ?, 'active', ?)`,
+           VALUES (?, ?, ?, ?, ?, 'visible', ?)`,
           [uuidv4(), held.platform, held.user, held.content, processedAt, moderatorId]
         );
       }

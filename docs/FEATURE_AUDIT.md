@@ -917,6 +917,62 @@ E-31 で「画面は中身を受け取っているか」を問うた。次の問
 
 ---
 
+### E-34. ✅ 解決済み（2026-09-02） — 承認したコメントが、統計から消えていた（同じ状態に2つの綴りがあった）
+
+E-33 までで「呼ばれるか」「落ちないか」「中身はあるか」「画面は受け取るか」
+「本当に保存したか」の5層を塞いだ。次の問いは **「その数字は正しいか？」** である。
+
+- **既存テストの限界に気づいた**: `analyticsController` のテストは
+  `expect(stats.flagged).toBeGreaterThanOrEqual(1)` の形で書かれていた。
+  これは**数え過ぎ・二重計上・分類の取り違えを一切検出できない**。
+  「1件以上ある」ことは「正しい」ことではない
+- **やり方**: テストDBは他のテストも書き込むため絶対値は固定できない。
+  そこで **投入前後の差分（delta）が期待値と厳密に一致すること**を検査する形にした。
+  差分は共有DBでも厳密に定まる
+- **証拠（本題）**: 既知の状態値を投入して差分を取ったところ、
+  **`status='active'` のコメントは flagged にも passed にも入らない**ことが判明した。
+  そして `status='active'` を書く経路が実在した:
+
+  | 経路 | 書いていた語 |
+  |------|--------------|
+  | 取り込み（`ingestComment`。YouTube/Twitchの全コメント） | `'visible'` |
+  | **保留メッセージの承認**（`processHeldMessage`） | `'active'` |
+  | `commentService` の既定値 | `'active'` |
+  | `comments` テーブルの DEFAULT | `'active'` |
+
+  集計は `passed = byStatus.visible` だけを数える。つまり
+  **モデレーターが保留メッセージを承認するたびに、そのコメントは
+  どの統計にも現れない行になっていた**。画面側でも `CommentItem` は
+  `status !== 'visible'` を「何か処置された」と見なしてチップを出し、
+  `CommentTimeline` の絞り込み候補（visible/hidden/flagged/deleted）にも
+  `active` は無いので、絞り込むと消える
+- **判断（単純化）**: 互換の分岐（`visible または active を数える`）を足すのは、
+  **間違いを残したまま間違いを扱うコードを増やす**ことになる。語を1つに減らす:
+  - 未モデレーションを表す語は **`'visible'` ただ一つ**とする
+  - 書き手（承認2箇所・`commentService` 既定値2箇所・テーブルDEFAULT）を全て `'visible'` に統一
+  - 既存行は起動時に一度だけ `UPDATE comments SET status='visible' WHERE status='active'` で揃える
+    （`users` テーブルの `'active'` は「BANでもミュートでもない」という**別概念**なので触らない）
+- **ガード（いずれも本物の不具合で落ちることを確認済み）**:
+  - `tests/integration/heldMessages.test.js` — 承認して出来た行の `status` が
+    `'visible'` であること。**従来は「行が出来たこと」しか見ておらず、
+    この欠陥を素通りさせていた**。書き手を `'active'` に戻すと
+    `Expected: "visible" / Received: "active"` で落ちる
+  - `tests/api/statsArithmetic.test.js`（6件）— 数字そのものの検査。
+    コメント数・ユーザー数・BAN数・アクティブ数・ミュート数・flagged/passed の
+    **差分が厳密に一致**すること、`comments` に `'active'` の行が0であること、
+    src のどこも `INSERT INTO comments` で `'active'` を書かないこと、
+    同じ集計を二度読んで値が変わらないこと
+- **同時に固定した既知の罠**: ミュート判定の
+  `mute_until > ?`（JS生成のISO文字列）を `datetime('now')` に戻すと、
+  **期限切れのミュートが「継続中」に化ける**（10文字目が `'T'`(0x54) と `' '`(0x20)
+  のため、同日なら必ずISO側が大きい）。差分テストは
+  `Expected: 2 / Received: 3` で落ちることを確認済み。
+  既定のミュートは300秒＝同日中に切れるので、これは日常的に起きる欠陥である
+- **実測**: backend 736件 / frontend 97件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/api/statsArithmetic.test.js tests/integration/heldMessages.test.js`
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】

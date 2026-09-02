@@ -274,6 +274,23 @@ const ensureUserColumns = () => {
   ]);
 };
 
+// E-34: 「未モデレーション」を表す語の統一。
+// 取り込み経路（ingestComment）は 'visible' を書き、保留メッセージの承認と
+// commentService の既定値は 'active' を書いていた。両者は同じ意味である。
+// 集計（analyticsController.getModerationStats）は 'visible' しか数えないため、
+// **承認されたコメントは flagged にも passed にも入らず統計から消えていた**。
+// 互換の分岐を足すのではなく語を1つに減らす。既存行も同じ語に揃える。
+// users テーブルの 'active'（＝BANでもミュートでもない）は別概念なので触らない。
+const normalizeCommentStatus = () => {
+  // SQL側は必ずシングルクォートにする。SQLite はダブルクォートをまず識別子として
+  // 解釈し、該当する列が無いときだけ文字列にフォールバックする（既知の落とし穴）
+  db.run('UPDATE comments SET status = \'visible\' WHERE status = \'active\'', (err) => {
+    if (err) {
+      logger.error('[Database] Failed to normalize comment status', { error: err.message });
+    }
+  });
+};
+
 // ダッシュボード運用者アカウント自身の通知設定
 // （usersテーブルの列は「運用者が管理対象のプラットフォームユーザーの通知設定を操作する」
 //   別機能で使用中のため、認証中のaccounts行に対する自己設定はaccountsテーブル側に持たせる）
@@ -307,7 +324,11 @@ const initializeDB = async () => {
       user TEXT NOT NULL,
       content TEXT NOT NULL,
       timestamp DATETIME NOT NULL,
-      status TEXT DEFAULT 'active',
+      -- E-34: 未モデレーションのコメントを表す語は 'visible' ただ一つである。
+      -- 以前の既定値は 'active' で、取り込み経路が書く 'visible' と二重になっていた。
+      -- 集計は 'visible' しか数えないため、'active' のコメントは
+      -- flagged にも passed にも入らず統計から消えていた
+      status TEXT DEFAULT 'visible',
       moderation_reason TEXT,
       moderation_timestamp DATETIME,
       moderator TEXT
@@ -643,6 +664,7 @@ const initializeDB = async () => {
       });
     });
 
+    normalizeCommentStatus();
     ensureCommentColumns();
     ensureUserColumns();
     ensureHeldMessageColumns();

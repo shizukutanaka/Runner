@@ -70,6 +70,11 @@ describe('Held Messages Queue', () => {
     });
     expect(commentRow).toBeDefined();
     expect(commentRow.content).toBe('approve me please');
+    // E-34: 承認は「未モデレーションのコメント」を作る。その語は 'visible' である。
+    // 以前ここは 'active' を書いており、集計は 'visible' しか数えないため
+    // **承認されたコメントは flagged にも passed にも入らず統計から消えていた**。
+    // 行が出来たことだけを確認していては、この欠陥は永遠に見つからない
+    expect(commentRow.status).toBe('visible');
   });
 
   test('rejecting a held message does not create a comment', async () => {
