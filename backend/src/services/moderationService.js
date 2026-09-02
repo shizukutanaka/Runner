@@ -1057,11 +1057,6 @@ exports.analyzeComment = async (content, platform, user, timestamp, contextComme
   return result;
 };
 
-exports.updateSettings = async (platform, thresholds, bannedWords, regexPatterns) => {
-  // DBに保存する処理（省略）
-  return true;
-};
-
 // 20言語対応の文字/単語ベース言語検出（moderationController.autoTranslateから利用 — R-10）
 exports.detectLanguage = detectLanguage;
 

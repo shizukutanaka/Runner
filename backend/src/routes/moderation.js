@@ -8,7 +8,6 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 router.use(authenticateToken);
 
 router.post('/', requireRole('moderator'), validate(moderationSchema.moderate), moderationController.moderateComment);
-router.put('/settings', requireRole('admin'), validate(moderationSchema.updateSettings), moderationController.updateSettings);
 
 // AI判定閾値詳細設定
 // AI判定自動学習ON/OFF

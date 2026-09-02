@@ -211,9 +211,10 @@ describe('API Integration Tests', () => {
 
   describe('Settings API', () => {
     // 注意: GET/PUT /api/settings/moderation/:platform という形のエンドポイントは
-    // routes/settings.js にも routes/moderation.js にも存在しない。近い機能として
-    // PUT /api/moderation/settings（プラットフォームをURLパラメータではなくボディで指定、
-    // GETに相当するものは無い）があるが形状が異なり単純な付け替えができないためskip
+    // routes/settings.js にも routes/moderation.js にも存在しない。
+    // かつて近い形の PUT /api/moderation/settings があったが、保存処理が
+    // 未実装のまま 'Settings updated' を返すだけだったため E-32 で削除した。
+    // ユーザー単位の設定は PUT /api/settings/user/:userId が実際に永続化する
   });
 
   describe('Validation Tests', () => {

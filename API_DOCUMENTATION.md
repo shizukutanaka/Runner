@@ -127,8 +127,6 @@
 
 - **POST `/api/moderation`** コメント評価 / Analyze comment
   - **ボディ / Body** `content`, `platform`, `user`, `timestamp`
-- **PUT `/api/moderation/settings`** プラットフォーム別設定更新 / Update moderation settings
-  (`platform`, `thresholds`, `bannedWords`, `regexPatterns`)
 
 ### 翻訳 / Translation
 

@@ -22,12 +22,6 @@ exports.moderateComment = async (req, res, next) => {
   }
 };
 
-exports.updateSettings = (req, res, next) => {
-  const { platform, thresholds, bannedWords, regexPatterns } = req.body;
-  moderationService.updateSettings(platform, thresholds, bannedWords, regexPatterns)
-    .then(() => res.json({ status: 200, data: null, message: 'Settings updated' }))
-    .catch((err) => next({ status: 500, message: 'Settings update error', details: err }));
-};
 
 
 

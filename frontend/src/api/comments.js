@@ -206,18 +206,6 @@ export const fetchAutoAnswer = async (comment) => {
   }
 };
 
-// コメントピン固定
-export const pinComment = async (commentId, pinned = true) => {
-  try {
-    const res = await axios.put(`${API_BASE_URL}/comments/${commentId}/pin`, {
-      pinned
-    });
-    return res.data;
-  } catch (error) {
-    handleAPIError(error, 'コメントのピン固定に失敗しました');
-  }
-};
-
 // ダッシュボードの分析タブ用の集計。
 //
 // **経緯**: 以前ここには `getCommentStats()` があり `/api/comments/stats` を叩いていたが、
