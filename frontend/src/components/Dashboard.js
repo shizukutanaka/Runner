@@ -16,6 +16,7 @@ import {
   MonitorHeart as MonitoringIcon,
 } from '@mui/icons-material';
 import { useTranslation } from 'react-i18next';
+import { useComments } from '../hooks/useComments';
 import CommentTimeline from './CommentTimeline';
 import UserPanel from './UserPanel';
 import AnalyticsPanel from './AnalyticsPanel';
@@ -50,6 +51,12 @@ function TabPanel(props) {
 export default function Dashboard() {
   const [tab, setTab] = useState(0);
   const { t } = useTranslation();
+  // E-31: TriageQueue には `pendingComments={[]}` という**空配列リテラル**が
+  // 直接書かれていた。トリアージは「どのコメントから見るべきか」を並べる機能で、
+  // バックエンド側のサービスも画面側の300行も動くのに、
+  // **入力が常に空なので永久に何も表示されない**。
+  // 機能があるように見えて、実際には一度も動いたことがない状態だった。
+  const { comments } = useComments();
 
   const handleTabChange = useCallback((event, newValue) => {
     setTab(newValue);
@@ -69,6 +76,21 @@ export default function Dashboard() {
     </Grid>
   ), []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // TriageQueue が読む形に合わせる（propTypes: id / content / user / platform /
+  // timestamp / toxicityScore / moderationScore）。バックエンドの
+  // moderatorTriageService は `comment.id` を見るので、`id` のまま渡すこと
+  const pendingComments = useMemo(
+    () => comments.map((c) => ({
+      id: c.id,
+      content: c.content,
+      user: c.user,
+      platform: c.platform,
+      timestamp: c.timestamp,
+      moderationScore: c.moderationScore
+    })),
+    [comments]
+  );
+
   const moderatorTab = useMemo(() => (
     <Grid container spacing={2} alignItems="flex-start">
       <Grid item xs={12} lg={8}>
@@ -76,12 +98,12 @@ export default function Dashboard() {
       </Grid>
       <Grid item xs={12} lg={4}>
         <Stack spacing={2}>
-          <TriageQueue platform="youtube" channelId="default" pendingComments={[]} />
+          <TriageQueue platform="youtube" channelId="default" pendingComments={pendingComments} />
           <ContextAnalysisPanel />
         </Stack>
       </Grid>
     </Grid>
-  ), []);
+  ), [pendingComments]);
 
   const tabs = useMemo(() => [
     { component: timelineTab,        label: t('dashboard_tab_timeline',  'Timeline'),  icon: <TimelineIcon /> },

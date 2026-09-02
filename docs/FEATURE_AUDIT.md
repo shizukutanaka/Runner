@@ -796,6 +796,49 @@ E-29 のガードは**テーブル名だけ**を検査していた。その一�
 
 ---
 
+### E-31. ✅ 解決済み（2026-09-02） — トリアージ待ち行列は、入力が空配列リテラルで固定されていた
+
+E-30 で「200 の中身は画面が読む形か」を問うた。その次の問いは
+**「画面はその中身を、そもそも受け取っているのか？」**である。
+バックエンドが正しい形で返しても、フロントがそれを渡していなければ機能は存在しない。
+
+- **見つけ方**: 画面に渡している props を、値が定数のものだけ抜き出して眺めた。
+  `Dashboard.js` が `<TriageQueue ... pendingComments={[]} />` と
+  **空配列リテラルを直接書いていた**
+- **証拠**: トリアージは「どのコメントから見るべきか」を優先度順に並べる機能である。
+  バックエンドの `moderatorTriageService` も `/api/insights/triage` も、
+  画面側の `TriageQueue.js` 約300行も動作する。しかし**入力が常に空**なので、
+  モデレータータブを開いても待ち行列は永久に空のままだった。
+  機能があるように見えて、一度も動いたことがない
+- **なぜ E-29 / E-30 のガードで見つからなかったか**: あれらは
+  「エンドポイントが 500 でないか」「応答に画面が読む項目が入っているか」を検査する。
+  **呼び出し側が定数を渡していれば、その両方を通過してしまう**。
+  断線はサーバ側ではなく、画面のコードの中にあった
+- **実施した修正**: `useComments()` の取得済みコメントを `useMemo` で
+  `{id, content, user, platform, timestamp, moderationScore}` に写像して渡す。
+  `id` を保つのが要点である（`moderatorTriageService` は `comment.id` を読む。
+  `commentId` に改名すると、200 は返るが item の id が `undefined` になる）
+- **ガード（2種類・いずれも本物の不具合で落ちることを確認済み）**:
+  - `frontend/src/components/__tests__/Dashboard.test.jsx`（2件）—
+    モデレータータブを開くと TriageQueue が受け取った件数を描画すること、
+    およびソース中に `pendingComments={[]}` が現れないこと。
+    `[]` に戻すと **2件とも失敗する**ことを確認した
+  - `backend/tests/api/insightsContract.test.js`（9件）—
+    `/api/insights/triage` の `data.queues` のキー集合
+    （CAN_WAIT / EMERGENCY / ROUTINE / URGENT）、`summary.emergency` / `summary.urgent`、
+    item の `commentId` / `content` / `user` / `priorityScore`（数値）、
+    および risk / silent-departure / culture-presets / context-analysis の
+    各読み取りフィールドを実応答に対して検査する。
+    リクエストのキーは `pendingComments`、item のキーは `id` である
+    （最初 `comments` / `commentId` で送っており、**queues が空のまま合格していた**。
+    contract テスト自身が正しい形で呼べていることを、非空の期待値で固定した）
+- **実測**: backend 728件 / frontend 95件、いずれも失敗0・skip 0
+- **再検証**: `cd frontend && npx vitest run src/components/__tests__/Dashboard.test.jsx`、
+  `cd backend && npx jest tests/api/insightsContract.test.js`
+- **次の問い**: 中身が届くようになった。ならば**「その数字は正しいか？」**。
+  未検証の画面は SettingsPanel / Login / Register の3つが残っている
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】
