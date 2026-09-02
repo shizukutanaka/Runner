@@ -1,5 +1,8 @@
 const db = require('../db');
 const logger = require('../logger');
+// E-35: BAN系列は audit_logs を読む。このサービスは require された時点で
+// テーブルを作るので、ここで読み込んでおくこと自体が前提条件の充足になる
+require('../services/auditLog');
 
 const dbGet = (sql, params = []) => new Promise((resolve, reject) => {
   db.get(sql, params, (err, row) => { if (err) reject(err); else resolve(row); });
@@ -48,29 +51,62 @@ exports.getStats = async (req, res, next) => {
 };
 
 exports.getGraph = async (req, res, next) => {
+  // E-35: このグラフは「日別のコメント数とBAN数（直近7日）」として描画される。
+  // 以前の BAN 系列は `users.ban_until` を日付にして数えていたが、
+  // `ban_until` は **BANが切れる時刻**であって、BANした時刻ではない。
+  //   - 1時間BAN → だいたい同じ日に出るので一見それらしく見える
+  //   - 30日BAN → 30日後の日付に計上され、直近7日のグラフには**永久に出ない**
+  // さらに系列を `bansByDay[コメントの日]` で引いていたため、
+  // **コメントが1件も無い日のBANは、その日ごと存在しないことになっていた**。
+  //
+  // 「いつBANしたか」は既に audit_logs に記録されている（usersController.updateUser の
+  // logDataMod 経由）。列を足すのではなく、実在する記録を読む。
   try {
-    // 直近7日間の日別コメント数とBAN数を集計
-    const rows = await dbAll(`
-      SELECT date(timestamp) as day, COUNT(*) as commentCount
-      FROM comments
-      WHERE timestamp >= datetime('now', '-7 days')
-      GROUP BY day
-      ORDER BY day ASC
-    `);
-    const banRows = await dbAll(`
-      SELECT date(ban_until) as day, COUNT(*) as banCount
-      FROM users
-      WHERE ban_until >= datetime('now', '-7 days')
-      GROUP BY day
-      ORDER BY day ASC
-    `);
+    // comments.timestamp は new Date().toISOString() 由来の 'YYYY-MM-DDTHH:MM:SS.sssZ'。
+    // SQLite の datetime('now','-7 days') は 'YYYY-MM-DD HH:MM:SS' で、10文字目が
+    // 'T'(0x54) と ' '(0x20) のため同日なら必ずISO側が大きい。境界日の扱いが
+    // ずれるので、比較はJS側で作ったISO文字列に揃える（getStats と同じ方針）
+    const sinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
+    const rows = await dbAll(
+      `SELECT date(timestamp) as day, COUNT(*) as commentCount
+       FROM comments
+       WHERE timestamp >= ?
+       GROUP BY day
+       ORDER BY day ASC`,
+      [sinceIso]
+    );
+
+    // audit_logs.timestamp は CURRENT_TIMESTAMP 由来の 'YYYY-MM-DD HH:MM:SS' なので、
+    // こちらは datetime() 同士で比較する（形式を混ぜないこと）
+    let banRows = [];
+    try {
+      banRows = await dbAll(
+        `SELECT date(timestamp) as day, COUNT(*) as banCount
+         FROM audit_logs
+         WHERE action = 'users.status_update'
+           AND json_extract(metadata, '$.status') = 'ban'
+           AND timestamp >= datetime('now', '-7 days')
+         GROUP BY day
+         ORDER BY day ASC`
+      );
+    } catch (auditErr) {
+      // 監査ログのテーブルがまだ作られていない起動直後だけは空系列で返す。
+      // それ以外のエラーは握りつぶさない（隠れた失敗を作らないため）
+      if (!/no such table/i.test(auditErr.message)) throw auditErr;
+      logger.warn('[Analytics] audit_logs not ready; ban series is empty', { error: auditErr.message });
+    }
+
+    const commentsByDay = Object.fromEntries(rows.map((r) => [r.day, r.commentCount]));
     const bansByDay = Object.fromEntries(banRows.map((r) => [r.day, r.banCount]));
 
+    // ラベルは両方の和集合にする。コメントの無い日のBANが消えないようにするため
+    const labels = Array.from(new Set([...Object.keys(commentsByDay), ...Object.keys(bansByDay)])).sort();
+
     res.json({
-      labels: rows.map((r) => r.day),
-      comments: rows.map((r) => r.commentCount),
-      bans: rows.map((r) => bansByDay[r.day] || 0)
+      labels,
+      comments: labels.map((d) => commentsByDay[d] || 0),
+      bans: labels.map((d) => bansByDay[d] || 0)
     });
   } catch (err) {
     logger.error('[Analytics] Error fetching graph data', { error: err.message });

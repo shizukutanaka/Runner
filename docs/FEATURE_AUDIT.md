@@ -973,6 +973,54 @@ E-33 までで「呼ばれるか」「落ちないか」「中身はあるか」
 
 ---
 
+### E-35. ✅ 解決済み（2026-09-02） — 「日別BAN数」のグラフは、BANした日ではなく**BANが切れる日**を描いていた
+
+E-34 と同じ問い（その数字は正しいか）を、次の数字に当てた。
+
+- **証拠**: `analyticsController.getGraph` の BAN 系列は
+
+  ```sql
+  SELECT date(ban_until) as day, COUNT(*) as banCount FROM users
+  WHERE ban_until >= datetime('now','-7 days') GROUP BY day
+  ```
+
+  `ban_until` は **BANが切れる時刻**であって、BANした時刻ではない。
+
+  | BANの長さ | グラフに出る日 |
+  |-----------|----------------|
+  | 1時間 | だいたい同じ日。**それらしく見えるので気づけない** |
+  | 30日 | 30日後。直近7日のグラフには**永久に出ない** |
+
+  実測すると、30日BANを実行した直後のラベルは `["2026-10-02"]`——
+  **1か月先**だった（今日は 2026-09-02）
+- **2つ目の欠陥**: 系列を `bansByDay[コメントの日]` で引き、
+  ラベルはコメント側の日付だけから作っていた。つまり
+  **コメントが1件も無い日のBANは、その日ごと存在しないことになる**。
+  荒らしを全部BANして静かになった日ほど消える、という向きの誤りである
+- **判断（実在する記録を読む）**: 「いつBANしたか」を保存する列は無い。
+  列を足す前に探したところ、**既に記録されていた**——
+  `usersController.updateUser` は `logDataMod` 経由で `audit_logs` に
+  `users.status_update` を `metadata.status='ban'` 付き・
+  `CURRENT_TIMESTAMP` で残している。列は足さず、この記録を読む
+- **形式を混ぜない**: `comments.timestamp` は ISO（`'…T…Z'`）なので
+  比較もJS生成のISO文字列に揃える。`audit_logs.timestamp` は
+  `CURRENT_TIMESTAMP` 由来の `'YYYY-MM-DD HH:MM:SS'` なので、
+  こちらは `datetime()` 同士で比較する。E-26・E-34 と同じ罠を作らないため
+- **ラベルの修正**: コメントの日とBANの日の**和集合**にした。
+  どちらか片方しか無い日も消えない
+- **握りつぶさない例外**: `audit_logs` が未作成の起動直後だけ空系列を返し、
+  それ以外のエラーは投げる（`no such table` のみを判定）。
+  `analyticsController` が監査サービスを require することで、
+  読み込み時点でテーブルの存在を担保している
+- **ガード**: `tests/api/graphSeries.test.js`（4件）—
+  30日BANが**今日**に計上されること、2件BANすれば2件増えること、
+  3系列の長さとラベルの昇順・重複無し、コメント数の差分。
+  旧実装に戻すと `Expected "2026-09-02" / Received ["2026-10-02"]` で落ちることを確認済み
+- **実測**: backend 740件 / frontend 97件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/api/graphSeries.test.js`
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】
