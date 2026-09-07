@@ -334,13 +334,34 @@ exports.processHeldMessage = async (req, res, next) => {
     if (!held) {
       return next({ status: 404, message: '保留メッセージが見つかりません' });
     }
-    if (held.status !== 'pending') {
-      return next({ status: 409, message: 'このメッセージは既に処理済みです' });
-    }
 
     const newStatus = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'escalated';
     const processedAt = new Date().toISOString();
     const moderatorId = moderator || req.user?.id || 'unknown';
+
+    // E-43: 「pendingかどうかを読む」ことと「pendingから抜け出す書き込み」を
+    // 分けない。以前はここで held.status を読んでから別のUPDATE文で確定
+    // させており、間に（approveなら）comments へのINSERTが挟まっていた。
+    // 同じ保留メッセージへの同時リクエスト（二重クリック・複数モデレーター）は
+    // 両方とも「まだpendingだ」と読んでしまい、両方が処理を進めてしまう
+    // （実測: 5並列approveで5件ともコメントが作られた）。
+    //
+    // 処理権の「claim」自体を `WHERE status = 'pending'` 付きの単一UPDATEにし、
+    // 実際に更新できた行数（changes）で「自分が処理権を得たか」を判定する。
+    // SQLiteは単一の書き込み文を単一の暗黙トランザクションとして扱い、
+    // 同時に書き込もうとする別の文はファイルレベルのロックで完了まで
+    // 待たされる（E-42と同じ原理）。後から来た方は WHERE 条件が
+    // 既に不成立（statusがpendingでなくなっている）になるため changes=0 になる。
+    const claim = await dbRun(
+      `UPDATE held_messages
+       SET status = ?, processed_at = ?, processed_by = ?, process_reason = ?, process_notes = ?
+       WHERE id = ? AND status = 'pending'`,
+      [newStatus, processedAt, moderatorId, reason || '', notes || '', holdId]
+    );
+
+    if (claim.changes === 0) {
+      return next({ status: 409, message: 'このメッセージは既に処理済みです' });
+    }
 
     if (action === 'approve') {
       const { v4: uuidv4 } = require('uuid');
@@ -350,13 +371,6 @@ exports.processHeldMessage = async (req, res, next) => {
         [uuidv4(), held.platform, held.user, held.content, processedAt, moderatorId]
       );
     }
-
-    await dbRun(
-      `UPDATE held_messages
-       SET status = ?, processed_at = ?, processed_by = ?, process_reason = ?, process_notes = ?
-       WHERE id = ?`,
-      [newStatus, processedAt, moderatorId, reason || '', notes || '', holdId]
-    );
 
     // R-28c: 却下したメッセージをプラットフォーム側からも削除する。
     // 保留経路だけ書き戻しの対象外だと「モデレーターが却下したのに視聴者には
@@ -435,10 +449,24 @@ exports.bulkProcessHeldMessages = async (req, res, next) => {
     const moderatorId = moderator || req.user?.id || 'unknown';
     const { v4: uuidv4 } = require('uuid');
 
+    // E-43: 単発処理（processHeldMessage）と同じ形の check-then-act があった。
+    // 「pending の行を探す」SELECTと「確定させる」UPDATEが別文で、
+    // ここへ同じholdIdへの単発リクエストや別の一括リクエストが重なると、
+    // 両方が処理を進めうる。claim自体を `WHERE status = 'pending'` 付きの
+    // 単一UPDATEにし、実際に更新できたか（changes）で自分が処理権を
+    // 得たかを判定する（単発処理と同じ原理・同じ理由）。
     let processed = 0;
     for (const holdId of holdIds) {
-      const held = await dbGet('SELECT * FROM held_messages WHERE id = ? AND status = ?', [holdId, 'pending']);
+      const held = await dbGet('SELECT * FROM held_messages WHERE id = ?', [holdId]);
       if (!held) continue;
+
+      const claim = await dbRun(
+        `UPDATE held_messages
+         SET status = ?, processed_at = ?, processed_by = ?, process_reason = ?, process_notes = ?
+         WHERE id = ? AND status = 'pending'`,
+        [newStatus, processedAt, moderatorId, reason || '', notes || '', holdId]
+      );
+      if (claim.changes === 0) continue;
 
       if (action === 'approve') {
         await dbRun(
@@ -447,13 +475,6 @@ exports.bulkProcessHeldMessages = async (req, res, next) => {
           [uuidv4(), held.platform, held.user, held.content, processedAt, moderatorId]
         );
       }
-
-      await dbRun(
-        `UPDATE held_messages
-         SET status = ?, processed_at = ?, processed_by = ?, process_reason = ?, process_notes = ?
-         WHERE id = ?`,
-        [newStatus, processedAt, moderatorId, reason || '', notes || '', holdId]
-      );
       processed++;
     }
 

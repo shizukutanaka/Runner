@@ -1339,10 +1339,74 @@ E-40・E-41は「役割チェックの中身」と「その既定値」を固定
   修正後は5回連続実行して安定してpassすることも確認した
 - **実測**: backend 768件 / frontend 105件、失敗0・skip 0
 - **再検証**: `cd backend && npx jest tests/integration/accountBootstrapRace.test.js`
-- **次の問い**: check-then-act の形をした競合状態は、他の「件数で分岐する」
-  ロジックにも潜みうる（例: 初回のみ許可する処理、上限件数のチェック等）。
-  同じ形を全部探すべきだが、これは`grep`だけでは機械的に見つけにくく、
-  各分岐の意味を読む必要がある——次に着手する価値のある層である
+- **次の問い**: check-then-act の形をした競合状態は、他の「状態や件数で
+  分岐する」ロジックにも潜みうる。同じ形を全部探すべきだが、これは
+  `grep`だけでは機械的に見つけにくく、各分岐の意味を読む必要がある
+  ——実際に読んだところ E-43 が見つかった
+
+---
+
+### E-43. ✅ 解決済み（2026-09-07） — 保留メッセージの承認にも同じ競合状態があった（同じ形を全部探す）
+
+E-42で「件数で分岐する」書き込みの競合を1件見つけた。**1件見つけたら
+同じ形を全部探すまで終わっていない**（E-26以来の教訓）。件数ではなく
+「状態」（`status !== 'pending'`）で分岐する書き込みを読んで回ったところ、
+`moderationController.processHeldMessage`（保留メッセージの承認/却下）に
+全く同じ形があった。
+
+- **証拠**（修正前）:
+
+  ```js
+  const held = await dbGet('SELECT * FROM held_messages WHERE id = ?', [holdId]);
+  if (held.status !== 'pending') return next({ status: 409, ... });  // チェック
+  if (action === 'approve') {
+    await dbRun('INSERT INTO comments ...');                          // 別の文
+  }
+  await dbRun('UPDATE held_messages SET status = ? WHERE id = ?');    // ここでようやく確定
+  ```
+
+  「pendingかどうかを読む」チェックと「pendingから抜け出す」確定処理が
+  別々の文で、間に（approveの場合）`comments`へのINSERTが挟まっている。
+  同じ保留メッセージに二重クリックや複数モデレーターの同時操作で
+  approveが2回同時に届くと、**両方とも「まだpendingだ」と判定して
+  両方とも処理を進める**
+- **実測**: 同じholdIdへ5並列でapproveを送信すると **5件ともコメントが
+  作られた**（`heldMessageRace.test.js`で再現）。視聴者から見ると
+  同じ発言が5回表示されることになる
+- **より悪い組み合わせ**: approveとrejectを同時に送ると、コメントは
+  作られたのに最終的な`held_messages.status`が`'rejected'`になりうる
+  ——「拒否したはずのコメントが存在する」という監査上の矛盾が残る
+- **同型を横展開して発見**: 一括処理版の`bulkProcessHeldMessages`にも
+  同じ形があった（`SELECT ... WHERE status='pending'`の後に別文でUPDATE）。
+  さらに、この2つのエンドポイント（単発と一括）は**互いに対しても**
+  無防備で、同じholdIdを単発リクエストと一括リクエストが同時に取り合っても
+  二重処理しうる状態だった
+- **実施した対応**: E-42と同じ原理で、「pendingから抜け出す」こと自体を
+  `WHERE status = 'pending'`付きの単一UPDATE文にし、実際に更新できた
+  行数（`changes`）で「自分が処理権を得たか」を判定するよう両方の
+  ハンドラを直した。changesが0なら「既に処理済み」として409を返す
+
+  ```sql
+  UPDATE held_messages SET status = ?, ... WHERE id = ? AND status = 'pending'
+  ```
+
+  SQLiteは単一の書き込み文を単一の暗黙トランザクションとして扱うため、
+  後から来たリクエストのUPDATEはWHERE条件が既に不成立になり
+  `changes = 0`になる。claimに成功した1件だけが後続のINSERTに進む
+- **ガード**: `backend/tests/integration/heldMessageRace.test.js`（3件）—
+  同じholdIdへの同時approve5件でコメントが1件しか作られないこと、
+  approveとrejectの混在でも「コメントの有無」と「最終状態」が
+  矛盾しないこと（承認済みならコメント1件、それ以外なら0件）、
+  単発処理と一括処理が同じholdIdを取り合っても二重処理しないこと。
+  それぞれ旧実装に戻すと`Expected: 1 / Received: 5`
+  （単発の欠陥は単発のみ直した状態でも一括側の欠陥単体で再現）で
+  落ちることを確認済み
+- **実測**: backend 771件 / frontend 105件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/integration/heldMessageRace.test.js`
+- **次の問い**: 同じ形（状態で分岐するcheck-then-act）を持つ書き込みが
+  他にもまだ残っている可能性がある。今回は「読んで探す」しかできなかった
+  ——次に機械的な走査方法（例: `SELECT`の直後に条件分岐、さらに後で
+  別のUPDATE/INSERTが続くパターンをASTで検出する等）を検討する価値がある
 
 ---
 
