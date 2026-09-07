@@ -120,7 +120,7 @@ exports.getSystemStats = async (req, res, next) => {
         uptime: os.uptime(),
         nodeVersion: process.version,
         memoryUsage: process.memoryUsage(),
-        environment: process.env.NODE_ENV || 'development'
+        environment: process.env.NODE_ENV || 'production'
       },
       timestamp: new Date().toISOString()
     };

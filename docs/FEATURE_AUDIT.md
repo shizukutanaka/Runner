@@ -1212,6 +1212,85 @@ E-32 で「保存したと言いながら保存していないAPI」を消した
 
 ---
 
+### E-40. ✅ 解決済み（2026-09-06） — `requireRole('analyst')` は序列表に無く、実質「認証済みなら誰でも通過」だった
+
+E-31〜E-39は「機能が動くか・正しいか」を問うた。次の層の問いは
+**「それは誰に見えるのか（認可は本当に制限しているか）」**である。
+
+- **やり方**: 全ルートファイルを走査し、各エンドポイントが要求する役割を一覧化した
+- **証拠**: `middleware/auth.js` の `requireRole` は役割を数値の序列に直して比較していた
+
+  ```js
+  const roleHierarchy = { admin: 3, moderator: 2, user: 1, guest: 0 };
+  const requiredLevel = roleHierarchy[requiredRole] || 0;
+  ```
+
+  ところがルートは **12箇所**で `requireRole('analyst')` を使っている
+  （`GET /api/analytics/stats` を含む）。`analyst` は序列表に無いので
+  `requiredLevel` は `|| 0` で **0** になる。つまり
+  **認証さえ通っていれば、どんな役割（guestでも）でも通過していた**。
+  役割名を1文字打ち間違えても同じことが起きる構造である
+- **設計上の欠陥**: これは「失敗したら閉じる」の逆——
+  **知らない役割名は素通り**という既定値になっていた。
+  認可のガードは、分からないときこそ閉じなければならない
+- **実施した対応**:
+  - 序列表を `{ guest: 0, user: 1, analyst: 2, moderator: 3, admin: 4 }` に拡張し、`ROLE_HIERARCHY` としてexport
+  - `requireRole` に2つのフェイルクローズを追加: (a) 要求側の役割名が表に無ければ403で拒否しログに記録（プログラムの誤りとして扱う）、(b) 利用者側の役割名が表に無ければ403で拒否（綴りの違いによる権限昇格を防ぐ）
+- **ガード**: `backend/tests/api/roleEnforcement.test.js`（7件）—
+  guestがanalyst/moderator/admin相当のエンドポイントを通れないこと、moderatorはanalyst相当を通れるがadmin専用は通れないこと、adminは通れること（締めすぎ防止）、**未知の役割名を持つトークンは通れないこと**、状態を変えるルートは役割指定か自己申請（ログイン等）として明示されていること、ルートが使う役割名は全て序列表に存在すること。
+  旧実装（序列表に`analyst`を含めない）に戻すと3件が失敗することを確認済み
+- **実測**: backend 763件（E-40時点）、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/api/roleEnforcement.test.js`
+
+---
+
+### E-41. ✅ 解決済み（2026-09-06） — `NODE_ENV` を設定し忘れると「開発モード」になり、認証なしで管理者権限が付与されていた
+
+E-40で認可の中身を固定した。次の問いは
+**「その判定は、どの環境で・何を根拠に有効になるのか？」**である。
+
+- **証拠**: `config.environment` は `process.env.NODE_ENV || 'development'` だった。
+  **`NODE_ENV` を設定し忘れると開発モードになる**。そして開発モードには
+  複数の分岐が連動している:
+
+  | 箇所 | 開発モードでの挙動 |
+  |------|---------------------|
+  | `middleware/auth.js` | トークン無しの要求を **role:'admin'** として通す |
+  | `middleware/errorHandler.js` | 500応答にスタックトレースを載せる |
+  | `config.js` の `validateConfig` | 必須シークレット（JWT/SESSION/ENCRYPTION）の未設定を見逃す |
+  | `config.js` の `rateLimit.enabled` | 既定で無効（ログイン総当たり対策が働かない） |
+  | `middleware/authCookies.js` | Cookieに `Secure` を付けない |
+
+  組み合わせると、`NODE_ENV` を設定せずに `node src/server.js` を実行した瞬間、
+  **認証なしで誰でも管理者として全APIを叩ける**状態になっていた。
+  Dockerfile（`ENV NODE_ENV=production`）と docker-compose
+  （`NODE_ENV: ${NODE_ENV:-production}`）はproductionを明示しているため
+  コンテナ経由では発火しないが、**設定漏れが最悪の結果につながる既定値は、
+  それ自体が欠陥である**
+- **判断（要件を疑う）**: 既定値は分からないときに閉じる側でなければならない。
+  開発モードは「意図して選ぶもの」であるべきで、「書き忘れたときに落ちる場所」
+  であってはならない
+- **実施した対応**:
+  - `config.js` に `resolveEnvironment()` を新設し、既定値を **production** に変更（`NODE_ENV || 'production'`）。同名パターンが8箇所あった `settingsController.js` / `monitoringController.js` / `ws.js` の表示用環境名、`authCookies.js` の `isProduction()` も同様に production 既定へ揃えた
+  - `npm run dev` の nodemon 起動は元々 `NODE_ENV=development` を明示しているため、開発体験は変わらない
+  - `middleware/auth.js` の開発バイパスのコメントを修正（「limited permissions」ではなく実際は **admin**）し、発火時に警告ログを出すようにした
+- **ガード**: `backend/tests/api/environmentDefault.test.js`（4件）—
+  `NODE_ENV` 未設定なら `config.environment` が `'production'` になること、
+  未設定時にトークン無し要求が401で拒否されること（管理者として通らないこと）、
+  `NODE_ENV=development` を**明示した場合にだけ**開発バイパスが働くこと、
+  `NODE_ENV=production` では通らないこと。
+  検査対象外の副作用（`validateConfig` の必須シークレット要求）でテストが
+  落ちないよう、テスト内で `ENCRYPTION_KEY` 等は満たした上で環境解決だけを見る。
+  既定値を `'development'` に戻すと2件が失敗することを確認済み
+- **実測**: backend 767件 / frontend 105件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/api/environmentDefault.test.js`
+- **次の問い**: 認可の枠組みと既定値は閉じた。残るのは
+  **「その権限は、実際の運用でどう割り当てられるのか」**
+  （初回admin以降のロール昇格経路、`accounts.setRole`のログ・通知等）——
+  これは所有者の運用ポリシー次第であり、機械的な欠陥検出の対象外である
+
+---
+
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
 
 ### D-1. ✅ 解決済み（2026-07-04） — リアルタイム層が事実上ゼロ稼働だった【両側断線】

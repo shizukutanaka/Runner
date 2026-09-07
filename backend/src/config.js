@@ -3,6 +3,25 @@ require('dotenv').config();
 
 const crypto = require('crypto');
 
+// E-41: 実行環境の既定値は **production** である。
+//
+// 以前はどこも `process.env.NODE_ENV || 'development'` で、
+// **NODE_ENV を設定し忘れると開発モードになった**。開発モードでは:
+//
+//   middleware/auth.js       トークン無しの要求を role:'admin' として通す
+//   middleware/errorHandler  500応答にスタックトレースを載せる
+//   validateConfig           必須シークレットの未設定を見逃す
+//   rateLimit                既定で無効（ログインの総当たり対策が働かない）
+//   authCookies              Cookie に Secure を付けない
+//
+// つまり `NODE_ENV` を書き忘れて `node src/server.js` した瞬間、
+// **認証なしで誰でも管理者として全APIを叩ける**状態になっていた。
+// 設定漏れが最悪の結果に繋がる既定値は、それ自体が欠陥である。
+//
+// 開発モードが欲しい人は `NODE_ENV=development` と明示する
+// （`npm run dev` の nodemon は既にそうしている）。
+const resolveEnvironment = () => process.env.NODE_ENV || 'production';
+
 // SESSION_SECRETが未設定だとexpress-session自体が"secret option required for sessions"で
 // 例外を投げ、全リクエストが500になる（JWT_SECRETには既に開発用フォールバックがあるが、
 // こちらには無かったため、.envを用意していない開発/検証環境でアプリが起動直後から
@@ -11,7 +30,7 @@ const resolveSessionSecret = () => {
   if (process.env.SESSION_SECRET) {
     return process.env.SESSION_SECRET;
   }
-  if ((process.env.NODE_ENV || 'development') === 'production') {
+  if (resolveEnvironment() === 'production') {
     return undefined;
   }
   console.warn('[Config] SESSION_SECRET is missing. Using a randomly generated secret for development only. Sessions will not persist across restarts.');
@@ -26,7 +45,7 @@ const config = {
     name: process.env.APP_NAME || 'YouTube & Twitch Comment Manager',
     version: process.env.APP_VERSION || '2.1.0',
     port: parseInt(process.env.PORT) || 3000,
-    env: process.env.NODE_ENV || 'development',
+    env: resolveEnvironment(),
     debug: process.env.DEBUG_MODE === 'true'
   },
 
@@ -137,7 +156,7 @@ const config = {
   rateLimit: {
     enabled: process.env.RATE_LIMIT_ENABLED !== undefined
       ? process.env.RATE_LIMIT_ENABLED === 'true'
-      : (process.env.NODE_ENV || 'development') === 'production',
+      : resolveEnvironment() === 'production',
     store: process.env.RATE_LIMIT_STORE || 'memory', // 'memory' | 'redis'
     // `RATE_LIMIT_STORE=redis` のとき security.js が
     // `createClient({ url: config.rateLimit.redisUrl })` に渡す接続先。
@@ -175,7 +194,7 @@ const config = {
   },
 
   // config.app.env のエイリアス（一部モジュールが config.environment を参照するため）
-  environment: process.env.NODE_ENV || 'development',
+  environment: resolveEnvironment(),
 
   // 環境変数を直接取得するヘルパー（デフォルト値対応）
   getEnv(key, defaultValue) {

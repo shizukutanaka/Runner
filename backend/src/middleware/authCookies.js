@@ -33,7 +33,8 @@ const REFRESH_COOKIE = 'refresh_token';
 // 状態を変えるメソッドだけがCSRFの対象。GET/HEAD/OPTIONSは対象外
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-const isProduction = () => (process.env.NODE_ENV || 'development') === 'production';
+// E-41: 既定は production。NODE_ENV の書き忘れで Secure が外れないようにする
+const isProduction = () => (process.env.NODE_ENV || 'production') === 'production';
 
 const baseCookieOptions = () => ({
   httpOnly: true,

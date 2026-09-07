@@ -661,7 +661,7 @@ async function setupWebSocket(server, app) {
       timestamp: new Date().toISOString(),
       serverInfo: {
         version: process.env.npm_package_version || '1.0.0',
-        environment: process.env.NODE_ENV || 'development'
+        environment: process.env.NODE_ENV || 'production'
       }
     });
   });

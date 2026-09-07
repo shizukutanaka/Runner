@@ -310,8 +310,18 @@ const authenticateToken = (req, res, next) => {
   req.authSource = source;
 
   if (!token) {
-    // Development mode: allow anonymous access with limited permissions
+    // 開発時の便宜として、トークン無しの要求を通す。
+    //
+    // E-41: コメントは以前「limited permissions」と書いてあったが、
+    // 実際に付与しているのは **admin** である。制限どころか最大権限なので、
+    // どの環境でこれが働くのかが決定的に重要になる。
+    // `config.environment` の既定値は production に変えた（config.js 参照）。
+    // NODE_ENV=development と**明示した場合にだけ**ここを通る。
     if (config.environment === 'development') {
+      logger.warn('[Auth] Anonymous request granted admin (development mode)', {
+        method: req.method,
+        endpoint: req.originalUrl
+      });
       req.user = { id: 'dev-admin', role: 'admin', permissions: ['admin'] };
       return next();
     }
@@ -328,16 +338,48 @@ const authenticateToken = (req, res, next) => {
   next();
 };
 
+// 役割の序列。**ここに無い名前を requireRole に渡してはいけない。**
+//
+// E-40: 以前この表は `{ admin: 3, moderator: 2, user: 1, guest: 0 }` で、
+// 判定は `roleHierarchy[requiredRole] || 0` だった。
+// ところがルートは12箇所で `requireRole('analyst')` を使っている。
+// `analyst` は表に無いので要求レベルは **0** になり、
+// **認証さえ通れば誰でも通過する**ガードになっていた。
+// 役割名を1文字打ち間違えても同じことが起きる。
+//
+// 認可は「分からないときは閉じる」でなければならない。
+// 未知の役割名は 0 に丸めず、拒否する（下の requireRole を参照）。
+const ROLE_HIERARCHY = { guest: 0, user: 1, analyst: 2, moderator: 3, admin: 4 };
+
 const requireRole = (requiredRole) => {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
-    const userRole = req.user.role || 'user';
-    const roleHierarchy = { admin: 3, moderator: 2, user: 1, guest: 0 };
-    const userLevel = roleHierarchy[userRole] || 0;
-    const requiredLevel = roleHierarchy[requiredRole] || 0;
+    const userRole = req.user.role;
+
+    // 要求側の役割名が表に無いのは**プログラムの誤り**である。
+    // 素通りさせると誰も気づけないので、閉じたうえで大きく記録する
+    if (!(requiredRole in ROLE_HIERARCHY)) {
+      logger.error('[Auth] Unknown required role; denying', { requiredRole, endpoint: req.originalUrl });
+      return res.status(403).json({ error: 'Role check misconfigured' });
+    }
+
+    // 持ち主側の役割名が表に無い場合も閉じる。
+    // 「知らない役割＝最低権限」に丸めると、綴りの違いが権限昇格になりうる
+    if (!userRole || !(userRole in ROLE_HIERARCHY)) {
+      logger.warn('[Auth] Unknown user role; denying', {
+        userId: req.user.id,
+        userRole,
+        requiredRole,
+        endpoint: req.originalUrl
+      });
+      return res.status(403).json({ error: `Role '${requiredRole}' required` });
+    }
+
+    const userLevel = ROLE_HIERARCHY[userRole];
+    const requiredLevel = ROLE_HIERARCHY[requiredRole];
 
     if (userLevel < requiredLevel) {
       logger.warn('[Auth] Insufficient permissions', {
@@ -384,6 +426,7 @@ const createApiKey = (userId, permissions = ['read']) => {
 };
 
 module.exports = {
+  ROLE_HIERARCHY,
   generateToken,
   authenticateToken,
   requireRole
