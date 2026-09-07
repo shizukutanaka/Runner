@@ -68,14 +68,25 @@ exports.register = async (req, res, next) => {
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const id = uuidv4();
 
-    // 最初に登録されたアカウントは管理者にする（他に管理者を作成する手段がないため）
-    const { cnt } = await dbGet('SELECT COUNT(*) as cnt FROM accounts');
-    const role = cnt === 0 ? 'admin' : 'moderator';
-
+    // 最初に登録されたアカウントは管理者にする（他に管理者を作成する手段がないため）。
+    //
+    // E-42: 以前はここで「件数をSELECTしてから、その結果でroleを決めてINSERTする」
+    // という**2本の別々のSQL文**に分かれていた。間には bcrypt.hash（本番コストで
+    // 数百ms）を挟んでおり、配備直後のアカウント0件の瞬間に複数の登録リクエストを
+    // 同時に送ると、**全員が「0件」を観測して全員がadminになった**
+    // （実測: 5並列送信で5件ともadmin）。ユーザー名/メールのUNIQUE制約は
+    // 別の値である限り防波堤にならない。
+    //
+    // 判定と書き込みを分けず、**1本のSQL文の中でサブクエリとして判定する**。
+    // SQLiteは単一の書き込み文を単一の暗黙トランザクションとして扱い、
+    // 同時に書き込もうとする別の文は完了まで待たされる（ファイルレベルの
+    // ロック）。これによりチェックと書き込みの間の窓自体が無くなる。
     await dbRun(
       `INSERT INTO accounts (id, username, email, password_hash, role, status)
-       VALUES (?, ?, ?, ?, ?, 'active')`,
-      [id, username, email, passwordHash, role]
+       VALUES (?, ?, ?, ?,
+         CASE WHEN (SELECT COUNT(*) FROM accounts) = 0 THEN 'admin' ELSE 'moderator' END,
+         'active')`,
+      [id, username, email, passwordHash]
     );
 
     const account = await dbGet('SELECT * FROM accounts WHERE id = ?', [id]);

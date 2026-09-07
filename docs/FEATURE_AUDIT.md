@@ -1284,10 +1284,65 @@ E-40で認可の中身を固定した。次の問いは
   既定値を `'development'` に戻すと2件が失敗することを確認済み
 - **実測**: backend 767件 / frontend 105件、失敗0・skip 0
 - **再検証**: `cd backend && npx jest tests/api/environmentDefault.test.js`
-- **次の問い**: 認可の枠組みと既定値は閉じた。残るのは
-  **「その権限は、実際の運用でどう割り当てられるのか」**
-  （初回admin以降のロール昇格経路、`accounts.setRole`のログ・通知等）——
-  これは所有者の運用ポリシー次第であり、機械的な欠陥検出の対象外である
+- **次の問い**: 認可の枠組みと既定値は閉じた。残る問いは
+  **「その役割は、誰がどう決めるのか。決め方自体は攻撃者にゲームされないか？」**
+  である（E-42でこちらも機械的な欠陥だったと判明した）
+
+---
+
+### E-42. ✅ 解決済み（2026-09-07） — 「最初のアカウントを管理者にする」ロジックに競合状態があった
+
+E-40・E-41は「役割チェックの中身」と「その既定値」を固定した。次の問いは
+**「その役割は、誰がどう決めるのか。決め方自体は攻撃者にゲームされないか？」**である。
+
+- **証拠**: `authController.register` は最初のアカウントを管理者にするために、
+  次の手順を踏んでいた（修正前）:
+
+  ```js
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS); // 本番コストで数百ms
+  const { cnt } = await dbGet('SELECT COUNT(*) as cnt FROM accounts');
+  const role = cnt === 0 ? 'admin' : 'moderator';
+  await dbRun('INSERT INTO accounts (...) VALUES (..., role, ...)');
+  ```
+
+  「件数を確認してから、その結果を使って書き込む」という**チェックと書き込みが
+  別々のSQL文**であり、間に `bcrypt.hash`（本番コストで数百ms）を挟んでいる。
+  アカウントが1件も無い**配備直後の瞬間**に、ユーザー名/メールが重複しない
+  複数の登録リクエストを同時に送ると、**全員が「0件」を観測し、全員が
+  admin になる**。典型的な TOCTOU（check-then-act）競合である
+- **実測**: このロジックのまま5件を同時送信すると **5件とも admin** になった
+  （`accountBootstrapRace.test.js` で再現・確認済み）。UNIQUE制約は
+  ユーザー名/メールが異なれば防波堤にならない
+- **なぜ重大か**: 「配備直後に誰が最初の管理者になるか」は
+  この製品で最も無防備な瞬間である。攻撃者が新規デプロイを検知して
+  登録エンドポイントへ並列リクエストを送るだけで、複数の管理者アカウントを
+  作成できる。E-40・E-41で役割チェックの中身と既定値を固めても、
+  **役割そのものの割り当てが壊れていれば無意味**である
+- **実施した対応**: チェックと書き込みを1本のSQL文に統合し、
+  役割の判定をサブクエリとして同じ `INSERT` の中で行うようにした:
+
+  ```sql
+  INSERT INTO accounts (id, username, email, password_hash, role, status)
+  VALUES (?, ?, ?, ?,
+    CASE WHEN (SELECT COUNT(*) FROM accounts) = 0 THEN 'admin' ELSE 'moderator' END,
+    'active')
+  ```
+
+  SQLiteは単一の書き込み文を単一の暗黙トランザクションとして扱い、
+  同時に書き込もうとする別の文はファイルレベルのロックで完了まで待たされる。
+  チェックと書き込みの間に窓が存在しなくなるため、Node側のスケジューリングに
+  依存せず競合が解消される
+- **ガード**: `backend/tests/integration/accountBootstrapRace.test.js`（1件）—
+  アカウント0件の状態を明示的に作った上で5件を同時登録し、
+  **admin になるのはちょうど1人**であることを検査する。
+  旧実装に戻すと `Expected: 1 / Received: 5` で落ちることを確認済み。
+  修正後は5回連続実行して安定してpassすることも確認した
+- **実測**: backend 768件 / frontend 105件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/integration/accountBootstrapRace.test.js`
+- **次の問い**: check-then-act の形をした競合状態は、他の「件数で分岐する」
+  ロジックにも潜みうる（例: 初回のみ許可する処理、上限件数のチェック等）。
+  同じ形を全部探すべきだが、これは`grep`だけでは機械的に見つけにくく、
+  各分岐の意味を読む必要がある——次に着手する価値のある層である
 
 ---
 
