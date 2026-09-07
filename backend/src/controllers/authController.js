@@ -359,11 +359,32 @@ exports.resetPassword = async (req, res, next) => {
     }
 
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+
+    // E-44: リセットトークンは single-use（使用後は reset_token_hash を NULL に
+    // 戻す）という設計意図だったが、以前は「トークンの検証」（上のSELECT）と
+    // 「トークンを使い切る書き込み」（このUPDATE）が別文で、しかもUPDATEの
+    // WHERE句は `id = ?` だけでトークンを再検証していなかった。
+    // 同じトークンで複数のリセットリクエストが同時に届くと、**全員が
+    // 上のSELECTで「有効だ」と判定し、全員がパスワードを変更できた**
+    // （実測: 5並列で5件とも成功）。トークン漏えいを前提にした攻撃では、
+    // 正規ユーザーが使った「はず」のトークンが攻撃者にも通用する窓になる。
+    //
+    // E-42・E-43と同じ原理で、トークンを使い切る操作自体を
+    // `WHERE reset_token_hash = ? AND reset_token_expires > CURRENT_TIMESTAMP`
+    // 付きの単一UPDATEにし、実際に更新できたか（changes）で
+    // 「自分がこのトークンを使い切れたか」を判定する。
     // パスワード変更時は既存のリフレッシュトークンも無効化し、他端末のセッションを終了させる
-    await dbRun(
-      'UPDATE accounts SET password_hash = ?, reset_token_hash = NULL, reset_token_expires = NULL, refresh_token_hash = NULL, refresh_token_expires = NULL WHERE id = ?',
-      [passwordHash, account.id]
+    const claim = await dbRun(
+      `UPDATE accounts
+       SET password_hash = ?, reset_token_hash = NULL, reset_token_expires = NULL,
+           refresh_token_hash = NULL, refresh_token_expires = NULL
+       WHERE id = ? AND reset_token_hash = ? AND reset_token_expires > CURRENT_TIMESTAMP`,
+      [passwordHash, account.id, tokenHash]
     );
+
+    if (claim.changes === 0) {
+      return next({ status: 400, message: 'リセットトークンが無効か期限切れです' });
+    }
 
     logger.info('[Auth] Password reset completed', { id: account.id });
     res.json({ success: true, message: 'パスワードがリセットされました' });

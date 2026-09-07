@@ -1404,9 +1404,68 @@ E-42で「件数で分岐する」書き込みの競合を1件見つけた。**1
 - **実測**: backend 771件 / frontend 105件、失敗0・skip 0
 - **再検証**: `cd backend && npx jest tests/integration/heldMessageRace.test.js`
 - **次の問い**: 同じ形（状態で分岐するcheck-then-act）を持つ書き込みが
-  他にもまだ残っている可能性がある。今回は「読んで探す」しかできなかった
-  ——次に機械的な走査方法（例: `SELECT`の直後に条件分岐、さらに後で
-  別のUPDATE/INSERTが続くパターンをASTで検出する等）を検討する価値がある
+  他にもまだ残っている可能性がある。「一度きりであるべき資源」
+  （トークン・招待コード・使い切りクーポン等）は特に疑わしい
+  ——実際に読んだところ E-44 が見つかった
+
+---
+
+### E-44. ✅ 解決済み（2026-09-07） — パスワードリセットトークンが何度でも使い回せた（同じ形をさらに横展開）
+
+E-42・E-43の check-then-act は「件数」「状態」で分岐していた。次の問いは
+**「一度きりであるべき資源にも同じ形は無いか？」**である。
+パスワードリセットトークンは典型例——`reset_token_hash`を使用後に
+NULLへ戻すという single-use の設計意図がコードに明記されている。
+
+- **証拠**（修正前）:
+
+  ```js
+  const account = await dbGet(
+    'SELECT * FROM accounts WHERE reset_token_hash = ? AND reset_token_expires > CURRENT_TIMESTAMP',
+    [tokenHash]
+  );
+  if (!account) return next({ status: 400, ... });
+  const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS); // 本番コストで数百ms
+  await dbRun(
+    'UPDATE accounts SET password_hash = ?, reset_token_hash = NULL, ... WHERE id = ?',
+    [passwordHash, account.id]
+  );
+  ```
+
+  トークンの**検証**（SELECT）とトークンを**使い切る書き込み**（UPDATE）が
+  別文であるだけでなく、**UPDATEのWHERE句が`id = ?`だけでトークンを
+  再検証していない**。同じトークンで複数のリセットリクエストが同時に届くと、
+  全員が最初のSELECTで「有効だ」と判定し、**全員がパスワードを変更できる**
+- **実測**: 同じトークンで5並列にリセットを試みると **5件とも成功**した
+  （`passwordResetRace.test.js`で再現）。single-useのはずのトークンが
+  複数回通用してしまう
+- **なぜ重大か**: リセットトークンの漏えい（共有受信箱・メール転送・
+  ログ露出・URLのリファラ漏れ等）を前提にした攻撃では、
+  「正規ユーザーが1回使った“はず”のトークン」が攻撃者にも通用する窓が
+  生まれる。single-use保証はパスワードリセット機構の安全性の根幹である
+- **実施した対応**: E-42・E-43と同じ原理で、トークンを使い切る操作自体を
+  検証条件つきの単一UPDATEにした:
+
+  ```sql
+  UPDATE accounts SET password_hash = ?, reset_token_hash = NULL, ...
+  WHERE id = ? AND reset_token_hash = ? AND reset_token_expires > CURRENT_TIMESTAMP
+  ```
+
+  実際に更新できた行数（`changes`）で「自分がこのトークンを使い切れたか」を
+  判定し、0なら「トークンが無効か期限切れ」として400を返す。
+  最初のSELECTは404/400の早期判定とログ用のidを得るためだけに残し、
+  **実際の安全性はUPDATEのWHERE句が担保する**構造にした
+- **ガード**: `backend/tests/integration/passwordResetRace.test.js`（1件）—
+  同じトークンで同時に5回リセットを試みても、成功するのはちょうど1回で
+  あることを検査する。旧実装に戻すと`Expected: 1 / Received: 5`で
+  落ちることを確認済み。修正後は5回連続実行して安定してpassすることも確認した
+- **実測**: backend 772件 / frontend 105件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/integration/passwordResetRace.test.js`
+- **次の問い**: 同じ観点（一度きりであるべき資源）でリフレッシュトークンの
+  ローテーション、2FA検証コードの使い回し、招待/APIキー系エンドポイントも
+  点検の価値がある。ただし本セッションで見つかった3件
+  （E-42/E-43/E-44）はいずれも「読んで探す」ことで発見しており、
+  網羅性は保証されていない——残りは所有者側の継続的なレビュー対象とする
 
 ---
 
