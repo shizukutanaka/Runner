@@ -1872,6 +1872,68 @@ E-50で「テストが無い画面」を1つずつ調べ始めた流れで、Set
   他の機械検査（`tableWriters.test.js`・`deadApiExports.test.js`等）にも
   同種の名前衝突の穴が無いか、横展開して確認する価値があることを示している
 
+### E-52. ✅ 解決済み（2026-09-08） — `.env.example`の完全性検査は「書かれているキーが読まれるか」の片方向だけで、しかも部分文字列一致で誤判定しうる状態だった。19個の実キーが設定例から丸ごと抜けていた
+
+E-51の「次の問い」どおり、他の機械検査に同型の穴が無いか横展開した。
+`tableWriters.test.js`（テーブル名はSQLキーワード直後のみに限定して照合しており
+無関係）と`deadApiExports.test.js`（フロント側。import文を解析する設計で、
+E-33の教訓どおり最初から名前衝突に対して頑健）は問題無し。
+`envExample.test.js`だけが`deadExports.test.js`と同じ**裸の部分文字列一致**
+（`source.includes(key)`）を使っていた。
+
+- **証拠**: 実証実験として、実在しない架空のキー`SUPPORT_EMAIL`で
+  `source.includes('SUPPORT_EMAIL')`を試したところ`true`が返った。
+  理由を追うと、これは偶然ではなく**本物の`process.env.SUPPORT_EMAIL`が
+  `settingsController.js`に実在した**ためだった——つまりこの一致は
+  たまたま正しかったが、`.includes()`という判定方法そのものは
+  「キー名が別の単語の一部としてたまたま出現しただけ」でも同じく
+  `true`を返す設計であり、正しさを保証しない（`CACHE_TTL`という
+  短いキーが、E-51で扱ったばかりの無関係な`CACHE_TTL_MS`という
+  JS定数名の一部として一致してしまうケースも実際にあった。こちらは
+  たまたま`config.js`に本物の`process.env.CACHE_TTL`があったため
+  実害は無かったが、判定方法自体の脆弱性は同じ）
+- **調査で判明したこと**: このテストは「`.env.example`に書かれたキーが
+  読まれるか」の**片方向**しか検査していなかった。逆方向
+  （「コードが読むキーは、すべて`.env.example`に書かれているか」）は
+  一度も検査されておらず、実際に**19個の環境変数が完全に未文書化**だった:
+  `SMTP_HOST`/`SMTP_PORT`/`SMTP_SECURE`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`
+  （D-3でメール送信を実装した際に追加されたキー。当時`.env.example`への
+  反映が漏れていた）、`SESSION_NAME`/`SESSION_COOKIE_DOMAIN`/`SESSION_ROLLING`/
+  `SESSION_REDIS_URL`/`SESSION_REDIS_PREFIX`、`BCRYPT_ROUNDS`、
+  `DATABASE_URL`、`ALLOWED_ORIGINS`、`TRUST_PROXY`、`DEFAULT_ADMIN_EMAIL`、
+  `SUPPORT_EMAIL`、`REMOTE_BACKUP_URL`、`CHECK_ENV_STRICT`。
+  なかでも`ALLOWED_ORIGINS`は象徴的で、既存のコメント自体が
+  「複数オリジンを許可する場合は`ALLOWED_ORIGINS`にカンマ区切りで指定」と
+  利用者に**設定を指示していながら、そのキー自体が設定例に存在しない**
+  という矛盾を起こしていた
+- **なぜ重大か**: `.env.example`はこの製品の「設定可能な項目の唯一の目録」
+  として運用されている（D-3のドキュメントも「関連env変数」として
+  SMTP系キーを列挙していたが、それが実際に`.env.example`に反映された
+  ことは一度も検査されていなかった）。運用者はSMTP設定やセッションの
+  Redis化、Cookieドメイン指定、リバースプロキシ配下でのTRUST_PROXY設定
+  など、**コードが完全にサポートしている機能の存在自体を知りようがなかった**
+- **実施した対応**:
+  1. `envExample.test.js`の判定を`process.env.KEY`／`process.env['KEY']`／
+     `getEnv('KEY'`という実際のアクセス形にのみ一致させるよう厳格化
+     （E-51の`deadExports.test.js`修正と同じ設計判断）
+  2. 「コードが読むキーは、すべて`.env.example`に書かれている」という
+     逆方向のテストを新規追加
+  3. `.env.example`に19個のキーを追加。既存のセクション構成に沿って配置し
+     （秘密鍵/セッション/データベース/CORS・セキュリティ/バックアップ/
+     新設のメール送信・連絡先表示・開発・CIセクション）、それぞれに
+     コードが実際に使う既定値と一言コメントを付けた
+- **ガード**: `backend/tests/services/envExample.test.js`に2件追加
+  （空振り防止・逆方向の完全性）。`.env.example`を修正前の状態に
+  `git stash`で戻すと、逆方向のテストが19個全キーを列挙して失敗することを
+  確認済み。厳格化した判定方法についても、旧ロジック（`.includes()`）だと
+  `SUPPORT_EMAIL`のような偶然の一致に判定の正しさを依存していたことを
+  実証実験で確認した上で修正した
+- **実測**: backend 789件（787+2）/ frontend 128件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/services/envExample.test.js`
+- **次の問い**: `docs/DEPLOYMENT_GUIDE.md`を確認したところ、env変数を
+  個別に列挙・重複記載している箇所は無く（`.env.example`自体を
+  唯一の目録として参照する構成）、追加の横展開は不要だった
+
 ---
 
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
