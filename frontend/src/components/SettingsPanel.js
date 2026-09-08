@@ -21,7 +21,6 @@ import {
   Card,
   CardContent,
   Divider,
-  Chip,
   IconButton,
 } from '@mui/material';
 import {
@@ -30,7 +29,6 @@ import {
   Notifications as NotificationsIcon,
   Security as SecurityIcon,
   Translate as TranslateIcon,
-  SmartToy as ChatbotIcon,
   ExpandMore as ExpandMoreIcon,
   Diversity3 as CultureIcon
 } from '@mui/icons-material';
@@ -173,7 +171,6 @@ export default function SettingsPanel({ platform = 'YouTube' }) {
   const tabs = [
     { id: 'moderation', label: t('settings_tab_moderation'), icon: <SecurityIcon /> },
     { id: 'ai', label: t('settings_tab_ai'), icon: <SettingsIcon /> },
-    { id: 'chatbot', label: 'AIチャットボット', icon: <ChatbotIcon /> },
     { id: 'ui', label: t('settings_tab_ui'), icon: <PaletteIcon /> },
     { id: 'notifications', label: t('settings_tab_notifications'), icon: <NotificationsIcon /> },
     { id: 'translation', label: t('settings_tab_translation'), icon: <TranslateIcon /> },
@@ -508,171 +505,6 @@ export default function SettingsPanel({ platform = 'YouTube' }) {
                 </Alert>
                 <Button variant="outlined" size="small">
                   {t('settings_ai_open_threshold_button')}
-                </Button>
-              </Grid>
-            </Grid>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* AIチャットボット設定 */}
-      {activeTab === 'chatbot' && (
-        <Card sx={{
-          borderRadius: 3,
-          boxShadow: '0 1px 3px 0 rgba(23, 43, 77, 0.1)',
-          border: `1px solid ${theme.palette.divider}`,
-          overflow: 'visible',
-        }}>
-          <CardContent sx={{ p: 4 }}>
-            <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, color: theme.palette.text.primary }}>
-              AIチャットボット設定
-            </Typography>
-            <Grid container spacing={3}>
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={settings.chatbot?.enabled || false}
-                      onChange={(e) => handleSave('chatbot', { enabled: e.target.checked })}
-                    />
-                  }
-                  label="AIチャットボットを有効にする"
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={settings.chatbot?.autoRespond || false}
-                      onChange={(e) => handleSave('chatbot', { autoRespond: e.target.checked })}
-                    />
-                  }
-                  label="自動応答を有効にする"
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="信頼度閾値"
-                  type="number"
-                  value={settings.chatbot?.confidenceThreshold || 0.7}
-                  onChange={(e) => handleSave('chatbot', { confidenceThreshold: parseFloat(e.target.value) })}
-                  InputProps={{ inputProps: { min: 0, max: 1, step: 0.1 } }}
-                  helperText="この値以上の信頼度で自動応答します"
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="1分あたりの最大応答数"
-                  type="number"
-                  value={settings.chatbot?.maxResponsesPerMinute || 10}
-                  onChange={(e) => handleSave('chatbot', { maxResponsesPerMinute: parseInt(e.target.value) })}
-                  InputProps={{ inputProps: { min: 1, max: 50 } }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
-                  <InputLabel>対応言語</InputLabel>
-                  <Select
-                    multiple
-                    value={settings.chatbot?.supportedLanguages || ['ja', 'en']}
-                    onChange={(e) => handleSave('chatbot', { supportedLanguages: e.target.value })}
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => (
-                          <Chip key={value} label={value} size="small" />
-                        ))}
-                      </Box>
-                    )}
-                  >
-                    <MenuItem value="ja">日本語</MenuItem>
-                    <MenuItem value="en">English</MenuItem>
-                    <MenuItem value="zh">中文</MenuItem>
-                    <MenuItem value="ko">한국어</MenuItem>
-                    <MenuItem value="es">Español</MenuItem>
-                    <MenuItem value="fr">Français</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              {/* パーソナリティ設定 */}
-              <Grid item xs={12}>
-                <Divider sx={{ my: 2 }} />
-                <Typography variant="subtitle1" gutterBottom>
-                  パーソナリティ設定
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={4}>
-                    <FormControl fullWidth>
-                      <InputLabel>トーン</InputLabel>
-                      <Select
-                        value={settings.chatbot?.personality?.tone || 'friendly'}
-                        onChange={(e) => handleSave('chatbot', {
-                          personality: {
-                            ...settings.chatbot?.personality,
-                            tone: e.target.value
-                          }
-                        })}
-                      >
-                        <MenuItem value="friendly">フレンドリー</MenuItem>
-                        <MenuItem value="professional">プロフェッショナル</MenuItem>
-                        <MenuItem value="casual">カジュアル</MenuItem>
-                        <MenuItem value="enthusiastic">熱狂的</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <FormControl fullWidth>
-                      <InputLabel>敬語レベル</InputLabel>
-                      <Select
-                        value={settings.chatbot?.personality?.formality || 'casual'}
-                        onChange={(e) => handleSave('chatbot', {
-                          personality: {
-                            ...settings.chatbot?.personality,
-                            formality: e.target.value
-                          }
-                        })}
-                      >
-                        <MenuItem value="formal">丁寧語</MenuItem>
-                        <MenuItem value="casual">普通</MenuItem>
-                        <MenuItem value="informal">くだけた</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <FormControl fullWidth>
-                      <InputLabel>ユーモア度</InputLabel>
-                      <Select
-                        value={settings.chatbot?.personality?.humor || 'moderate'}
-                        onChange={(e) => handleSave('chatbot', {
-                          personality: {
-                            ...settings.chatbot?.personality,
-                            humor: e.target.value
-                          }
-                        })}
-                      >
-                        <MenuItem value="none">なし</MenuItem>
-                        <MenuItem value="low">低め</MenuItem>
-                        <MenuItem value="moderate">適度</MenuItem>
-                        <MenuItem value="high">高め</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                </Grid>
-              </Grid>
-
-              {/* カスタム応答 */}
-              <Grid item xs={12}>
-                <Divider sx={{ my: 2 }} />
-                <Typography variant="subtitle1" gutterBottom>
-                  カスタム応答設定
-                </Typography>
-                <Alert severity="info" sx={{ mb: 2 }}>
-                  特定のキーワードに対するカスタム応答を設定できます。
-                </Alert>
-                <Button variant="outlined" size="small">
-                  カスタム応答を編集
                 </Button>
               </Grid>
             </Grid>

@@ -30,6 +30,8 @@ router.put('/user/:userId', requireRole('admin'), requireUserParam, ctrl.updateS
 
 // テーマ色設定
 router.put('/user/:userId/theme', requireRole('admin'), validateUserBody(settingsSchema.setTheme), ctrl.setTheme);
+// 表示設定（フォントサイズ・密度・メディア表示等）
+router.put('/user/:userId/display', requireRole('admin'), validateUserBody(settingsSchema.setDisplay), ctrl.setDisplay);
 // レイアウト設定
 router.put('/user/:userId/layout', requireRole('admin'), validateUserBody(settingsSchema.setLayout), ctrl.setLayout);
 // 通知ON/OFF

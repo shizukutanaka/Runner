@@ -229,6 +229,48 @@ describe('Settings API', () => {
     });
   });
 
+  // E-51: `settingsController.setDisplay` と `validation/settings.setDisplay` は
+  // どちらも完成していたが、routes/settings.js に登録されておらず、
+  // 兄弟の30近いエンドポイント（theme・layout・notifications等）と違って
+  // PUTしても404にしかならなかった。死蔵エクスポート検査（deadExports.test.js）が
+  // 「同名の別の死蔵コードが互いを参照ありと誤認する」穴を塞いだことで見つかった
+  describe('PUT /api/settings/user/:userId/display', () => {
+    it('正常系: 表示設定更新（未指定項目は既定値で補完される）', async () => {
+      const res = await request(app)
+        .put(userRoute('/display'))
+        .send({ fontSize: 'large', density: 'compact' })
+        .set(adminAuth())
+        .expect(200);
+
+      expect(res.body.status).toBe(200);
+      expect(res.body.data.display.fontSize).toBe('large');
+      expect(res.body.data.display.density).toBe('compact');
+      // 未指定のフィールドはハンドラの既定値で埋まる（値が捏造ではなく仕様どおりであることの確認）
+      expect(res.body.data.display.showAvatars).toBe(true);
+      expect(res.body.data.display.autoPlayMedia).toBe(false);
+    });
+
+    it('異常系: 不正なフォントサイズ', async () => {
+      const res = await request(app)
+        .put(userRoute('/display'))
+        .send({ fontSize: 'gigantic' })
+        .set(adminAuth())
+        .expect(400);
+
+      expect(res.body.message).toMatch(/フォントサイズ|fontSize|無効|invalid/);
+    });
+
+    it('異常系: 不正な表示密度', async () => {
+      const res = await request(app)
+        .put(userRoute('/display'))
+        .send({ density: 'ultra' })
+        .set(adminAuth())
+        .expect(400);
+
+      expect(res.body.message).toMatch(/表示密度|density|無効|invalid/);
+    });
+  });
+
   describe('PUT /api/settings/user/:userId/notifications', () => {
     it('正常系: 通知設定更新', async () => {
       const notificationSettings = {

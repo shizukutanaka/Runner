@@ -13,8 +13,7 @@ const CACHE_TTL_MS = {
   sentiment: 10 * 60 * 1000,   // 10分 - 同じテキストの感情分析は変わらない
   toxicity:  30 * 60 * 1000,   // 30分 - 毒性スコアは安定
   translate:  5 * 60 * 1000,   // 5分
-  summarize:  3 * 60 * 1000,   // 3分 - コメントは変動
-  chatbot:    0                  // キャッシュしない (文脈依存)
+  summarize:  3 * 60 * 1000    // 3分 - コメントは変動
 };
 
 function _cacheKey(type, ...args) {
@@ -369,65 +368,6 @@ async function detectToxicContent(text) {
   }
 }
 
-// Generate AI response for chatbot
-async function generateChatbotResponse(userMessage, context = {}) {
-  if (!isAvailable) {
-    initializeOpenAI();
-    if (!isAvailable) {
-      return {
-        response: 'AI assistant is currently unavailable.',
-        confidence: 0,
-        error: 'OpenAI not available'
-      };
-    }
-  }
-
-  try {
-    const systemPrompt = `You are a helpful, friendly chatbot for a live streaming platform.
-- Respond naturally and concisely
-- Be supportive and engaging
-- Use the streamer's context when available
-- Detect the user's language and respond in the same language
-- Keep responses under 200 characters unless more detail is needed`;
-
-    const messages = [
-      { role: 'system', content: systemPrompt }
-    ];
-
-    // Add context if available
-    if (context.previousMessages && context.previousMessages.length > 0) {
-      context.previousMessages.forEach((msg) => {
-        messages.push({ role: msg.role, content: msg.content });
-      });
-    }
-
-    messages.push({ role: 'user', content: userMessage });
-
-    const completion = await _withRetry(() => _callWithTimeout(() =>
-      openai.chat.completions.create({
-        model: config.services.openai.model,
-        messages,
-        temperature: 0.8,
-        max_tokens: 150
-      })
-    ));
-
-    const output = {
-      response:   completion.choices[0].message.content,
-      confidence: 0.8,
-      model: config.services.openai.model,
-      usage: completion.usage
-    };
-    _trackUsage('chatbot', completion.usage);
-    return output;
-
-  } catch (error) {
-    logger.error('[OpenAI] Chatbot response generation failed:', error.message);
-    _trackError('chatbot');
-    return { response: 'Sorry, I couldn\'t process your message right now.', confidence: 0, error: error.message };
-  }
-}
-
 // Summarize multiple comments
 async function summarizeComments(comments, options = {}) {
   if (!isAvailable) {
@@ -570,7 +510,6 @@ module.exports = {
   analyzeSentiment,
   detectToxicContent,
   moderateWithPolicy,
-  generateChatbotResponse,
   summarizeComments,
   translateText,
   getCostStats,

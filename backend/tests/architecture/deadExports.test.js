@@ -52,11 +52,27 @@ const exportedNames = (src) => {
   return [...names];
 };
 
+// E-51: 単純な文字列一致だけで「参照あり」と判定していたため、
+// 「同じ名前の、これまた誰にも呼ばれない関数がたまたま別ファイルにも
+// 宣言されている」というだけで参照ありと誤認する穴があった
+// （AIサービス側のチャットボット応答生成関数が、別サービスに存在した
+// 同名かつ同じく無呼び出しの関数宣言のせいで「参照あり」と判定され、
+// 本欄のガードをすり抜けていた）。E-33でフロント側の死蔵コード検査に
+// 同じ形の穴が見つかったのと同じ罠である。
+// 他ファイルの中身から「同名の宣言そのもの」を取り除いてから参照を探すことで、
+// 宣言同士が互いを参照し合ったことにしてしまう誤判定を防ぐ
+const DECLARATION_LINE = (name) => new RegExp(
+  `^.*\\b(function\\s+${name}\\b|(const|let|var)\\s+${name}\\s*=|exports\\.${name}\\s*=).*$`,
+  'gm'
+);
+
 const referencedElsewhere = (name, ownPath) => {
   const re = new RegExp(`\\b${name}\\b`);
+  const declRe = DECLARATION_LINE(name);
   for (const [p, text] of texts) {
     if (p === ownPath) continue;
-    if (re.test(text)) return true;
+    const withoutOwnDeclarations = text.replace(declRe, '');
+    if (re.test(withoutOwnDeclarations)) return true;
   }
   return false;
 };
