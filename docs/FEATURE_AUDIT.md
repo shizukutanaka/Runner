@@ -1697,6 +1697,54 @@ E-47の修正でWebSocketの全イベントを読み直した。認可の穴を�
   として、注入された捏造コメントの中身ごと落ちることを確認済み
 - **実測**: backend 782件 / frontend 105件、失敗0・skip 0
 - **再検証**: `cd backend && npx jest tests/integration/websocketAuth.test.js -t newComment`
+- **次の問い**: E-42で「最初のアカウントをadminにする」ロジックの競合を
+  直した。役割にまつわる問いはもう1つ残っている——
+  **「adminは、他のadminをいくつまで格下げできるのか？」**
+
+---
+
+### E-49. ✅ 解決済み（2026-09-08） — 最後の1人の管理者を格下げでき、admin専用の64エンドポイントが永久にアクセス不能になりえた
+
+E-42はadminの**割り当て**（誰が最初にadminになるか）の競合を直した。
+次の問いは割り当てた後の話——**「adminは、最後の1人を格下げできてしまわないか？」**
+である。`setAccountRole`を読み直すと、歯止めが無かった。
+
+- **証拠**: `PUT /api/users/accounts/:id/role`は、対象アカウントが存在するかだけを
+  確認し、それ以外の条件なしに`role`をそのままUPDATEしていた。
+  **自分自身を含む、最後の1人のadminをmoderatorへ格下げできる**
+- **なぜ致命的か**: この製品には`requireRole('admin')`のエンドポイントが
+  **64件**ある（アカウント管理・監視ダッシュボード全体・設定エクスポート・
+  AI閾値の一括変更等）。最後のadminが格下げされた瞬間、
+  役割を元に戻せるadminがもう存在しない。`GET /accounts`も
+  `PUT /accounts/:id/role`も両方admin専用のため、**REST API経由での
+  復旧手段が無くなる**——DBを直接操作する以外に戻す方法が無い。
+  1回の操作ミス（自分自身をうっかり格下げする等）が、
+  監視・設定・アカウント管理という広い機能を丸ごと失う結果になる
+- **実施した対応**: E-42〜E-45と同じ原理で、「格下げ後もadminが1人以上
+  残るか」の確認を書き込みと分けず、単一のUPDATE文のWHERE句として
+  評価する:
+
+  ```sql
+  UPDATE accounts SET role = ? WHERE id = ?
+  AND (? != 'moderator' OR (SELECT COUNT(*) FROM accounts WHERE role = 'admin' AND id != ?) > 0)
+  ```
+
+  admin以外への格下げ（`role = 'moderator'`）のときだけ、
+  「このアカウントを除いた他のadminが1人以上いるか」を同じ文の中で確認する。
+  昇格（moderator→admin）や、既にmoderatorのアカウントへの操作は
+  常に許可される。条件を満たさなければ0行更新となり、
+  409で拒否する。E-42と同じくSQLiteの単一書き込みトランザクションに
+  委ねるため、2人の管理者がほぼ同時に互いを格下げし合うような
+  競合でも0人になることは無い
+- **ガード**: `backend/tests/integration/lastAdminGuard.test.js`（2件）—
+  唯一のadminは自分自身も含めて誰からも降格できず409が返ること
+  （DB上のroleも'admin'のまま変わらないこと）、2人目をadminへ昇格させれば
+  元のadminを降格できること（締めすぎ防止）。旧実装に戻すと
+  1件目が`Expected: 409 / Received: 200`で落ちることを確認済み。
+  テストDBは他ファイルと共有されるため、テスト開始時に既存のadminを
+  全員moderatorへ落として「唯一のadmin」の状態を意図的に作ってから検証する
+- **実測**: backend 784件 / frontend 105件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/integration/lastAdminGuard.test.js`
 
 ---
 

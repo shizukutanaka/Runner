@@ -186,7 +186,30 @@ exports.setAccountRole = async (req, res, next) => {
       return next({ status: 404, message: 'アカウントが見つかりません' });
     }
 
-    await dbRun('UPDATE accounts SET role = ? WHERE id = ?', [role, id]);
+    // E-49: このエンドポイント自体がadmin専用であり、`GET /accounts`も
+    // admin専用である。以前はここに歯止めが無く、**最後の1人のadminを
+    // moderatorへ格下げできた**（自分自身の格下げも、他のadminの格下げも
+    // 区別なく通っていた）。それが起きた瞬間、役割を戻せるadminがもう
+    // 存在しないため、この製品のadmin専用機能（アカウント管理・監視・
+    // 設定エクスポート等、64エンドポイント）は**永久にアクセス不能**になる
+    // ——DBを直接操作する以外に復旧手段が無い。
+    //
+    // 「最後のadminを格下げしようとしていないか」の確認と書き込みを
+    // 分けない。E-42〜E-45と同じ原理で、単一のUPDATE文の中で
+    // 「格下げ後もadminが1人以上残るか」をWHERE句として評価し、
+    // 満たさなければ0行更新（=拒否）にする。これにより、2人の管理者が
+    // ほぼ同時に互いを格下げし合うような競合でも0人になることは無い
+    // （E-42と同じくSQLiteの単一書き込みトランザクションに委ねる）
+    const result = await dbRun(
+      `UPDATE accounts SET role = ? WHERE id = ?
+       AND (? != 'moderator' OR (SELECT COUNT(*) FROM accounts WHERE role = 'admin' AND id != ?) > 0)`,
+      [role, id, role, id]
+    );
+
+    if (result.changes === 0) {
+      return next({ status: 409, message: '最後の管理者を降格することはできません' });
+    }
+
     logger.info('[Auth] Account role changed', { id, role, changedBy: req.user.id });
 
     res.json({ success: true, message: 'ロールを更新しました' });
