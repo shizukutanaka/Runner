@@ -429,5 +429,6 @@ module.exports = {
   ROLE_HIERARCHY,
   generateToken,
   authenticateToken,
-  requireRole
+  requireRole,
+  verifyToken
 };

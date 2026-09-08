@@ -51,6 +51,64 @@ async function setupWebSocket(server, app) {
 
   app.set('io', io);
 
+  // E-47: 接続自体には身元確認が一切無かった。
+  //
+  // `authenticate` イベントは `data.userId` を**クライアントの自己申告のまま**
+  // 検証せずに `socket.join(\`user:${userId}\`)` していた。つまり誰でも
+  // 任意の他人のuserIdを名乗って接続すれば、その人宛の`notification`
+  // イベント（後述）を横取りできた。さらに `sendNotification` イベントは
+  // 送信者が誰かの確認すら無く、**任意のuserId宛に、あるいは`userId`を
+  // 省略すれば接続中の全員に**、任意の内容の通知を注入できた
+  // （実測: 未認証のsocket接続から`sendNotification`を送るだけで
+  // 他ユーザーの画面に任意の文言の「システム通知」を出せた）。
+  //
+  // REST APIは既に httpOnly Cookie（`access_token`）で認証している
+  // （middleware/authCookies.js, D-7）。フロントの socket.io-client は
+  // `withCredentials: true` で接続しているため、**このCookieは
+  // ハンドシェイクのHTTPリクエストに自動的に付いてくる**——フロント側の
+  // 変更は不要。ここではそのCookieを読み、REST側と同じ`verifyToken`で
+  // 検証し、検証できた場合だけ `socket.user` に載せる。
+  //
+  // 接続自体は未認証でも許可する（`system`のような公開ブロードキャストが
+  // あるため）。ただし「誰に何を送るか」を左右する操作
+  // （authenticate / sendNotification / moderationAction）は
+  // `socket.user` が無ければ拒否する
+  const parseCookie = (header, name) => {
+    if (!header) return null;
+    for (const part of header.split(';')) {
+      const eq = part.indexOf('=');
+      if (eq === -1) continue;
+      const key = part.slice(0, eq).trim();
+      if (key === name) {
+        try {
+          return decodeURIComponent(part.slice(eq + 1).trim());
+        } catch {
+          return part.slice(eq + 1).trim();
+        }
+      }
+    }
+    return null;
+  };
+
+  io.use((socket, next) => {
+    const { verifyToken } = require('./middleware/auth');
+    const cookieToken = parseCookie(socket.handshake.headers?.cookie, 'access_token');
+    // ブラウザ以外のクライアント（テスト・APIクライアント等）向けに、
+    // REST側の Authorization ヘッダー相当として `auth.token` も受け付ける
+    const authToken = socket.handshake.auth?.token;
+    const token = cookieToken || authToken;
+
+    socket.user = token ? verifyToken(token) : null;
+    next();
+  });
+
+  const requireSocketRole = (socket, minRole) => {
+    const { ROLE_HIERARCHY } = require('./middleware/auth');
+    const role = socket.user?.role;
+    if (!role || !(role in ROLE_HIERARCHY)) return false;
+    return ROLE_HIERARCHY[role] >= ROLE_HIERARCHY[minRole];
+  };
+
   // Initialize Redis adapter for horizontal scaling
   const scalingEnabled = await initializeRedisAdapter(io);
   if (scalingEnabled) {
@@ -337,8 +395,17 @@ async function setupWebSocket(server, app) {
     // 認証
     socket.on('authenticate', (data) => {
       try {
+        // E-47: userId はクライアントの自己申告ではなく、接続時に検証済みの
+        // JWT（socket.user、上の io.use() 参照）から取る。これが無ければ
+        // 誰の room にも参加させない。data.userId は検証済みIDと食い違って
+        // いても無視する（そもそも一致しない値を渡す正規のフロントは無い）
+        if (!socket.user?.id) {
+          logger.warn(`[WebSocket] Unauthenticated authenticate attempt from ${clientId}`);
+          socket.emit('error', { type: 'auth', message: 'ログインが必要です' });
+          return;
+        }
+
         const validation = validateInput(data, {
-          userId: { required: true, type: 'string', maxLength: 255, pattern: /^[a-zA-Z0-9_-]+$/ },
           platform: { required: false, type: 'string', enum: ['youtube', 'twitch', 'other'] }
         });
 
@@ -348,7 +415,8 @@ async function setupWebSocket(server, app) {
           return;
         }
 
-        const { userId, platform } = data;
+        const userId = socket.user.id;
+        const { platform } = data;
         clientInfo.userId = userId;
         clientInfo.platform = platform;
 
@@ -466,6 +534,17 @@ async function setupWebSocket(server, app) {
         return;
       }
 
+      // E-47: 未認証の接続でも、それらしいフィールドを送るだけで
+      // 「モデレーション操作が行われた」という偽の更新をダッシュボード全体へ
+      // ブロードキャストできてしまっていた（実際のDB操作は伴わないが、
+      // 見ている人には本物の操作に見える）。検証済みJWTでmoderator以上の
+      // 役割を持つ接続だけがこのイベントを発行できるようにする
+      if (!requireSocketRole(socket, 'moderator')) {
+        logger.warn(`[WebSocket] Unauthorized moderationAction attempt from ${clientId}`);
+        socket.emit('error', { type: 'auth', message: 'モデレーター権限が必要です' });
+        return;
+      }
+
       const validation = validateInput(data, {
         action: { required: true, type: 'string', enum: ['hide', 'mute', 'ban', 'approve', 'flag'] },
         commentId: { required: true, type: 'string', maxLength: 255 },
@@ -537,7 +616,38 @@ async function setupWebSocket(server, app) {
     });
 
     // 通知送信
+    //
+    // E-47: このハンドラには検証・権限確認が一切無かった。
+    // **未認証の接続からでも**呼べ、`userId`を指定すればその人の画面へ、
+    // 省略すれば接続中の**全員**へ、任意の文言の「システム通知」を
+    // 注入できた（実測で確認済み）。フィッシング等に悪用できる。
+    // 検証済みJWTでmoderator以上の役割を持つ接続だけに制限する
     socket.on('sendNotification', (data) => {
+      if (!checkRateLimit()) {
+        logger.warn(`[WebSocket] Rate limit exceeded for ${clientId}`);
+        socket.emit('error', { type: 'rateLimit', message: 'リクエストが多すぎます。しばらく待ってから再試行してください。' });
+        return;
+      }
+
+      if (!requireSocketRole(socket, 'moderator')) {
+        logger.warn(`[WebSocket] Unauthorized sendNotification attempt from ${clientId}`);
+        socket.emit('error', { type: 'auth', message: 'モデレーター権限が必要です' });
+        return;
+      }
+
+      const validation = validateInput(data, {
+        userId: { required: false, type: 'string', maxLength: 255, pattern: /^[a-zA-Z0-9_-]+$/ },
+        type: { required: false, type: 'string', maxLength: 50 },
+        title: { required: true, type: 'string', maxLength: 200 },
+        message: { required: true, type: 'string', maxLength: 2000 }
+      });
+
+      if (!validation.valid) {
+        logger.warn('[WebSocket] sendNotification validation failed:', validation.error);
+        socket.emit('error', { type: 'validation', message: validation.error });
+        return;
+      }
+
       const { userId, type, title, message, metadata } = data;
 
       const notification = {
