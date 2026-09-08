@@ -5,8 +5,6 @@ const os = require('os');
 const si = require('systeminformation');
 const { circuitBreakerManager } = require('./utils/circuitBreaker');
 const { initializeRedisAdapter, getScalingStats } = require('./services/websocketScaling');
-const emotionalDetector = require('./services/emotionalContagionDetector');
-const departureDetector  = require('./services/silentDepartureDetector');
 
 async function setupWebSocket(server, app) {
   const config = require('./config');
@@ -469,61 +467,18 @@ async function setupWebSocket(server, app) {
       logger.info(`[WebSocket] Client ${clientId} joined system monitoring`);
     });
 
-    // コメントイベント
-    socket.on('newComment', (comment) => {
-      // レート制限チェック
-      if (!checkRateLimit()) {
-        logger.warn(`[WebSocket] Rate limit exceeded for ${clientId}`);
-        socket.emit('error', { type: 'rateLimit', message: 'リクエストが多すぎます。しばらく待ってから再試行してください。' });
-        return;
-      }
-
-      const validation = validateInput(comment, {
-        platform: { required: true, type: 'string', enum: ['youtube', 'twitch', 'other'] },
-        user: { required: true, type: 'string', maxLength: 255 },
-        content: { required: true, type: 'string', maxLength: 10000 }
-      });
-
-      if (!validation.valid) {
-        logger.warn('[WebSocket] newComment validation failed:', validation.error);
-        socket.emit('error', { type: 'validation', message: validation.error });
-        return;
-      }
-
-      clientInfo.lastActivity = new Date();
-
-      // プラットフォーム別ルームにブロードキャスト
-      if (comment.platform) {
-        io.to(`platform:${comment.platform}`).emit('commentUpdate', {
-          type: 'new',
-          data: comment,
-          timestamp: new Date().toISOString()
-        });
-      }
-
-      // ダッシュボードにブロードキャスト
-      io.to('dashboard').emit('commentUpdate', {
-        type: 'new',
-        data: comment,
-        timestamp: new Date().toISOString()
-      });
-
-      // 感情伝播検知器 + サイレント離脱検知器にフィード
-      try {
-        const channelId = comment.channelId ?? 'default';
-        emotionalDetector.ingest({
-          ...comment,
-          channelId,
-          sentimentScore: comment.sentimentScore ?? 0.5,
-          toxicityScore:  comment.toxicityScore  ?? 0
-        });
-        if (comment.user) {
-          departureDetector.record(comment.platform, channelId, comment.user, comment.timestamp);
-        }
-      } catch (feedErr) {
-        logger.warn('[WebSocket] Failed to feed insight services', { error: feedErr.message });
-      }
-    });
+    // E-48: ここに `newComment` イベントがあった。実際のコメント取り込み経路
+    // （REST `POST /api/comments` → `commentsController.broadcastCommentUpdate`、
+    // D-1）が整備された後も残っていた**未使用かつ未認証のイベント**で、
+    // フロント・バックエンドのどこにも正規の呼び出しが無かった
+    // （`grep -rn "emit('newComment'"` で確認、ヒット0件）。
+    // それでいてハンドラ自体は生きており、**誰でも接続するだけで**、
+    // 実際には投稿されていない「コメント」をダッシュボードの実況フィードへ
+    // 捏造して流し込めた。さらに`emotionalContagionDetector`へも直接データを
+    // 注入できたが、これは`POST /api/insights/ingest`（moderator限定）が
+    // 正規に使う同じ検知器であり、**認証を経ずに同じ検知器の状態を
+    // 汚染できていた**。死んでいるのに攻撃対象面積を増やしていたため、
+    // patchするのではなく削除した（E-28・E-37と同じ判断）
 
     // モデレーションイベント
     socket.on('moderationAction', (data) => {

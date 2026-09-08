@@ -1656,6 +1656,47 @@ REST APIはE-40・E-41で認可の穴を塞いだ。次の問いは
   疑わしい結果は別の方法で裏取りすること**——本セッション全体を通じた教訓の再確認
 - **実測**: backend 781件 / frontend 105件、失敗0・skip 0
 - **再検証**: `cd backend && npx jest tests/integration/websocketAuth.test.js`
+- **次の問い**: E-47を直す過程でイベント一覧を全部読んだ。
+  **「REST側に対応する正規の呼び出しが今も残っている操作はどれか？」**
+  を当ててみると、`newComment`だけが該当しなかった
+
+---
+
+### E-48. ✅ 解決済み（2026-09-08） — `newComment`はREST経路に置き換わった後も残っていた未使用かつ未認証のイベントで、捏造コメントの注入に使えた
+
+E-47の修正でWebSocketの全イベントを読み直した。認可の穴を塞ぐだけでなく、
+**「この操作を今も正規に呼んでいるのはどこか？」**を1つずつ当てたところ、
+`newComment`だけが**どこからも呼ばれていない**ことが分かった。
+
+- **証拠**: `grep -rn "emit('newComment'"`をフロント・バックエンド全体に
+  かけてもヒット0件。D-1（本セッション初期に解決済み）で
+  `POST /api/comments` → `commentsController.broadcastCommentUpdate`という
+  正規の取り込み経路が既に整備されており、`newComment`は**それ以前の、
+  置き換えられた経路の残骸**だった
+- **それでも実害があった理由**: ハンドラ自体は生きたまま残っており、
+  E-47修正前の`ws.js`には接続の身元確認が無かったため、
+  **誰でも接続するだけで**呼び出せた。実行すると:
+  1. 実際には投稿されていない「コメント」をダッシュボードの実況フィード
+     （`commentUpdate`イベント）へそのまま流し込める（実測で確認）
+  2. `emotionalContagionDetector.ingest()`にも直接データを注入できる。
+     これは`POST /api/insights/ingest`（moderator限定）が
+     正規に使うのと**同じ検知器**であり、認証を経ずに同じ検知器の
+     状態を汚染できていた——炎上リスクスコアという別機能の入力が
+     未認証で操作可能だったことになる
+- **判断**: 未使用のコードに認可を追加するのではなく、**削除する**
+  （E-28・E-33・E-37と同じ判断基準——正規の呼び出し元が無いコードは
+  修正の対象ではなく削除の対象である）。ハンドラの削除に伴い、
+  そこでしか使われていなかった`emotionalContagionDetector`・
+  `silentDepartureDetector`の`require`も`ws.js`から削除した
+  （`silentDepartureDetector`は`commentsController.js`の正規経路で
+  既に別途フィードされており、機能の欠落は無い）
+- **ガード**: `backend/tests/integration/websocketAuth.test.js`に1件追加。
+  未認証接続から`newComment`を送っても、ダッシュボードの
+  `commentUpdate`イベントが**1件も発生しない**ことを検査する。
+  削除前のコードで実行すると`Expected length: 0 / Received length: 1`
+  として、注入された捏造コメントの中身ごと落ちることを確認済み
+- **実測**: backend 782件 / frontend 105件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/integration/websocketAuth.test.js -t newComment`
 
 ---
 

@@ -175,4 +175,37 @@ describe('WebSocketの認証・認可（E-47）', () => {
     mod.close();
     dashboardListener.close();
   });
+
+  // E-48: `newComment` は、実際のコメント取り込み経路
+  // （REST `POST /api/comments` → `commentsController.broadcastCommentUpdate`、
+  // D-1）がとっくに整備された後も残っていた**未使用かつ未認証のイベント**である。
+  // フロント・バックエンドのどこにも `emit('newComment', ...)` する
+  // 正規の呼び出しは無い（`grep`で確認済み）。それでいてハンドラ自体は
+  // 生きており、**誰でも接続するだけで**、実際には投稿されていない
+  // 「コメント」をダッシュボードの実況フィードへ捏造して流し込めた。
+  // 感情伝播検知器（emotionalContagionDetector）にも直接データを注入でき、
+  // これは`POST /api/insights/ingest`（moderator限定）が正規に使う
+  // 同じ検知器である——**認証を経ずに同じ検知器の状態を汚染できた**。
+  // 死んでいるのに攻撃対象面積を増やしていたため、削除した
+  // （patchするのではなく消す。E-28・E-37と同じ判断）。
+  test('newComment は削除済みで、捏造したコメントをダッシュボードへ注入できない（E-48）', async () => {
+    const attacker = await connect({}); // 未認証でも良い（このイベント自体が無いことを見る）
+    const dashboardListener = await connect({ token: asToken('dash-2', 'moderator') });
+    dashboardListener.emit('joinDashboard', 'default');
+    await waitForEvent(dashboardListener, 'statsUpdate');
+
+    const commentUpdates = collectEvents(dashboardListener, 'commentUpdate');
+
+    attacker.emit('newComment', {
+      platform: 'youtube',
+      user: 'fake-user',
+      content: '捏造されたコメント（実際には投稿されていない）'
+    });
+
+    await wait(400);
+    expect(commentUpdates).toHaveLength(0);
+
+    attacker.close();
+    dashboardListener.close();
+  });
 });
