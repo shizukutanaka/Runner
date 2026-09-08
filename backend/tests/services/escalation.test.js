@@ -19,11 +19,22 @@ describe('累犯エスカレーション（R-26）', () => {
     const n = Date.now();
     repeatUser = `rep_${n}`;
     cleanUser = `clean_${n}`;
-    // 過去24時間以内に3件の違反履歴を作る
+    // 過去24時間以内に3件の違反履歴を作る。
+    //
+    // E-46: ここは以前 `datetime('now','-1 hours')` という**SQLite側で生成する
+    // 表現**（'YYYY-MM-DD HH:MM:SS'、10文字目が空白）を直接埋め込んでいた。
+    // しかし本番の書き込み経路（ingestComment等）は必ず
+    // `new Date().toISOString()`（'YYYY-MM-DDTHH:MM:SS.sssZ'、10文字目が'T'）
+    // で書く。テストが本番と異なる表現の時刻を注入していたため、
+    // `countRecentViolations`側のISO比較との組み合わせが
+    // **日付境界（深夜0時付近）でだけ**壊れ、時刻依存でしか再現しない
+    // 欠陥を隠していた（実際にUTC 00:04の実行で失敗して発覚した）。
+    // 本番の書き込みと同じ表現をテストでも使うこと
+    const oneHourAgoIso = new Date(Date.now() - 3600 * 1000).toISOString();
     for (let i = 0; i < 3; i++) {
       await dbRun(
-        'INSERT INTO comments (id,platform,user,content,timestamp,status) VALUES (?,?,?,?,datetime(\'now\',\'-1 hours\'),\'deleted\')',
-        [`${repeatUser}_${i}`, platform, repeatUser, 'bad']
+        'INSERT INTO comments (id,platform,user,content,timestamp,status) VALUES (?,?,?,?,?,\'deleted\')',
+        [`${repeatUser}_${i}`, platform, repeatUser, 'bad', oneHourAgoIso]
       );
     }
   });
@@ -57,6 +68,44 @@ describe('累犯エスカレーション（R-26）', () => {
   it('user未指定でも従来どおり動作する（後方互換）', async () => {
     const r = await checkMessageHold('普通のコメント', baseModeration, platform);
     expect(r).toHaveProperty('hold');
+  });
+
+  // E-46: held_messages側の再発防止。上のbeforeAllが直したのは comments 側の
+  // テストデータ（本番の書き込み表現に合わせた）だが、`countRecentViolations`は
+  // held_messages も同時に数える。held_messages.created_at は列定義の
+  // `DEFAULT CURRENT_TIMESTAMP`（SQLiteネイティブ表現）で本番でも常に書かれる
+  // ため、そちら側は「JS ISO文字列と比較しない」こと自体を固定する必要がある。
+  //
+  // この欠陥は「since（24時間前）と、実際の違反発生時刻の日付部分が一致する」
+  // 場合にだけ発現する（10文字目が 'T' と ' ' で逆転するのは日付部分が
+  // 一致したときだけ）。24時間ちょうどの窓のうち「since〜その日の終わり」の
+  // 部分（=だいたい半日程度、実行時刻によって変動）がこれに該当するため、
+  // 実行時刻に関わらずほぼ確実に踏む狙いで、sinceのすぐ後（2時間後）を
+  // held_messagesの作成時刻として選ぶ。ごく短い時間帯（sinceの時刻が
+  // 22:00〜24:00 UTC付近）でだけ日付境界をまたぎ再現しないことがあり得るが、
+  // 修正後のコードは実行時刻に関わらず常に正しいので、その場合でも
+  // このテスト自体が誤って失敗することは無い（見逃す方向にのみ緩い）
+  it('held_messages側の違反も、深夜0時に関わらず正しく数えられる（E-46）', async () => {
+    const heldUser = `held_rep_${Date.now()}`;
+    const sinceInstant = Date.now() - 24 * 3600 * 1000;
+    // SQLiteの`datetime()`が生成するのと同じ 'YYYY-MM-DD HH:MM:SS' 形式で、
+    // sinceの2時間後（＝24時間の違反窓には収まるが、修正前のコードが
+    // 「sinceと同じ日付ならISO比較で逆転する」罠を最も踏みやすい位置）を作る
+    const rowInstant = new Date(sinceInstant + 2 * 3600 * 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    const sqliteNative = `${rowInstant.getUTCFullYear()}-${pad(rowInstant.getUTCMonth() + 1)}-${pad(rowInstant.getUTCDate())} `
+      + `${pad(rowInstant.getUTCHours())}:${pad(rowInstant.getUTCMinutes())}:${pad(rowInstant.getUTCSeconds())}`;
+
+    await dbRun(
+      `INSERT INTO held_messages (message_id, content, user, platform, hold_reason, risk_score, hold_level, reasons, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'rejected', ?)`,
+      [`e46_${Date.now()}`, 'past violation', heldUser, platform, 'ai_score', 0.9, 'high', '[]', sqliteNative]
+    );
+
+    const r = await checkMessageHold('ひどい', suspectModeration, platform, heldUser);
+    const reason = r.reasons.find((x) => x.type === 'repeat_offender');
+    expect(reason).toBeDefined();
+    expect(reason.violations).toBeGreaterThanOrEqual(1);
   });
 });
 

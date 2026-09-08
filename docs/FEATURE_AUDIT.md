@@ -1461,11 +1461,131 @@ NULLへ戻すという single-use の設計意図がコードに明記されて�
   落ちることを確認済み。修正後は5回連続実行して安定してpassすることも確認した
 - **実測**: backend 772件 / frontend 105件、失敗0・skip 0
 - **再検証**: `cd backend && npx jest tests/integration/passwordResetRace.test.js`
-- **次の問い**: 同じ観点（一度きりであるべき資源）でリフレッシュトークンの
-  ローテーション、2FA検証コードの使い回し、招待/APIキー系エンドポイントも
-  点検の価値がある。ただし本セッションで見つかった3件
-  （E-42/E-43/E-44）はいずれも「読んで探す」ことで発見しており、
-  網羅性は保証されていない——残りは所有者側の継続的なレビュー対象とする
+- **次の問い**: 同じ観点（一度きりであるべき資源）で他のエンドポイントも
+  読んで回ったところ、E-45が見つかった
+
+---
+
+### E-45. ✅ 解決済み（2026-09-07） — 「1ユーザーにつきアクティブなタイムアウト1件まで」の不変条件にも同じ競合状態があった
+
+E-42（件数）・E-43（状態）・E-44（トークン）に続き、
+**「一度きり／1件までであるべき」不変条件**を横展開して読んで回ったところ、
+`usersController.timeoutUser`（タイムアウト付与）に同じ形が見つかった。
+
+- **証拠**（修正前）:
+
+  ```js
+  db.get('SELECT id FROM user_timeouts WHERE user_id=? AND status=? AND timeout_until>?',
+    [id, 'active', now], (checkErr, existingTimeout) => {
+      if (existingTimeout) return next({ status: 409, ... }); // チェック
+      db.run(insertSql, [...]);                                // 別の文でINSERT
+    });
+  ```
+
+  「アクティブなタイムアウトが既にあるか」のチェックと、新規タイムアウトの
+  INSERTが別文である。同じユーザーへタイムアウト付与を同時に複数送ると、
+  **全員が「アクティブなものは無い」と判定し、全員がINSERTしてしまう**
+- **実測**: 同じユーザーへ5並列でタイムアウトを送ると **5件ともアクティブな
+  行が作られた**（`timeoutRace.test.js`で再現）
+- **単なる重複行では終わらない実害**: `removeTimeout`は`db.get`で
+  アクティブな行を**1件だけ**取得し、その1件だけを`'removed'`に更新する。
+  アクティブな行が複数残っていると、**モデレーターが解除操作をしても
+  別の行が'active'のまま残り、ユーザーは実際には解除されていない**。
+  実測でも3件のタイムアウトを作った後に解除操作をすると、
+  2件がアクティブなまま残り、`users.mute_until`もNULLに戻らないことを確認した
+- **実施した対応**: E-42のINSERT版と同じ原理だが、今回はサブクエリで
+  値を選ぶのではなく**行の存在自体を条件にする**必要があるため、
+  `INSERT ... SELECT ... WHERE NOT EXISTS (...)`の形にした:
+
+  ```sql
+  INSERT INTO user_timeouts (user_id, moderator_id, platform, reason, timeout_duration, timeout_until, created_at, updated_at)
+  SELECT ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+  WHERE NOT EXISTS (
+    SELECT 1 FROM user_timeouts WHERE user_id = ? AND status = 'active' AND timeout_until > ?
+  )
+  ```
+
+  NOT EXISTSの評価とINSERT自体が単一の文として実行されるため、
+  評価と書き込みの間に他の書き込みが割り込む余地が無い。
+  挿入できた行数（`changes`）が0なら「既にアクティブなタイムアウトがある」
+  として409を返す
+- **副産物で見つけた別の欠陥**: 修正のため深くネストしたコールバックを
+  読み直したところ、応答の`timeoutId`が`this.lastID`から取られていたが、
+  **`this`はその後に実行された履歴INSERT・mute_until更新UPDATEの結果に
+  上書きされていた**。`sqlite3_last_insert_rowid()`は接続単位でテーブルを
+  問わないため、実際には`user_timeout_history`側の行idを返していた。
+  `user_timeouts`と`user_timeout_history`が常に1行ずつペアで増える運用では
+  両テーブルの採番がたまたま足並みを揃えるため**普段は気づけない**
+  （履歴INSERTが失敗した場合や、バックフィル等で片方だけ行が増えた場合に
+  初めて症状が出る）。INSERT成功直後に`this.lastID`を変数へ確定させ、
+  以降のネストしたコールバックはその変数を参照するよう修正した
+- **ガード**: `backend/tests/integration/timeoutRace.test.js`（3件）—
+  同じユーザーへの同時タイムアウト5件でアクティブな行が1件だけになること、
+  応答の`timeoutId`が正しい行を指すこと（`user_timeout_history`側に
+  わざと採番のずれを作ってから検査し、旧実装の症状を機械的に再現する）、
+  タイムアウトを複数回リクエストした後に解除すると裏に残らないこと。
+  それぞれ旧実装に戻すと`Expected: 1 / Received: 5`
+  ・`Expected: <id> / Received: <別の行のid>`
+  ・`Expected: 0 / Received: 2`で落ちることを確認済み
+- **実測**: backend 775件 / frontend 105件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/integration/timeoutRace.test.js`
+- **次の問い**: check-then-actの系統（E-42〜E-45、4件）はこれで一区切りとする。
+  ただし修正作業のために深く読んだコードから、**全く別系統の欠陥**
+  （E-46・時刻表現の不一致）が見つかった
+
+---
+
+### E-46. ✅ 解決済み（2026-09-08） — 累犯カウントが、深夜0時をまたぐ前後で違反を見逃す（ISOとSQLite時刻表現の不一致、再び）
+
+E-42〜E-45の作業中に`countRecentViolations`（累犯エスカレーション、R-26）を
+何度も読み返した。改めて中身を読んだところ、check-then-actとは**別系統**の、
+このセッションで繰り返し見つけてきた**時刻表現の不一致**
+（E-26のmute_until、E-35のBANグラフと同じ罠）がここにも残っていた。
+
+- **見つけ方**: E-45の全テスト再実行中、既存の`escalation.test.js`が
+  **UTC 00:04〜00:06の実行時にだけ**失敗することに気づいた。
+  時刻依存で不安定なテストは、それ自体が実際の欠陥の兆候である
+  （「たまたま通った」を疑うこと）
+- **証拠**: `countRecentViolations`は`comments`と`held_messages`の
+  両方を「直近24時間」で数えるが、2つのテーブルの時刻列は
+  **実際には異なる表現で書かれている**:
+
+  | 列 | 実際の書き込み方 | 表現 |
+  |----|------------------|------|
+  | `comments.timestamp` | アプリ側の`new Date().toISOString()` | `'YYYY-MM-DDTHH:MM:SS.sssZ'`（10文字目は`T`） |
+  | `held_messages.created_at` | 列定義の`DEFAULT CURRENT_TIMESTAMP` | `'YYYY-MM-DD HH:MM:SS'`（10文字目は空白） |
+
+  修正前のコードは両方を同じ`since`（JS生成のISO文字列）と比較していた。
+  10文字目が`'T'`(0x54)と`' '`(0x20)のため、**sinceと違反発生時刻の
+  日付部分が一致する場合に限り**、文字列比較が実際の時刻の前後関係と
+  逆転する。`since`は「24時間前」なので日付部分は基本的に「昨日」になり、
+  「昨日、since時刻より後」に発生した`held_messages`の違反は
+  ほぼ確実にこの罠を踏む——**深夜0時前後だけの狭い不具合ではなく、
+  1日の大半で再現しうる**ことが分析で分かった
+- **実施した対応**: E-26・E-35で確立した原則どおり、**各列が実際に
+  書かれている表現に合わせて比較する**。`comments`側はJS ISO文字列のまま、
+  `held_messages`側はSQLite自身の`datetime('now', ?)`関数で計算させ、
+  形式を混ぜないようにした
+- **同時に修正したテストの欠陥**: `escalation.test.js`は`comments`側の
+  テストデータを`datetime('now','-1 hours')`という**SQLite側の表現**で
+  挿入しており、本番の書き込み経路（`new Date().toISOString()`）と
+  異なっていた。テストが本番と違う表現の時刻を注入していたため、
+  この欠陥は時刻依存でしか再現せず、通常の実行では隠れていた。
+  テストの挿入も本番と同じISO表現に揃えた
+- **ガード**: `backend/tests/services/escalation.test.js`に1件追加
+  （`held_messages`側の違反を検査）。`sinceの2時間後`という、
+  実行時刻に関わらず罠を踏みやすい時刻を明示的に構成して挿入することで、
+  UTC 00:04のような偶然の実行タイミングに頼らず機械的に再現する。
+  旧実装（`held_messages`側もISO文字列と比較）に戻すと
+  `repeat_offender`理由が`undefined`になり落ちることを確認済み
+- **実測**: backend 776件 / frontend 105件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/services/escalation.test.js`
+- **教訓**: 「たまに失敗するテスト」を再実行して誤魔化さないこと。
+  本セッションを通じてISO文字列とSQLiteネイティブ時刻表現の混在が
+  4回目（E-26・E-34・E-35・E-46）見つかっている。**この2つの表現を
+  混在させること自体が、この製品で最も繰り返されている欠陥パターン**
+  であり、今後この形の比較を書くときは必ず両辺の実際の生成元を
+  確認すること
 
 ---
 

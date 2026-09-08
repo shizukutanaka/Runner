@@ -395,22 +395,47 @@ exports.timeoutUser = (req, res, next) => {
   const timeoutUntil = new Date(Date.now() + value.duration * 1000).toISOString();
 
   try {
-    // 既存のアクティブタイムアウトを確認
-    db.get('SELECT id FROM user_timeouts WHERE user_id = ? AND status = ? AND timeout_until > ?', [id, 'active', new Date().toISOString()], (checkErr, existingTimeout) => {
-      if (checkErr) return next({ status: 500, message: 'Database error checking existing timeout', details: checkErr });
+    // E-45: 「1ユーザーにつきアクティブなタイムアウトは1件まで」という
+    // 不変条件を、以前は「確認してから作る」という別々の2文（SELECTで
+    // 存在確認 → 無ければINSERT）で守っていた。E-42/E-43/E-44と同じ
+    // check-then-act であり、同じユーザーへ複数のタイムアウトリクエストが
+    // 同時に届くと、**全員が「アクティブなものは無い」と判定し、
+    // 全員がINSERTしてしまう**（実測: 5並列で5件ともアクティブな行が作られた）。
+    //
+    // これは単なる重複行では終わらない。`removeTimeout` は`db.get`で
+    // アクティブな行を1件だけ取得し、その1件だけを解除する。
+    // アクティブな行が複数残っていると、**モデレーターが解除したつもりでも
+    // 別の行がアクティブなまま残り、ユーザーは実際には解除されていない**
+    // （実測で確認済み）。
+    //
+    // 存在確認と書き込みを1本の`INSERT ... SELECT ... WHERE NOT EXISTS`に
+    // 統合する。この形はSQLiteにおいて単一の暗黙トランザクションとして
+    // 実行されるため、NOT EXISTSの評価とINSERT自体の間に他の書き込みが
+    // 割り込む余地が無い。挿入できた行数（changes）で「自分が枠を
+    // 取れたか」を判定する。
+    const nowIso = new Date().toISOString();
+    const insertSql = `
+      INSERT INTO user_timeouts (user_id, moderator_id, platform, reason, timeout_duration, timeout_until, created_at, updated_at)
+      SELECT ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+      WHERE NOT EXISTS (
+        SELECT 1 FROM user_timeouts WHERE user_id = ? AND status = 'active' AND timeout_until > ?
+      )
+    `;
 
-      if (existingTimeout) {
-        return next({ status: 409, message: 'User already has an active timeout' });
-      }
-
-      // 新しいタイムアウトを作成
-      const insertSql = `
-        INSERT INTO user_timeouts (user_id, moderator_id, platform, reason, timeout_duration, timeout_until, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-      `;
-
-      db.run(insertSql, [id, moderator, value.platform, value.reason, value.duration, timeoutUntil], function(insertErr) {
+    db.run(
+      insertSql,
+      [id, moderator, value.platform, value.reason, value.duration, timeoutUntil, id, nowIso],
+      function(insertErr) {
         if (insertErr) return next({ status: 500, message: 'Database error creating timeout', details: insertErr });
+
+        if (this.changes === 0) {
+          return next({ status: 409, message: 'User already has an active timeout' });
+        }
+
+        // this.lastID はこの INSERT 文の結果である必要がある。以降のネストした
+        // db.run（履歴・mute_until更新）のコールバック内では `this` がそれぞれの
+        // 文の結果に変わるため、ここで一度だけ変数へ確定させておく
+        const insertedTimeoutId = this.lastID;
 
         // タイムアウト履歴にも記録
         const historySql = `
@@ -441,7 +466,7 @@ exports.timeoutUser = (req, res, next) => {
             res.json({
               status: 200,
               data: {
-                timeoutId: this.lastID,
+                timeoutId: insertedTimeoutId,
                 userId: id,
                 moderatorId: moderator,
                 duration: value.duration,
@@ -453,8 +478,8 @@ exports.timeoutUser = (req, res, next) => {
             });
           });
         });
-      });
-    });
+      }
+    );
   } catch (error) {
     next({ status: 500, message: 'Failed to apply user timeout', details: error });
   }

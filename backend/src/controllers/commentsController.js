@@ -933,18 +933,34 @@ const VIOLATION_WINDOW_HOURS = 24;
 
 const countRecentViolations = async (user, platform) => {
   try {
-    const since = new Date(Date.now() - VIOLATION_WINDOW_HOURS * 3600 * 1000).toISOString();
+    // E-46: comments.timestamp と held_messages.created_at は、
+    // 実際には**異なる時刻表現**で書かれている。
+    //   comments.timestamp    → アプリ側で生成する `new Date().toISOString()`
+    //                            （'YYYY-MM-DDTHH:MM:SS.sssZ'）
+    //   held_messages.created_at → 列定義の `DEFAULT CURRENT_TIMESTAMP`
+    //                            （SQLite生成の 'YYYY-MM-DD HH:MM:SS'）
+    // 以前は両方を同じ`since`（JS生成のISO文字列）と比較していた。
+    // 10文字目が 'T'(0x54) と ' '(0x20) のため、`since`と保留メッセージの
+    // 日付部分が同じ日（＝`since`の時刻より後、その日の終わりまでに
+    // 発生した違反）になる場合は必ず**文字列比較が実際の時刻と逆転し、
+    // その違反を見逃す**。`since`は「24時間前」なので基本的に「昨日」を
+    // 指し、この条件は深夜0時限定ではなく1日の大半で成立しうる
+    // （偶然UTC 00:04の実行でテストが落ち発覚したが、それは氷山の一角）。
+    // E-26・E-35と同じ罠であり、教訓どおり**各列が実際に書かれている
+    // 表現に合わせて比較する**。comments側はJS ISO、held_messages側は
+    // SQLite自身の`datetime('now', ...)`で揃える
+    const sinceIso = new Date(Date.now() - VIOLATION_WINDOW_HOURS * 3600 * 1000).toISOString();
     const [commentRow, heldRow] = await Promise.all([
       dbGet(
         `SELECT COUNT(*) as cnt FROM comments
          WHERE user = ? AND platform = ? AND timestamp >= ?
            AND status IN ('deleted','hidden','flagged','muted')`,
-        [user, platform, since]
+        [user, platform, sinceIso]
       ),
       dbGet(
         `SELECT COUNT(*) as cnt FROM held_messages
-         WHERE user = ? AND platform = ? AND created_at >= ? AND status IN ('pending','rejected')`,
-        [user, platform, since]
+         WHERE user = ? AND platform = ? AND created_at >= datetime('now', ?) AND status IN ('pending','rejected')`,
+        [user, platform, `-${VIOLATION_WINDOW_HOURS} hours`]
       )
     ]);
     return (commentRow?.cnt || 0) + (heldRow?.cnt || 0);
