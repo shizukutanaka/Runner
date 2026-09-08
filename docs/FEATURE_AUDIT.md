@@ -1746,6 +1746,60 @@ E-42はadminの**割り当て**（誰が最初にadminになるか）の競合�
 - **実測**: backend 784件 / frontend 105件、失敗0・skip 0
 - **再検証**: `cd backend && npx jest tests/integration/lastAdminGuard.test.js`
 
+### E-50. ✅ 解決済み（2026-09-08） — `Promise.allSettled`の誤用でトリアージ取得失敗が画面から完全に消えていた
+
+E-40〜E-49でバックエンドの権限・競合・タイムスタンプ・WebSocket層を掘り終えたところで、
+次の問いは**「テストが無い画面（`STRENGTHS_WEAKNESSES.md`が繰り返し記録していた
+SettingsPanel / MonitoringDashboard / TriageQueue / Login / Register）は、
+テストを書いてみると本当に無事か？」**である。TriageQueue.jsxにテストを
+書く過程で、実際に本番バグを1件発見した。
+
+- **証拠**: `TriageQueue.jsx`の`runTriage()`は`Promise.allSettled`で
+  トリアージ取得（`POST /insights/triage`）とチャンネルリスク取得
+  （`GET /insights/risk/...`）を並列に投げていたが、**`Promise.allSettled`は
+  個々の要素がrejectしても、それ自体は絶対にrejectしない**。
+  修正前のコードは`if (triageRes.status === 'fulfilled') { ... }`という
+  分岐だけを持ち、`else`が無かった。トリアージ取得そのものが失敗
+  （`status === 'rejected'`）した場合、この`if`にも入らず、
+  それを囲む`try`が投げるものも無いため`catch`にも来ない。
+  結果、`error`も`result`も一度も更新されないまま`finally`で
+  `loading`だけが`false`になり、**画面には「対応待ちコメントがあります」
+  という前提なのに何も表示されない空白のパネルが残った**
+- **なぜ重大か**: これはE-26系（失敗を隠す）と同じ欠陥の形が、
+  今度は「エラー処理を書いたつもりで、実際は分岐から漏れている」という
+  形でフロントエンドに現れたもの。モデレーターは「トリアージが空＝
+  緊急コメントが無い」のか「取得に失敗して見えていないだけ」なのかを
+  画面上で区別できず、後者を前者だと誤認するリスクがある
+- **実施した対応**: `if (triageRes.status !== 'fulfilled') { setError(...); return; }`
+  という早期リターンに変更し、トリアージ取得自体の失敗を他の分岐と
+  独立して必ず検査する。リスク取得の失敗はこれまで通り無視して
+  最初のトリアージ結果をそのまま使う（リスクは付加情報であり、
+  その欠落でトリアージ自体を隠す理由にはならないため、この非対称性は意図通り）
+- **ガード**: `frontend/src/components/__tests__/TriageQueue.test.jsx`（新規6件）
+  のうち「取得に失敗したら、成功したように見せず理由を表示する」が本欠陥を検知する。
+  旧実装（`if (fulfilled) {...}`のみ、`else`無し）に戻すと
+  `トリアージの取得に失敗しました`が画面に現れず、このテストが
+  `Unable to find an element with the text`で失敗することを確認済み
+- **合わせて実施したテスト追加**（同じ「テストが無い画面」の洗い出しの一環）:
+  - `frontend/src/components/__tests__/Login.test.jsx`（新規6件）—
+    空欄では送信不可、送信中は多重送信防止、失敗を隠さない、
+    ユーザー名の前後空白除去、切り替えリンクの有無
+  - `frontend/src/components/__tests__/Register.test.jsx`（新規6件）— 同様＋パスワード要件ヒント表示
+  - `frontend/src/components/__tests__/MonitoringDashboard.test.jsx`（新規5件）—
+    4本並列取得のURL正しさ、実データ表示、全滅時の失敗表示＋再試行、
+    再試行での再取得、一部失敗時に取れた分は表示しつつ失敗も隠さないこと。
+    このコンポーネントは`t(key)`をフォールバック無しで呼ぶ箇所
+    （`monitoring_dashboard_partial_error`等）があり、他画面のテストで
+    使っていた`t = (key, fallback) => fallback ?? key`という簡易モックだと
+    未翻訳キーそのものが「本物の翻訳文」であるかのように描画されてしまう
+    ため、`src/locales/ja.json`の実文言で裏付けたモックに差し替えた上で検証した
+- **実測**: backend 784件 / frontend 128件（105 + Login 6 + Register 6 + TriageQueue 6 + MonitoringDashboard 5）、失敗0・skip 0
+- **再検証**: `cd frontend && npx vitest run src/components/__tests__/TriageQueue.test.jsx src/components/__tests__/Login.test.jsx src/components/__tests__/Register.test.jsx src/components/__tests__/MonitoringDashboard.test.jsx`
+- **次の問い**: SettingsPanelは`SettingsPanelSlowMode.test.jsx`（E-39）で部分的にしか
+  覆われていない。「テストが無い画面」という短所は解消に向かっているが、
+  まだ他のダッシュボード系コンポーネント（AnalyticsPanel等）に同型の
+  `Promise.allSettled`誤用や未検証の分岐が残っていないか、横展開の確認が必要
+
 ---
 
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順

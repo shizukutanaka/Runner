@@ -140,26 +140,37 @@ function TriageQueue({ platform = 'youtube', channelId = 'default', pendingComme
         axios.get(`${API}/insights/risk/${platform}/${channelId}`),
       ]);
 
-      if (triageRes.status === 'fulfilled') {
-        const channelRisk = riskRes.status === 'fulfilled'
-          ? riskRes.value?.data?.data
-          : null;
+      // E-50: `Promise.allSettled`は個々の失敗では**絶対に拒否しない**。
+      // 以前はここが`if (triageRes.status === 'fulfilled')`だけで、
+      // triage取得そのものが失敗した場合（status==='rejected'）に
+      // どちらの分岐にも入らず、下のcatchにも来ないため、
+      // **errorもresultも更新されずローディングが終わるだけ**になっていた。
+      // 画面には「対応待ちコメントがあります」なのに何も表示されない
+      // 空白のパネルが残る——失敗を隠す典型例（E-26系と同じ問題の形）。
+      // 個々の失敗はここで明示的に検査し、成功と同じ扱いにしない
+      if (triageRes.status !== 'fulfilled') {
+        setError('トリアージの取得に失敗しました');
+        return;
+      }
 
-        // チャンネルリスクを考慮して再トリアージ
-        if (channelRisk) {
-          const retriage = await axios.post(`${API}/insights/triage`, {
-            pendingComments,
-            channelContext: {
-              platform,
-              channelId,
-              riskLevel: channelRisk.level,
-              riskScore: channelRisk.riskScore,
-            },
-          });
-          setResult(retriage.data?.data ?? null);
-        } else {
-          setResult(triageRes.value?.data?.data ?? null);
-        }
+      const channelRisk = riskRes.status === 'fulfilled'
+        ? riskRes.value?.data?.data
+        : null;
+
+      // チャンネルリスクを考慮して再トリアージ
+      if (channelRisk) {
+        const retriage = await axios.post(`${API}/insights/triage`, {
+          pendingComments,
+          channelContext: {
+            platform,
+            channelId,
+            riskLevel: channelRisk.level,
+            riskScore: channelRisk.riskScore,
+          },
+        });
+        setResult(retriage.data?.data ?? null);
+      } else {
+        setResult(triageRes.value?.data?.data ?? null);
       }
     } catch (e) {
       setError('トリアージの取得に失敗しました');
