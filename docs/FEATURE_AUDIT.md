@@ -1934,6 +1934,25 @@ E-33の教訓どおり最初から名前衝突に対して頑健）は問題無�
   個別に列挙・重複記載している箇所は無く（`.env.example`自体を
   唯一の目録として参照する構成）、追加の横展開は不要だった
 
+### E-53. ✅ 解決済み（2026-09-28） — APIドキュメントの検査も片方向で、実装169件のうち約半分（84件）が一度も載っていなかった
+
+E-52（`.env.example`が片方向だった）の「次の問い」どおり、他の突き合わせ検査に同じ非対称が無いかを見た。
+`documentedEndpoints.test.js` は「載っているものは実在するか」だけを検査していた。
+
+- **証拠**: 逆方向を試すと、実装169件のうち **84件が `API_DOCUMENTATION.md` に無かった**。
+  login/register/logout/refresh など認証の根幹、insights・youtube・twitch の3ルートファイルは章ごと存在しなかった
+- **見えていなかった第2の穴**: settings の詳細操作は太字 `**METHOD `path`**` ではなく別形式の箇条書きで書かれており、
+  検査の正規表現にどちらの方向でも一致しなかった。実在しないルート `/check-permission` `/expiration-status`
+  が「載っている」ままで、既存テストにも引っかからなかった。`/auto-delete-time` のフィールド名も `minutes` と誤記されていた（実際は `hours`）
+- **対応**: 全て太字形式で記載し直し、存在しない2件を削除、フィールド名を訂正。
+  ソースを読んで判明した挙動（`ui-custom` の3項目は反映されない／`execute-restore` は記録のみ／`slow-mode` PUT はJoi未接続／
+  Twitch の watch は失敗でも200／YouTube の channelId 絞り込みは効かない）も事実として明記した。
+  WebSocket 節の「認証を行っていません」も E-47 以降は誤りだったので訂正
+- **ガード**: `documentedEndpoints.test.js` に逆方向を追加。旧ドキュメントに戻すと落ちることを確認済み
+- **実測**: backend 790件 / frontend 128件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/architecture/documentedEndpoints.test.js`
+- **補足**: この作業は途中でコンテナが再作成され、未コミットの初回分が失われたため作り直した。コミット前の作業は消える前提で、こまめにコミットする
+
 ---
 
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順

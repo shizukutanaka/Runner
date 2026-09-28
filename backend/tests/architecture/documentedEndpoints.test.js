@@ -80,3 +80,11 @@ it('ドキュメントに載っているエンドポイントはすべて実在�
   // メソッドが違うだけなら、**叩けるのは実装の方**なのでドキュメントを直す
   expect(missing).toEqual([]);
 });
+
+// E-53: 逆方向。実装されているのに載っていないエンドポイントを禁じる。
+// 別形式（太字でない箇条書き）は上の正規表現に一致せず、両方向の検査から見えなくなる
+it('実在するエンドポイントはすべてドキュメントに載っている', () => {
+  const doc = new Set(documented().map(({ verb, route }) => normalise(`${verb} ${route}`)));
+  const undocumented = [...implemented()].filter((key) => !doc.has(normalise(key))).sort();
+  expect(undocumented).toEqual([]);
+});
