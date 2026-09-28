@@ -126,7 +126,7 @@ const handleDatabaseError = (err) => {
   }
 };
 
-const ensureColumnDefinitions = (table, columns) => {
+const ensureColumnDefinitions = (table, columns) => new Promise((resolve) => {
   db.all(`PRAGMA table_info(${table})`, (err, rows) => {
     if (err) {
       logger.error('[Database] Failed to inspect table schema', {
@@ -134,16 +134,18 @@ const ensureColumnDefinitions = (table, columns) => {
         error: err.message,
         stack: err.stack
       });
+      resolve();
       return;
     }
 
     const existing = new Set(rows.map((row) => row.name));
-    columns.forEach(({ name, definition }) => {
-      if (existing.has(name)) {
-        return;
-      }
+    const missing = columns.filter(({ name }) => !existing.has(name));
+    let pending = missing.length;
+    if (pending === 0) resolve();
 
+    missing.forEach(({ name, definition }) => {
       db.run(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`, (alterErr) => {
+        pending -= 1;
         if (alterErr) {
           logger.error('[Database] Failed to add missing column', {
             table,
@@ -151,13 +153,29 @@ const ensureColumnDefinitions = (table, columns) => {
             error: alterErr.message,
             stack: alterErr.stack
           });
-          return;
+        } else {
+          logger.info('[Database] Added missing column', { table, column: name });
         }
-
-        logger.info('[Database] Added missing column', { table, column: name });
+        if (pending === 0) resolve();
       });
     });
   });
+});
+
+// E-54: 同じプラットフォームのメッセージIDは1件しか保存しない。既存DBに重複行が
+// あると作成に失敗するが、その場合も起動は止めず、取り込み側の事前チェックで守る
+const ensurePlatformMessageIndex = (table) => {
+  db.run(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_platform_message
+       ON ${table}(platform, platform_message_id) WHERE platform_message_id IS NOT NULL`,
+    (err) => {
+      if (err) {
+        logger.warn('[Database] Could not create unique platform_message_id index (existing duplicates?)', {
+          table, error: err.message
+        });
+      }
+    }
+  );
 };
 
 const ensureCommentColumns = () => {
@@ -197,7 +215,7 @@ const ensureCommentColumns = () => {
     { name: 'ai_threshold_custom_settings', definition: 'TEXT' },
     { name: 'ai_override_moderator_id', definition: 'TEXT' },
     { name: 'ai_override_timestamp', definition: 'DATETIME' }
-  ]);
+  ]).then(() => ensurePlatformMessageIndex('comments'));
 };
 
 // R-28c: 保留メッセージにもプラットフォーム識別子を持たせる。
@@ -225,7 +243,7 @@ const ensureHeldMessageColumns = () => {
     // R-32: 保留の発生源。'internal'（本製品の判定）か 'twitch_automod'（Twitch AutoModが保留）。
     // 承認/却下の書き戻し先が変わる（AutoMod経由は削除ではなくALLOW/DENYを返す）ため必要
     { name: 'source', definition: 'TEXT DEFAULT \'internal\'' }
-  ]);
+  ]).then(() => ensurePlatformMessageIndex('held_messages'));
 };
 
 const ensureNotificationColumns = () => {

@@ -361,8 +361,23 @@ const getComment = asyncHandler(async (req, res, next) => {
  * services (e.g. YouTube) so both paths get identical moderation behavior.
  * @param {{content: string, user: string, platform: string, timestamp?: string}} commentData
  * @param {{io?: object}} [options]
- * @returns {Promise<object>} outcome descriptor: 'rate_limited' | 'rejected' | 'held' | 'created'
+ * @returns {Promise<object>} outcome descriptor: 'rate_limited' | 'rejected' | 'held' | 'created' | 'duplicate'
  */
+const isAlreadyIngested = async (platform, platformMessageId) => {
+  const row = await dbGet(
+    `SELECT 1 AS hit FROM comments WHERE platform = ? AND platform_message_id = ?
+     UNION ALL
+     SELECT 1 FROM held_messages WHERE platform = ? AND platform_message_id = ?
+     LIMIT 1`,
+    [platform, platformMessageId, platform, platformMessageId]
+  );
+  return Boolean(row);
+};
+
+const isUniqueViolation = (err) => Boolean(
+  err && err.code === 'SQLITE_CONSTRAINT' && /platform_message/.test(err.message || '')
+);
+
 // R-20: platformMessageId / authorChannelId は、モデレーション判断をプラット
 // フォーム側へ書き戻す（YouTubeの liveChatMessages.delete / liveChatBans.insert）
 // ために必須の識別子。取込元が提供する場合のみ保存する（HTTP経由の投稿では未指定）
@@ -371,6 +386,13 @@ const ingestComment = async ({ content, user, platform, timestamp, platformMessa
   const commentId = uuidv4();
   const normalizedContent = sanitizeForStorage(normalizeText(content ?? ''));
   const normalizedUser = sanitizeForStorage(normalizeText(user ?? ''));
+
+  // E-54: 再配信（EventSubの再接続・YouTubeのページトークン再取得）で届く同じ
+  // メッセージを、二重にモデレーション・保存しない。事前チェックは無駄な処理を
+  // 省く近道で、同時到着の最終的な保証はDBのユニーク索引が担う
+  if (platformMessageId && await isAlreadyIngested(platform, platformMessageId)) {
+    return { outcome: 'duplicate' };
+  }
 
   // スローモードチェック
   const slowModeCheck = await checkSlowMode(normalizedUser, platform);
@@ -423,6 +445,7 @@ const ingestComment = async ({ content, user, platform, timestamp, platformMessa
           raidScore: raidStatus.score
         }]
       });
+      if (holdResult.duplicate) return { outcome: 'duplicate' };
       logger.warn('[Comments] Comment quarantined by raid defense', {
         user: normalizedUser, platform, trigger: quarantine.trigger
       });
@@ -469,6 +492,7 @@ const ingestComment = async ({ content, user, platform, timestamp, platformMessa
       holdLevel: shouldHold.holdLevel,
       reasons: shouldHold.reasons
     });
+    if (holdResult.duplicate) return { outcome: 'duplicate' };
 
     return {
       outcome: 'held',
@@ -479,10 +503,15 @@ const ingestComment = async ({ content, user, platform, timestamp, platformMessa
     };
   }
 
-  await dbRun(
-    'INSERT INTO comments (id, content, user, platform, status, timestamp, platform_message_id, author_channel_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [commentId, normalizedContent, normalizedUser, platform, 'visible', ts, platformMessageId || null, authorChannelId || null]
-  );
+  try {
+    await dbRun(
+      'INSERT INTO comments (id, content, user, platform, status, timestamp, platform_message_id, author_channel_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [commentId, normalizedContent, normalizedUser, platform, 'visible', ts, platformMessageId || null, authorChannelId || null]
+    );
+  } catch (err) {
+    if (isUniqueViolation(err)) return { outcome: 'duplicate' };
+    throw err;
+  }
 
   // ユーザーの最終コメント時刻を更新
   await dbRun(
@@ -1136,13 +1165,19 @@ const holdMessage = async (holdData) => {
     const holdUntil = new Date(Date.now() + durationSeconds * 1000).toISOString();
     const messageId = `msg_${Date.now()}`;
 
-    const insertResult = await dbRun(
-      `INSERT INTO held_messages
-        (message_id, content, user, platform, hold_reason, risk_score, hold_level, reasons, status, hold_until, platform_message_id, author_channel_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
-      [messageId, content, user, platform, holdReason, moderationResult.score, holdLevel, JSON.stringify(reasons), holdUntil,
-        platformMessageId || null, authorChannelId || null]
-    );
+    let insertResult;
+    try {
+      insertResult = await dbRun(
+        `INSERT INTO held_messages
+          (message_id, content, user, platform, hold_reason, risk_score, hold_level, reasons, status, hold_until, platform_message_id, author_channel_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+        [messageId, content, user, platform, holdReason, moderationResult.score, holdLevel, JSON.stringify(reasons), holdUntil,
+          platformMessageId || null, authorChannelId || null]
+      );
+    } catch (err) {
+      if (isUniqueViolation(err)) return { duplicate: true };
+      throw err;
+    }
 
     // ログ記録
     logger.info('[MessageHold] Message held for moderation', {

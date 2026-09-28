@@ -1953,6 +1953,24 @@ E-52（`.env.example`が片方向だった）の「次の問い」どおり、�
 - **再検証**: `cd backend && npx jest tests/architecture/documentedEndpoints.test.js`
 - **補足**: この作業は途中でコンテナが再作成され、未コミットの初回分が失われたため作り直した。コミット前の作業は消える前提で、こまめにコミットする
 
+### E-54. ✅ 解決済み（2026-09-28） — 再配信されたプラットフォームのメッセージが二重に保存・モデレーションされた
+
+OWASP API（重複/リプレイ耐性）と、Twitch EventSub の再接続・YouTube の `nextPageToken` 再取得で
+同じメッセージが再配信されうる点から「取り込みは冪等か」を問うた。
+
+- **証拠**: `ingestComment` は `platformMessageId` を保存するだけで重複排除が無く、`comments` にも一意制約が無かった。
+  再配信のたびに同じコメントが二重にモデレーションされ、統計・累犯カウント・スローモード判定が水増しされる
+  （テストで同一IDを5並列/順次に取り込むと5件/2件保存されることを確認）
+- **対応**: `(platform, platform_message_id)` の部分ユニーク索引（NULL除外）を `comments` と `held_messages` に追加し、
+  取り込みは事前チェック（無駄な処理を省く近道）＋ INSERT 時の一意制約違反を `duplicate` 結果として扱う。
+  最終的な保証は索引側にあり（事前チェックを外しても5並列で1件に収まることを確認）、E-42〜E-45 と同じ「判定と書き込みを分けない」原理。
+  既存DBに重複行があって索引が作れなくても起動は止めず警告のみ（事前チェックが守る）。
+  副作用として `ensureColumnDefinitions` を、全ての列追加が終わってから解決する Promise にした
+- **ガード**: `backend/tests/integration/ingestIdempotency.test.js`（4件）。修正前は並列・順次の2件が落ちる。
+  HTTP経由（IDなし）は重複扱いにならないこと、プラットフォームが違えば同じIDでも別メッセージであることも固定
+- **実測**: backend 794件 / frontend 128件、失敗0・skip 0
+- **再検証**: `cd backend && npx jest tests/integration/ingestIdempotency.test.js`
+
 ---
 
 ## 第2部: 不足（必要なのに欠落・断線）— 優先度順
