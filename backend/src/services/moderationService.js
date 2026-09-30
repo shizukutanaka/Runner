@@ -16,8 +16,10 @@ let openaiWarningIssued = false;
 // ため、主判定文字列の置き換えには使わず、あくまで追加の照合候補として
 // OR条件でのみ使う（誤爆しても主判定には影響しない設計）
 // U+200B ZERO WIDTH SPACE, U+200C ZWNJ, U+200D ZWJ, U+2060 WORD JOINER, U+FEFF BOM/ZWNBSP
+// E-55: ソフトハイフン・双方向制御文字・異体字セレクタ・結合用アクセントも、見た目に
+// 影響せず単語の途中に挿入できるため同じく除去する
 // eslint-disable-next-line no-misleading-character-class -- 意図的にZWJ等のゼロ幅文字を個別に除去する
-const ZERO_WIDTH_CHARS_REGEX = /[\u200B\u200C\u200D\u2060\uFEFF]/g;
+const ZERO_WIDTH_CHARS_REGEX = /[\u200B\u200C\u200D\u2060\uFEFF\u00AD\u180E\u202A-\u202E\u2066-\u2069\uFE00-\uFE0F\u0300-\u036F]/g;
 const stripZeroWidthChars = (text) => text.replace(ZERO_WIDTH_CHARS_REGEX, '');
 const normalizeForMatching = (text) => stripZeroWidthChars(text).normalize('NFKC');
 
@@ -66,6 +68,36 @@ const NG_WORD_MATCH_GUARDS = {
 
 // 語 word が haystack に「誤検知ガードを通過した形で」出現するか判定する。
 // 出現位置ごとに前後を見て、すべてがガードに掛かった場合のみ不一致とする
+// E-55: 「死 ね」「し.ね」「死*ね」のように、語の各文字の間へ見える区切りを挟んだ回避。
+// 区切りを無条件に除去すると「わし、ねむい」が「しね」に化けるため、
+//   ① 語の全ての隣接文字の間に区切りがあり、② 一致範囲の前後が文字・数字でない（孤立している）
+// 場合に限る。日本語（仮名・漢字）を含む2文字以上の語だけが対象で、英単語は対象外
+// （"pa ss" のように別の語をまたいで偶然つながる誤検知が多すぎるため）
+const JA_CHAR_REGEX = /[\u3040-\u30FF\u4E00-\u9FFF]/;
+const SEPARATOR_CLASS = '[\\s\\p{P}\\p{S}\\u3000]{1,3}';
+const escapeRegex = (ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const separatedWordRegexCache = new Map();
+const matchesSeparatedNgWord = (haystack, word) => {
+  const chars = Array.from(word);
+  if (chars.length < 2 || !JA_CHAR_REGEX.test(word)) return false;
+  let regex = separatedWordRegexCache.get(word);
+  if (!regex) {
+    regex = new RegExp(chars.map(escapeRegex).join(SEPARATOR_CLASS), 'gu');
+    separatedWordRegexCache.set(word, regex);
+  }
+  regex.lastIndex = 0;
+  let m = regex.exec(haystack);
+  while (m) {
+    const before = haystack.slice(0, m.index);
+    const after = haystack.slice(m.index + m[0].length);
+    const isolatedBefore = before === '' || !/[\p{L}\p{N}]$/u.test(before);
+    const isolatedAfter = after === '' || !/^[\p{L}\p{N}]/u.test(after);
+    if (isolatedBefore && isolatedAfter) return true;
+    m = regex.exec(haystack);
+  }
+  return false;
+};
+
 const matchesNgWord = (haystack, word) => {
   const guard = NG_WORD_MATCH_GUARDS[word];
   if (!guard) return haystack.includes(word);
@@ -817,7 +849,8 @@ exports.analyzeComment = async (content, platform, user, timestamp, contextComme
   const contentConfusablesNormalized = removeConfusables(normalizeForMatching(content)).toLowerCase();
   NG_WORDS.forEach((word) => {
     // R-30: 日本語は語境界が無いため、可能形や同音語の内部に噛む一致をガードで除外する
-    if (matchesNgWord(contentLower, word) || matchesNgWord(contentConfusablesNormalized, word)) {
+    if (matchesNgWord(contentLower, word) || matchesNgWord(contentConfusablesNormalized, word)
+      || matchesSeparatedNgWord(contentLower, word)) {
       result.flaggedWords.push(word);
       // R-14: ヒットした語のカテゴリを記録（重複は除外）してモデレーターに理由を提示
       const category = NG_WORD_CATEGORY.get(word);
