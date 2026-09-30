@@ -96,6 +96,19 @@ const evaluate = async (file) => {
   return { overall: metricsFrom(rows), byDifficulty, rows, aiActive, aiFlaggedCount: rows.filter((r) => r.aiOnly).length };
 };
 
+// N件を流したとき、少なくとも1件を誤検知する確率（メッセージが独立と仮定した近似）
+const sessionFalsePositiveProbability = (perMessageRate, messages) => {
+  if (![perMessageRate, messages].every(Number.isFinite)) return null;
+  if (perMessageRate < 0 || perMessageRate > 1 || messages < 0) return null;
+  return 1 - (1 - perMessageRate) ** messages;
+};
+
+// 観測した誤検知率の95%上側の目安。0件のときは「率は0」と言えないので3の法則（3/n）を使う
+const falsePositiveRateUpperBound = (falsePositives, benignTotal) => {
+  if (!benignTotal || benignTotal <= 0) return null;
+  return falsePositives === 0 ? 3 / benignTotal : falsePositives / benignTotal;
+};
+
 const pct = (v) => (v === null ? ' n/a ' : `${(v * 100).toFixed(1)}%`);
 
 const report = (res) => {
@@ -117,6 +130,16 @@ const report = (res) => {
     const detected = m.tp + m.fn > 0 ? `検知率 ${pct(m.recall)}` : `誤検知 ${m.fp}/${m.total}`;
     console.log(`  ${d.padEnd(14)} ${String(m.total).padStart(2)}件  ${detected}`);
   });
+
+  const benign = o.fp + o.tn;
+  const upper = falsePositiveRateUpperBound(o.fp, benign);
+  if (upper !== null) {
+    console.log(`\n配信1回あたりの誤保留（無害${benign}件の実測から。独立を仮定した目安）:`);
+    console.log(`  1件あたりの誤検知率の上限(95%目安): ${pct(upper)}${o.fp === 0 ? '  ※0件でも率が0とは言えない' : ''}`);
+    [100, 1000].forEach((n) => {
+      console.log(`  ${String(n).padStart(4)}件を流したとき、少なくとも1件を誤保留する確率の上限: ${pct(sessionFalsePositiveProbability(upper, n))}`);
+    });
+  }
 
   const misses = res.rows.filter((r) => !r.correct);
   if (misses.length > 0) {
@@ -154,5 +177,7 @@ if (require.main === module) {
 
 module.exports = {
   evaluate,
-  isFlagged
+  isFlagged,
+  sessionFalsePositiveProbability,
+  falsePositiveRateUpperBound
 };
