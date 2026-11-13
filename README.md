@@ -239,7 +239,12 @@ TLSを終端し、`/api` と `/socket.io` をバックエンドへプロキシ�
 
 ```bash
 # 環境変数設定
-cp .env.example .env
+# docker-compose.yml はリポジトリ直下の .env から変数を読みます。
+# 直下用の .env.example は存在しないため、.env を新規作成してください
+cat > .env <<'EOF'
+JWT_SECRET=
+SESSION_SECRET=
+EOF
 # JWT_SECRET / SESSION_SECRET は必ず設定してください（openssl rand -hex 32）
 
 # ビルドして起動
@@ -344,7 +349,7 @@ npm run dev
 ```
 
 #### ステップ6: 初期設定と動作確認
-1. ブラウザで `http://localhost:3000` にアクセス
+1. ブラウザで `http://localhost:5173` にアクセス
 2. 初期設定ウィザードが表示されたら、案内に従ってセットアップを完了してください
 3. サンプルコメントを追加してシステムが正常に動作することを確認してください
 
@@ -406,8 +411,8 @@ MAX_CONNECTIONS=1000
 #### フロントエンド設定（frontend/.env）
 ```bash
 # 必須設定項目
-VITE_API_BASE_URL=http://localhost:4000/api
-VITE_WS_URL=ws://localhost:4000
+VITE_API_BASE_URL=http://localhost:3000/api
+VITE_SOCKET_URL=http://localhost:3000
 
 # オプション設定項目
 VITE_APP_TITLE=Runner - Comment Management System
@@ -489,8 +494,8 @@ rm -f backend/data/comments.db
 **問題**: バックエンドが起動しない
 **解決**:
 ```bash
-# ポート4000が使用中でないか確認してください
-lsof -i :4000
+# ポート3000が使用中でないか確認してください
+lsof -i :3000
 
 # 環境変数の設定を確認してください
 npm run env:check
@@ -503,7 +508,7 @@ npm run logs:tail
 **解決**:
 ```bash
 # バックエンドが正常に起動しているか確認してください
-curl http://localhost:4000/api/health
+curl http://localhost:3000/api/health
 
 # 環境変数を確認してください
 cat frontend/.env
@@ -647,7 +652,7 @@ Before starting development work, see [`docs/FEATURE_AUDIT.md`](docs/FEATURE_AUD
 1. `npm run env:check` の結果を確認し、`needs-attention` や `missing` がないか確認します。
 2. プレースホルダー値 (`your-...`, `sample`, `example`) を実値に置き換えます。
 3. `JWT_SECRET`、`SESSION_SECRET`、`ENCRYPTION_KEY` を32文字以上のランダム文字列に設定します。
-4. `VITE_API_BASE_URL` は `http(s)://`、`VITE_WS_URL` は `ws(s)://` で始まる完全な URL を指定します。
+4. `VITE_API_BASE_URL`、`VITE_SOCKET_URL` は `http(s)://` で始まる完全な URL を指定します（コードが読むのは `VITE_SOCKET_URL` で、`VITE_WS_URL` は参照されません）。
 5. Twitch/YouTube 資格情報の有効性を再確認します。
 6. 修正後に再度 `npm run env:check` を実行し、サマリーが `OK` であることを確認します。
 
