@@ -86,16 +86,24 @@ const targets = [
   {
     name: 'frontend',
     file: path.join(projectRoot, 'frontend', '.env'),
-    required: ['VITE_API_BASE_URL', 'VITE_WS_URL'],
-    optional: ['VITE_THEME_DEFAULT'],
+    // ここに挙げるキーは frontend/src が実際に読むものだけにする。
+    // 以前は VITE_WS_URL（必須）/ VITE_THEME_DEFAULT（任意）が残っていたが、
+    // どちらもコードのどこからも参照されておらず（socket.io の接続先は
+    // VITE_SOCKET_URL、frontend/.env.example と scripts/personal-setup.sh が
+    // 生成するのもそちら）、正しく設定した利用者に「必須キーが未設定」と
+    // 誤報し、逆に VITE_SOCKET_URL の未設定・誤りは検出できなかった。
+    required: ['VITE_API_BASE_URL', 'VITE_SOCKET_URL'],
+    optional: ['VITE_APP_VERSION', 'VITE_ENABLE_MSW'],
     validations: {
       VITE_API_BASE_URL: {
         message: 'VITE_API_BASE_URL は有効なURLで指定してください。',
         validate: (value) => typeof value === 'string' && /^https?:\/\//.test(value)
       },
-      VITE_WS_URL: {
-        message: 'VITE_WS_URL は ws:// または wss:// で始まる必要があります。',
-        validate: (value) => typeof value === 'string' && /^wss?:\/\//.test(value)
+      VITE_SOCKET_URL: {
+        // socket.io はハンドシェイクを HTTP で行うため http:// / https:// を要求する
+        // （ws:// / wss:// ではない。frontend/.env.example の注記と同じ）
+        message: 'VITE_SOCKET_URL は http:// または https:// で始まる必要があります。',
+        validate: (value) => typeof value === 'string' && /^https?:\/\//.test(value)
       }
     }
   }
