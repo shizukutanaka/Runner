@@ -14,11 +14,11 @@
 
 ### セットアップ
 1. `npm install`
-2. `npm run dev`
-3. `.env` に以下を設定
-   - `VITE_API_BASE_URL`: バックエンドのAPIベースURL（例: `http://localhost:4000/api`）
-   - `VITE_WS_URL`: WebSocket 接続先（例: `ws://localhost:4000`）
-   - 必要に応じて `VITE_THEME_DEFAULT` など追加設定
+2. `.env.example` を `.env` に複製し、必要に応じて以下を設定（バックエンドの既定ポートは3000）
+   - `VITE_API_BASE_URL`: バックエンドのAPIベースURL（例: `http://localhost:3000/api`）
+   - `VITE_SOCKET_URL`: socket.io の接続先（例: `http://localhost:3000`。コードが読むのはこのキーで、ハンドシェイクはHTTPのため `ws://` ではありません）
+   - `VITE_ENABLE_MSW`: `true` で開発用モックサーバーを有効化（任意）
+3. `npm run dev`
 
 ### ディレクトリ概要
 - `src/components/` UI コンポーネント
@@ -43,11 +43,11 @@ The `frontend/` directory delivers the client application for the comment manage
 
 ### Setup
 1. Run `npm install`
-2. Run `npm run dev`
-3. Configure `.env` with:
-   - `VITE_API_BASE_URL`: Base URL of the backend API (e.g., `http://localhost:4000/api`)
-   - `VITE_WS_URL`: WebSocket endpoint (e.g., `ws://localhost:4000`)
-   - Optional entries such as `VITE_THEME_DEFAULT`
+2. Copy `.env.example` to `.env` and adjust as needed (the backend defaults to port 3000):
+   - `VITE_API_BASE_URL`: Base URL of the backend API (e.g., `http://localhost:3000/api`)
+   - `VITE_SOCKET_URL`: socket.io endpoint (e.g., `http://localhost:3000`; this is the key the code reads, and the handshake is HTTP, not `ws://`)
+   - `VITE_ENABLE_MSW`: set to `true` to enable the development mock server (optional)
+3. Run `npm run dev`
 
 ### Directory Overview
 - `src/components/`: Reusable UI components
