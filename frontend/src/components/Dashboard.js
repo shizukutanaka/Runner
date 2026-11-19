@@ -27,6 +27,7 @@ import SilentDepartureAlert from './SilentDepartureAlert';
 import TriageQueue from './TriageQueue';
 import ContextAnalysisPanel from './ContextAnalysisPanel';
 import MonitoringDashboard from './MonitoringDashboard';
+import LiveChatWatchPanel from './LiveChatWatchPanel';
 
 function TabPanel(props) {
   const { children, value, index, ...other } = props;
@@ -64,6 +65,9 @@ export default function Dashboard() {
 
   const timelineTab = useMemo(() => (
     <Grid container spacing={2} alignItems="flex-start">
+      <Grid item xs={12}>
+        <LiveChatWatchPanel />
+      </Grid>
       <Grid item xs={12} lg={9}>
         <CommentTimeline />
       </Grid>
